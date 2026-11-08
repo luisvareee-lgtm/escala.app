@@ -2,8 +2,9 @@
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir } from './catalogo.js';
+import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn } from './bloques.js';
 
-const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', pedirCodigo: false, enviando: false, ultimo: null };
+const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null };
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
 const PAGO = { transferencia: ['🏦', 'Transferencia bancaria', 'Te pasamos alias / CBU en el ticket'], efectivo: ['💵', 'Efectivo / contra entrega', 'Lo coordinamos por WhatsApp'], link: ['📲', 'Link de pago (tarjeta / Mercado Pago)', 'Te lo enviamos por WhatsApp'] };
 
@@ -11,9 +12,16 @@ const PAGO = { transferencia: ['🏦', 'Transferencia bancaria', 'Te pasamos ali
 const vista = () => { const m = S.tienda.modalidad; return m === 'minorista' ? 'min' : m === 'mayorista' ? 'may' : (S.may ? 'may' : 'min'); };
 function tramos(p) {
   if (vista() !== 'may') return null;
-  if (S.tienda.modalidad === 'mayorista') return { 1: +p.precio_1, 3: +p.precio_3, 6: +p.precio_6, 12: +p.precio_12 };
-  const t = S.may && S.may.get(p.id); return t ? { 1: +t.precio_1, 3: +t.precio_3, 6: +t.precio_6, 12: +t.precio_12 } : null;
+  const src = S.tienda.modalidad === 'mayorista' ? p : (S.may && S.may.get(p.id));
+  if (!src) return null;
+  // precio único (o sin escalas cargadas): el mismo precio para cualquier cantidad, y se muestra como uno solo
+  if (p.precio_unico || src.precio_3 == null) return { 1: +src.precio_1, 3: +src.precio_1, 6: +src.precio_1, 12: +src.precio_1, unico: true };
+  return { 1: +src.precio_1, 3: +src.precio_3, 6: +src.precio_6, 12: +src.precio_12 };
 }
+// "por caja x12", "por kg"… (vacío si se vende por unidad)
+const UNI = { par: 'par', docena: 'docena', pack: 'pack', bulto: 'bulto', caja: 'caja', display: 'display', kg: 'kg', gramos: 'gramo', litro: 'litro', metro: 'metro' };
+export const unidadTxt = (u, n) => !u || u === 'unidad' || !UNI[u] ? '' : UNI[u] + (n && ['pack', 'bulto', 'caja', 'display'].includes(u) ? ' x' + n : '');
+const porUnidad = p => { const u = unidadTxt(p.unidad, p.contenido); return u ? `<div class="flat-note">por ${esc(u)}</div>` : ''; };
 const unidad = (p, q) => { const t = tramos(p); if (!t) return +p.precio_1; return q >= 12 ? t[12] : q >= 6 ? t[6] : q >= 3 ? t[3] : t[1]; };
 const qtyDe = id => S.cart.filter(l => l.id === id).reduce((a, l) => a + l.qty, 0);
 const prod = id => S.prods.find(p => p.id === id);
@@ -21,6 +29,11 @@ function lineas() {
   return S.cart.map((l, i) => { const p = prod(l.id); if (!p) return null; const q = qtyDe(l.id); const pu = unidad(p, q); return { i, p, vr: l.vr, qty: l.qty, pu, sub: pu * l.qty, base: +p.precio_1 * l.qty }; }).filter(Boolean);
 }
 function totales() { const L = lineas(); return { n: L.reduce((a, l) => a + l.qty, 0), total: L.reduce((a, l) => a + l.sub, 0), ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0) }; }
+const envios = () => Array.isArray(S.tienda.envios) ? S.tienda.envios : [];
+const envioSel = () => envios().find(e => e.id === S.env) || null;
+// mismo criterio que el servidor (el servidor recalcula y es el que cobra)
+const costoEnvio = (e, total) => !e ? 0 : e.tipo !== 'retiro' && +S.tienda.envio_gratis_desde > 0 && total >= +S.tienda.envio_gratis_desde ? 0 : +e.costo || 0;
+const ENV_ICO = { retiro: '🏪', envio: '🚚', moto: '🛵', correo: '📮', acordar: '💬' };
 const minimo = () => (vista() === 'may' ? +S.tienda.compra_minima || 0 : 0);
 function pista() {
   if (vista() !== 'may' || !S.tienda.escalas_activas) return null;
@@ -82,9 +95,19 @@ function pintar() {
   app.innerHTML = `<div id="app" data-m="${m}" style="${marca()}">
     <div id="hdr"><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${esc(S.tienda.nombre)}</div>
       <button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">🛒${T.n ? `<span id="cart-n">${T.n}</span>` : ''}</button></div>
-    <div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
-  if (S.vista === 'cat') { pintarGrid(); pintarBarra(); }
+    ${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
+  if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarPopup(); }
 }
+function pintarPopup() {
+  const d = S.tienda.diseno, k = 'pop:' + S.slug, f = firmaPopup(d), r = $('#pop-root');
+  if (!r || !f || S.popVisto || store.get(k, '') === f) return;
+  const h = popupHtml(d); if (!h) return;
+  r.innerHTML = h; S.popVisto = true; store.set(k, f);
+}
+on('st-pop-cerrar', () => { const r = $('#pop-root'); if (r) r.innerHTML = ''; });
+on('st-pop-bg', (d, b, e) => { if (e.target === b) { const r = $('#pop-root'); if (r) r.innerHTML = ''; } });
+on('st-pop-copiar', d => copiar(d.v));
+on('st-hero', () => { const e = $('#search-row'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 function banner() {
   const aviso = S.avisoPago ? `<div class="ok-box" role="status" style="margin:12px 16px">${esc(S.avisoPago)}</div>` : '';
   const t = S.tienda, m = vista();
@@ -92,15 +115,17 @@ function banner() {
     : `<span class="chip">📦 ${t.escalas_activas ? 'Precios por volumen x1 · x3 · x6 · x12' : 'Lista mayorista'}${minimo() ? ' · mínimo ' + fmt(minimo()) : ''}</span>`;
   if (t.modalidad === 'hibrido') chips += S.may ? '<button class="chip" data-act="may-salir">✓ Lista mayorista activa · Salir</button>' : '<button class="chip" data-act="may-abrir">💼 Acceso Mayorista</button>';
   const caja = S.pedirCodigo && !S.may ? `<form data-submit="may-codigo" id="gremio-box"><input class="fi" name="codigo" placeholder="Código de revendedor" autocomplete="off" aria-label="Código de revendedor" required><button class="btn btn-p btn-sm" type="submit">Activar</button></form><div class="ferr" id="may-err" hidden></div>` : '';
+  if (+t.envio_gratis_desde > 0 && envios().some(e => e.tipo !== 'retiro')) chips += `<span class="chip">🚚 Envío gratis desde ${fmt(t.envio_gratis_desde)}</span>`;
   chips += '<button class="chip" data-act="st-pdf">📄 Lista de precios (PDF)</button>';
-  return aviso + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>`;
+  return aviso + heroHtml(t.diseno) + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>` + beneficiosHtml(t.diseno);
 }
 function pantallaCat() {
   return `${banner()}<div id="search-row"><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div></div>
-    <div id="cats"></div><div id="pgrid"></div><div id="mas"></div><div id="pdet-root"></div><div class="cart-fixed"><div id="cartbar" hidden></div></div><div style="height:90px"></div>`;
+    <div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${testimoniosHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="cartbar" hidden></div></div><div style="height:90px"></div>`;
 }
 function pintarGrid() {
   const cats = ['Todas', ...new Set(S.prods.map(p => p.categoria))];
+  $('#cats').hidden = !secOn(S.tienda.diseno, 'categorias');
   $('#cats').innerHTML = cats.map(c => `<button class="pill ${c === S.cat ? 'on' : ''}" data-act="st-cat" data-c="${esc(c)}">${esc(c)}</button>`).join('');
   const q = S.q.toLowerCase().trim();
   const lista = S.prods.filter(p => (S.cat === 'Todas' || p.categoria === S.cat) && (!q || p.nombre.toLowerCase().includes(q) || (p.marca || '').toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q)));
@@ -111,13 +136,14 @@ function pintarGrid() {
     const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [];
     const hl = n => qty > 0 && ((n === 12 && qty >= 12) || (n === 6 && qty >= 6 && qty < 12) || (n === 3 && qty >= 3 && qty < 6) || (n === 1 && qty < 3)) ? 'hl' : '';
     const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
-    const precio = m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${usd(+p.precio_1)}</div>`
-      : esc_ ? `<div class="ptiers">${[1, 3, 6, 12].map(n => `<div class="ptier ${hl(n)}"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>`
-      : `<div><span class="retail-price">${fmt(t[1])}</span><div class="flat-note">precio mayorista</div>${usd(t[1])}</div>`;
+    const precio = m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${porUnidad(p)}${usd(+p.precio_1)}</div>`
+      : t.unico ? `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista único</div>${usd(t[1])}</div>`
+      : esc_ ? `${porUnidad(p)}<div class="ptiers">${[1, 3, 6, 12].map(n => `<div class="ptier ${hl(n)}"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>`
+      : `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista</div>${usd(t[1])}</div>`;
     const ctrl = p.agotado ? '<button class="qadd" disabled>Agotado</button>' : qty > 0
       ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span><button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
       : `<button class="qadd" data-act="st-add" data-id="${p.id}">+ Agregar</button>`;
-    return `<div class="pcard${qty ? ' in-cart' : ''}"><div class="pimg${p.imagen_url ? '' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;background:${p.imagen_url ? 'var(--bg3)' : 'linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
+    return `<div class="pcard${qty ? ' in-cart' : ''}"><div class="pimg${p.imagen_url ? '' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;background:${p.imagen_url ? 'var(--bg3)' : 'linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
       <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${precio}<div class="pqty">${ctrl}</div></div></div>`;
   }).join('');
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
@@ -141,7 +167,7 @@ function pantallaCarrito() {
   const T = totales(), mc = minimo(), bloq = mc && T.total < mc;
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
     ${L.map(l => `<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>`).join('')}
-    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total</span><span class="v">${fmt(T.total)}</span></div></div>
+    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>
     <button class="btn btn-p" ${bloq ? 'disabled' : ''} data-act="st-ir" data-v="co">${bloq ? 'Faltan ' + fmt(mc - T.total) + ' para el mínimo' : 'Continuar →'}</button></div>`;
 }
 function pantallaCheckout() {
@@ -151,12 +177,27 @@ function pantallaCheckout() {
       <div class="fg"><label class="flabel" for="co-nom">Nombre completo</label><input class="fi" id="co-nom" name="nombre" data-input="st-contacto" maxlength="80" required></div>
       <div class="fg"><label class="flabel" for="co-wsp">Tu WhatsApp</label><input class="fi" id="co-wsp" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" data-input="st-contacto" required></div>
       <div class="fg"><label class="flabel" for="co-loc">Localidad</label><input class="fi" id="co-loc" name="localidad" maxlength="80" placeholder="Barrio / ciudad"></div>
+      ${envioUi()}
       <div class="fg"><label class="flabel">Medio de pago</label>${Object.keys(PAGO).map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
+      ${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;
+}
+function envioUi() {
+  const L = envios(); if (!L.length) return '';
+  if (!envioSel()) S.env = L.length === 1 ? L[0].id : null;
+  const T = totales(), e = envioSel();
+  return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.total); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${x.tipo === 'acordar' && !c ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
+    ${e && e.tipo !== 'retiro' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección de entrega</label><input class="fi" id="co-dir" name="direccion" maxlength="160" required minlength="5" placeholder="Calle, número, piso / referencia"></div>` : ''}`;
+}
+function resumenCo() {
+  const T = totales(), e = envioSel(), c = costoEnvio(e, T.total);
+  if (!envios().length) return `<div class="card"><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total)}</span></div></div>`;
+  return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div><div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total + c)}</span></div></div>`;
 }
 function ticket(r, cliente) {
   let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}\nWhatsApp: ${cliente.whatsapp}\nLocalidad: ${cliente.localidad || '—'}\nModalidad: ${r.modo === 'mayorista' ? 'Mayorista' : 'Minorista'}\n\nDetalle:\n`;
-  r.items.forEach(i => { t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''} · ${fmt(i.precio_unitario)} c/u = ${fmt(i.subtotal)}\n`; });
+  r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(i.subtotal)}\n`; });
+  if (r.envio) t += `\nEntrega: ${r.envio}${cliente.direccion ? ' · ' + cliente.direccion : ''}\nProductos: ${fmt(r.subtotal)} · Envío: ${+r.envio_costo ? fmt(r.envio_costo) : 'sin cargo'}\n`;
   t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
   if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || '(lo coordinamos por acá)'}\n`;
   return t + `*TOTAL: ${fmt(r.total)}*`;
@@ -194,7 +235,7 @@ function pintarDet() {
   const r = $('#pdet-root'); if (!r) return;
   const p = S.det && prod(S.det); if (!p) { r.innerHTML = ''; return; }
   const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [];
-  const precios = t && S.tienda.escalas_activas ? `<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>`;
+  const precios = t && S.tienda.escalas_activas && !t.unico ? `${porUnidad(p)}<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>${porUnidad(p)}${t && t.unico ? '<div class="flat-note">precio mayorista único: el mismo para cualquier cantidad</div>' : ''}`;
   r.innerHTML = `<div class="modal-bg" data-act="st-det-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(p.nombre)}">
     <div class="pdet-img${p.imagen_url ? '' : ' noimg'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">` : esc(p.emoji)}</div>
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
@@ -209,7 +250,10 @@ on('st-ver', d => { S.det = d.id; pintarDet(); });
 on('st-det-cerrar', () => { S.det = null; pintarDet(); });
 on('st-det-bg', (d, b, e) => { if (e.target === b) { S.det = null; pintarDet(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.det) { S.det = null; pintarDet(); } });
-on('st-pay', d => { S.pay = d.p; const v = ['nombre', 'whatsapp', 'localidad'].map(n => { const e = document.querySelector(`#co-form [name=${n}]`); return e ? e.value : ''; }); pintar(); ['nombre', 'whatsapp', 'localidad'].forEach((n, i) => { const e = document.querySelector(`#co-form [name=${n}]`); if (e) e.value = v[i]; }); });
+const CAMPOS = ['nombre', 'whatsapp', 'localidad', 'direccion'];
+function repintarCo() { const v = CAMPOS.map(n => { const e = document.querySelector(`#co-form [name=${n}]`); return e ? e.value : ''; }); pintar(); CAMPOS.forEach((n, i) => { const e = document.querySelector(`#co-form [name=${n}]`); if (e && v[i]) e.value = v[i]; }); }
+on('st-pay', d => { S.pay = d.p; repintarCo(); });
+on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && !e.value) e.focus(); });
 
 on('may-abrir', async () => { if (S.tienda.requiere_codigo) { S.pedirCodigo = true; pintar(); const i = document.querySelector('#gremio-box input'); if (i) i.focus(); } else await activarMay(null); });
 on('may-codigo', async (d, f) => { await activarMay(new FormData(f).get('codigo')); });
@@ -230,6 +274,10 @@ on('st-contacto', () => { const f = $('#co-form'); if (f) subirCarrito(f.nombre.
 on('st-pedir', async (d, f) => {
   if (S.enviando) return;
   const cliente = { nombre: f.nombre.value.trim(), whatsapp: f.whatsapp.value.trim(), localidad: f.localidad.value.trim() };
+  if (envios().length) {
+    if (!envioSel()) { $('#co-err').innerHTML = '<div class="err-box">Elegí cómo querés recibir el pedido.</div>'; window.scrollTo(0, 0); return; }
+    cliente.envio = S.env; if (f.direccion) cliente.direccion = f.direccion.value.trim();
+  }
   const items = S.cart.map(l => ({ producto_id: l.id, variante: l.vr, cantidad: l.qty }));
   const btn = $('#co-go'); S.enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
   try {

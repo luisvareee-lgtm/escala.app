@@ -164,7 +164,8 @@ export function tablaAProductos(t, map, opts = {}) {
     const vis = get(r, 'visible'); if (vis && /^(no|false|0|oculto|inactivo|borrador|draft)$/i.test(vis)) it.activo = false;
     // precio: preferimos "costo" si existe; si no, "precio" (y si es de venta, se descuenta el margen)
     const rc = get(r, 'costo'), rp = get(r, 'precio');
-    let base = rc !== '' ? num(rc) : num(rp), esVenta = rc === '' && opts.tipo === 'venta';
+    const hayCosto = rc !== '' && num(rc) > 0;                    // Tiendanube/Shopify exportan costo 0 cuando no lo cargaste
+    let base = hayCosto ? num(rc) : num(rp), esVenta = !hayCosto && opts.tipo === 'venta';
     if (!(base > 0)) continue;
     let usd = opts.moneda === 'ars' ? base / cot : base;
     if (esVenta) usd = usd / (1 + mg);
@@ -186,8 +187,10 @@ const LIB = {
   ocr: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
   zip: 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js',
 };
-const leerTexto = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(new Error('No se pudo leer el archivo.')); r.readAsText(f); });
 const leerBuf = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('No se pudo leer el archivo.')); r.readAsArrayBuffer(f); });
+// Texto con la codificación correcta: UTF-8 si es válido; si no, Windows-1252 (Excel / Tiendanube en Windows). Sin esto, "Café" llega como "CafÃ©".
+export const decodificar = buf => { const b = new Uint8Array(buf); try { return new TextDecoder('utf-8', { fatal: true }).decode(b).replace(/^\ufeff/, ''); } catch (e) { return new TextDecoder('windows-1252').decode(b); } };
+const leerTexto = async f => decodificar(await leerBuf(f));
 
 // Devuelve {tipo:'texto', texto} o {tipo:'tabla', filas, hojas?}
 export async function leerArchivo(f, progreso = () => { }) {
@@ -222,12 +225,20 @@ export async function leerArchivo(f, progreso = () => { }) {
   if (/\.zip$/.test(n)) {   // exportación de WhatsApp "con archivos": buscamos el chat de texto
     progreso('Abriendo ZIP…'); const Z = await cargarScript(LIB.zip, 'JSZip'); const z = await Z.loadAsync(await leerBuf(f));
     const e = Object.values(z.files).find(x => !x.dir && /\.txt$/i.test(x.name)); if (!e) throw new Error('No encontramos un chat (.txt) dentro del ZIP.');
-    return { tipo: 'texto', texto: await e.async('string') };
+    const texto = decodificar(await e.async('arraybuffer'));
+    const fotos = {};
+    for (const x of Object.values(z.files)) if (!x.dir && /\.(jpe?g|png|webp)$/i.test(x.name)) fotos[x.name.split('/').pop()] = x;
+    if (Object.keys(fotos).length) {
+      progreso('Uniendo cada foto con su texto…');
+      const items = parsearChatConFotos(texto, Object.keys(fotos));
+      for (const it of items) if (it.archivoFoto) { const b = await fotos[it.archivoFoto].async('blob'); it.foto = new Blob([b], { type: /png$/i.test(it.archivoFoto) ? 'image/png' : 'image/jpeg' }); }
+      if (items.some(x => x.foto)) return { tipo: 'productos', items, texto };
+    }
+    return { tipo: 'texto', texto };
   }
   if (/^image\//.test(f.type) || /\.(png|jpe?g|webp|bmp)$/.test(n)) {
-    progreso('Leyendo imagen (OCR)… puede tardar un minuto'); const T = await cargarScript(LIB.ocr, 'Tesseract');
-    const r = await T.recognize(f, 'spa', { logger: m => { if (m.status === 'recognizing text') progreso('OCR: ' + Math.round(m.progress * 100) + '%'); } });
-    return { tipo: 'texto', texto: r.data.text, ocr: true };
+    const texto = await ocr(f, progreso);
+    return { tipo: 'imagen', texto, foto: f, ocr: true };
   }
   throw new Error('Formato no reconocido. Usá CSV, Excel, PDF, TXT/ZIP de WhatsApp o una imagen.');
 }
@@ -243,4 +254,72 @@ export function cruzar(nuevos, existentes) {
     vistos.add(k); nombres.add(kn); return true;
   })
     .map(n => ({ ...n, existente: (n.sku && porSku.get(clave(n.sku))) || porNombre.get(clave(n.nombre)) || null }));
+}
+
+
+/* ---------- 5) OCR (lectura de texto en imágenes) ---------- */
+let _ocrWorker = null;
+export async function ocr(f, progreso = () => { }) {
+  const T = await cargarScript(LIB.ocr, 'Tesseract');
+  progreso('Leyendo el texto de la imagen… (la primera vez tarda un poco más)');
+  if (!_ocrWorker) _ocrWorker = await T.createWorker('spa');          // un solo lector para todas las fotos: mucho más rápido
+  const r = await _ocrWorker.recognize(f);
+  return r.data.text || '';
+}
+
+/* ---------- 6) FOTO DE PROVEEDOR = UN PRODUCTO ---------- */
+// Las fotos de canales y grupos de distribuidores traen el precio (y a veces el nombre) escritos encima.
+// Ese precio es el COSTO del comerciante (lo que le cobra el proveedor), no un precio de venta.
+const NO_NOMBRE = /^(precio|precios|stock|disponible|consult|whats|wsp|envio|envíos|mayorista|minorista|oferta|promo|nuevo|ingreso|unidad|unidades|x\s?\d+|cod|código|ref)\b/i;
+export function deTextoDeFoto(texto, cotizacion, sinSimbolo = 'ars') {
+  const cot = Number(cotizacion) > 0 ? Number(cotizacion) : 1;
+  // en capturas de pantalla aparecen textos de la app (seguidores, hora, "Reenviado"…): se descartan para no confundirlos con el precio
+  const UI = /seguidor|followers|vistas|views|reenviad|forwarded|reacci|miembros|members|escribiendo|en l[ií]nea|online|[uú]lt\.? vez|visto por|canal|channel|silenciad|@\w|^\s*\d{1,2}[:.]\d{2}\s*(?:[ap]\.?\s?m\.?)?\s*$|\b\d{1,2}:\d{2}\b|%|\bwhatsapp\b/i;
+  const lineas = String(texto || '').split(/\r?\n/).map(l => l.replace(EMOJI, ' ').replace(/[|_~*`©®™•·]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(l => l.length >= 2 && !UI.test(l));
+  // precio: primero con símbolo ($ / USD); si no, el número "de precio" más grande (≥ 3 cifras)
+  let precio = null;
+  for (const l of lineas) { const p = extraerPrecio(l, cot); if (p && p.usd > 0) { precio = p; break; } }
+  if (!precio) {
+    const nums = lineas.join(' ').match(/\b\d{1,3}(?:[.,]\d{3})+(?:,\d{1,2})?\b|\b\d{3,7}\b/g) || [];
+    const vals = nums.map(num).filter(v => v >= 100 && v < 100000000 && !(v >= 1900 && v <= 2100));
+    if (vals.length) { const v = Math.max(...vals); precio = sinSimbolo === 'usd' ? { usd: v } : { usd: Math.round(v / cot * 100) / 100, ars: v }; precio.inferido = true; }
+  }
+  // nombre: la línea con más letras que no sea un precio ni una palabra de relleno
+  const cands = lineas.filter(l => !extraerPrecio(l, cot) && !NO_NOMBRE.test(l) && (l.match(/[a-záéíóúñ]/gi) || []).length >= 4 && !/^[\d\W]+$/.test(l))
+    .map(l => l.replace(/[^\p{L}\p{N} .,'&/+()-]/gu, ' ').replace(/\s+/g, ' ').trim()).filter(l => l.length >= 3);
+  cands.sort((a, b) => (b.match(/[a-záéíóúñ]/gi) || []).length - (a.match(/[a-záéíóúñ]/gi) || []).length);
+  const nombre = (cands[0] || '').slice(0, 120);
+  return { nombre, costo_usd: precio ? precio.usd : null, precio_ars: precio ? (precio.ars || Math.round(precio.usd * cot)) : null, inferido: !!(precio && precio.inferido) };
+}
+// Nombre a partir del archivo cuando la foto no tiene texto: "Perfume Asad 100ml.jpg" → "Perfume Asad 100ml"
+export const nombreDeArchivo = n => {
+  const b = String(n || '').replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
+  return /^(img|image|imagen|photo|foto|whatsapp|wa|screenshot|captura|\d+|pxl|dsc)\b/i.test(b) || /\b(wa\d{3,}|\d{8})\b/i.test(b) ? '' : b.slice(0, 120);
+};
+
+/* ---------- 7) CHAT DE WHATSAPP CON FOTOS: cada foto + su texto = un producto ---------- */
+const CAB = /^\s*\[?(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*(?:[ap]\.?\s?m\.?)?\]?\s*(?:-\s*)?([^:]{1,60}):\s?(.*)$/i;
+const ADJ = /(?:<\s*(?:adjunto|attached)\s*:\s*([^>]+?)\s*>|([\w-]+\.(?:jpe?g|png|webp))\s*\((?:archivo adjunto|file attached)\))/i;
+export function parsearChatConFotos(texto, nombresFotos = []) {
+  const set = new Set(nombresFotos);
+  const msgs = [];
+  for (const l0 of String(texto || '').split(/\r?\n/)) {
+    const l = l0.replace(/[\u200e\u200f\u202a-\u202e\ufeff]/g, '');      // marcas invisibles que agrega WhatsApp en iPhone
+    const m = l.match(CAB);
+    if (m) msgs.push({ quien: m[6].trim(), t: (+m[4]) * 60 + (+m[5]), dia: m[1] + '/' + m[2], texto: m[7] });
+    else if (msgs.length) msgs[msgs.length - 1].texto += '\n' + l;
+  }
+  const out = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const g = msgs[i], a = g.texto.match(ADJ);
+    if (!a) continue;
+    const archivo = (a[1] || a[2] || '').trim();
+    if (!/\.(jpe?g|png|webp)$/i.test(archivo)) continue;
+    let leyenda = g.texto.replace(ADJ, ' ').replace(/\s+/g, ' ').trim();
+    // si la foto vino sola, el texto suele llegar en el mensaje siguiente del mismo remitente (dentro de 3 minutos)
+    const sig = msgs[i + 1];
+    if (!leyenda && sig && sig.quien === g.quien && sig.dia === g.dia && Math.abs(sig.t - g.t) <= 3 && !ADJ.test(sig.texto)) { leyenda = sig.texto.trim(); sig.usado = true; }
+    out.push({ archivoFoto: set.has(archivo) ? archivo : null, leyenda, fuente: 'whatsapp' });
+  }
+  return out;
 }
