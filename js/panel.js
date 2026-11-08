@@ -74,9 +74,10 @@ function preciosDe(costo, ovr) {
   const m1 = ovr == null || ovr === '' ? Number(t.margen_1) : Number(ovr);
   return { min: precioArs(c, t.cotizacion_usd, m1), 1: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_1) + sh)), 3: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_3) + sh)), 6: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_6) + sh)), 12: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_12) + sh)) };
 }
+const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
 function filaProd(p) {
   const pr = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista';
-  const det = [p.categoria, usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
+  const det = [p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
   return `<div class="prow${p.activo ? '' : ' off'}" data-act="p-editar" data-id="${p.id}" role="button" tabindex="0" aria-label="Editar ${esc(p.nombre)}">
     <span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
     <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div></span>
@@ -108,6 +109,9 @@ function modal() {
     <div class="fg"><label class="flabel">Nombre</label><input class="fi" name="nombre" value="${esc(p.nombre || '')}" maxlength="160" required></div>
     <div class="row2"><div class="fg"><label class="flabel">Categoría</label><input class="fi" name="categoria" value="${esc(p.categoria || 'General')}" maxlength="60" required></div><div class="fg"><label class="flabel">Código / SKU</label><input class="fi" name="sku" value="${esc(p.sku || '')}" maxlength="60"></div></div>
     <div class="row2"><div class="fg"><label class="flabel">Costo en USD</label><input class="fi" name="costo_usd" type="number" step="any" min="0" value="${p.costo_usd != null ? Number(p.costo_usd) : ''}" data-input="p-prev" required></div><div class="fg"><label class="flabel">Marca</label><input class="fi" name="marca" value="${esc(p.marca || '')}" maxlength="60"></div></div>
+    <div class="row2"><div class="fg"><label class="flabel">Se vende por</label><select class="fi" name="unidad" data-change="p-uni">${UNIDADES_P.map(([k, n]) => `<option value="${k}" ${(p.unidad || 'unidad') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+    <div class="fg" id="p-cont" ${['pack', 'bulto', 'caja', 'display'].includes(p.unidad) ? '' : 'hidden'}><label class="flabel">Unidades que trae</label><input class="fi" name="contenido" type="number" min="1" max="100000" value="${p.contenido || ''}" placeholder="Ej: 12"></div></div>
+    ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" name="precio_unico" ${p.precio_unico ? 'checked' : ''}> Precio único (sin descuento por cantidad x3 · x6 · x12)</label></div>` : ''}
     <div class="fg"><label class="flabel">Variantes (separadas por coma)</label><input class="fi" name="variantes" value="${esc((p.variantes || []).join(', '))}"></div>
     <div class="fg"><span class="flabel">Foto</span><div id="foto-box">${fotoHtml(foto)}</div></div>
     <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"></div></div>
@@ -165,11 +169,15 @@ on('p-foto', async (d, el) => {
 });
 on('p-nofoto', () => { P.modal.foto = null; const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(null); });
 on('p-prev', () => { const f = document.querySelector('form[data-submit=p-prod]'), bx = $('#pprev'); if (!f || !bx) return; const mp = f.margen_propio.value; bx.innerHTML = prevHtml(f.costo_usd.value, mp === '' ? null : Number(mp) / 100); });
+on('p-uni', (d, el) => { const c = $('#p-cont'); if (c) c.hidden = !['pack', 'bulto', 'caja', 'display'].includes(el.value); });
 on('p-prod', async (d, f) => {
   const fd = new FormData(f), st = fd.get('stock'), mp = fd.get('margen_propio');
   const v = String(fd.get('variantes') || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 20);
   const p0 = P.modal.p || {}, foto = P.modal.foto !== undefined ? P.modal.foto : (p0.imagen_url || null);
   const datos = { nombre: fd.get('nombre').trim(), categoria: fd.get('categoria').trim() || 'General', sku: fd.get('sku').trim() || null, marca: fd.get('marca').trim() || null, descripcion: fd.get('descripcion').trim() || null, costo_usd: Number(fd.get('costo_usd')), variantes: v, imagen_url: foto || null, emoji: (fd.get('emoji') || '📦').trim() || '📦', stock: st === '' ? null : Math.max(0, Math.floor(Number(st))), margen_override: mp === '' ? null : (p0.margen_override != null && Math.abs(Number(mp) - Math.round(Number(p0.margen_override) * 10000) / 100) < 0.005 ? Number(p0.margen_override) : Number(mp) / 100), activo: fd.get('activo') === 'on' };
+  datos.unidad = fd.get('unidad') || 'unidad';
+  datos.contenido = ['pack', 'bulto', 'caja', 'display'].includes(datos.unidad) && Number(fd.get('contenido')) >= 1 ? Math.floor(Number(fd.get('contenido'))) : null;
+  datos.precio_unico = fd.get('precio_unico') === 'on';
   try {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
     await api.guardarProducto(id, datos); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');
