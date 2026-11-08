@@ -11,16 +11,9 @@ const PAGO = { transferencia: ['🏦', 'Transferencia bancaria', 'Te pasamos ali
 const vista = () => { const m = S.tienda.modalidad; return m === 'minorista' ? 'min' : m === 'mayorista' ? 'may' : (S.may ? 'may' : 'min'); };
 function tramos(p) {
   if (vista() !== 'may') return null;
-  const src = S.tienda.modalidad === 'mayorista' ? p : (S.may && S.may.get(p.id));
-  if (!src) return null;
-  // precio único (o sin escalas cargadas): el mismo precio para cualquier cantidad, y se muestra como uno solo
-  if (p.precio_unico || src.precio_3 == null) return { 1: +src.precio_1, 3: +src.precio_1, 6: +src.precio_1, 12: +src.precio_1, unico: true };
-  return { 1: +src.precio_1, 3: +src.precio_3, 6: +src.precio_6, 12: +src.precio_12 };
+  if (S.tienda.modalidad === 'mayorista') return { 1: +p.precio_1, 3: +p.precio_3, 6: +p.precio_6, 12: +p.precio_12 };
+  const t = S.may && S.may.get(p.id); return t ? { 1: +t.precio_1, 3: +t.precio_3, 6: +t.precio_6, 12: +t.precio_12 } : null;
 }
-// "por caja x12", "por kg"… (vacío si se vende por unidad)
-const UNI = { par: 'par', docena: 'docena', pack: 'pack', bulto: 'bulto', caja: 'caja', display: 'display', kg: 'kg', gramos: 'gramo', litro: 'litro', metro: 'metro' };
-export const unidadTxt = (u, n) => !u || u === 'unidad' || !UNI[u] ? '' : UNI[u] + (n && ['pack', 'bulto', 'caja', 'display'].includes(u) ? ' x' + n : '');
-const porUnidad = p => { const u = unidadTxt(p.unidad, p.contenido); return u ? `<div class="flat-note">por ${esc(u)}</div>` : ''; };
 const unidad = (p, q) => { const t = tramos(p); if (!t) return +p.precio_1; return q >= 12 ? t[12] : q >= 6 ? t[6] : q >= 3 ? t[3] : t[1]; };
 const qtyDe = id => S.cart.filter(l => l.id === id).reduce((a, l) => a + l.qty, 0);
 const prod = id => S.prods.find(p => p.id === id);
@@ -118,10 +111,9 @@ function pintarGrid() {
     const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [];
     const hl = n => qty > 0 && ((n === 12 && qty >= 12) || (n === 6 && qty >= 6 && qty < 12) || (n === 3 && qty >= 3 && qty < 6) || (n === 1 && qty < 3)) ? 'hl' : '';
     const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
-    const precio = m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${porUnidad(p)}${usd(+p.precio_1)}</div>`
-      : t.unico ? `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista único</div>${usd(t[1])}</div>`
-      : esc_ ? `${porUnidad(p)}<div class="ptiers">${[1, 3, 6, 12].map(n => `<div class="ptier ${hl(n)}"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>`
-      : `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista</div>${usd(t[1])}</div>`;
+    const precio = m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${usd(+p.precio_1)}</div>`
+      : esc_ ? `<div class="ptiers">${[1, 3, 6, 12].map(n => `<div class="ptier ${hl(n)}"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>`
+      : `<div><span class="retail-price">${fmt(t[1])}</span><div class="flat-note">precio mayorista</div>${usd(t[1])}</div>`;
     const ctrl = p.agotado ? '<button class="qadd" disabled>Agotado</button>' : qty > 0
       ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span><button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
       : `<button class="qadd" data-act="st-add" data-id="${p.id}">+ Agregar</button>`;
@@ -164,7 +156,7 @@ function pantallaCheckout() {
 }
 function ticket(r, cliente) {
   let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}\nWhatsApp: ${cliente.whatsapp}\nLocalidad: ${cliente.localidad || '—'}\nModalidad: ${r.modo === 'mayorista' ? 'Mayorista' : 'Minorista'}\n\nDetalle:\n`;
-  r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(i.subtotal)}\n`; });
+  r.items.forEach(i => { t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''} · ${fmt(i.precio_unitario)} c/u = ${fmt(i.subtotal)}\n`; });
   t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
   if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || '(lo coordinamos por acá)'}\n`;
   return t + `*TOTAL: ${fmt(r.total)}*`;
@@ -202,7 +194,7 @@ function pintarDet() {
   const r = $('#pdet-root'); if (!r) return;
   const p = S.det && prod(S.det); if (!p) { r.innerHTML = ''; return; }
   const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [];
-  const precios = t && S.tienda.escalas_activas && !t.unico ? `${porUnidad(p)}<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>${porUnidad(p)}${t && t.unico ? '<div class="flat-note">precio mayorista único: el mismo para cualquier cantidad</div>' : ''}`;
+  const precios = t && S.tienda.escalas_activas ? `<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>`;
   r.innerHTML = `<div class="modal-bg" data-act="st-det-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(p.nombre)}">
     <div class="pdet-img${p.imagen_url ? '' : ' noimg'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">` : esc(p.emoji)}</div>
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
