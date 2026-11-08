@@ -7,9 +7,9 @@ export const MARCA = {
   // Vacío = las tiendas siguen en  tu-sitio/t/nombre-de-la-tienda. Primero hacé los pasos de SUBDOMINIOS.md.
   DOMINIO: '',
   // WhatsApp de soporte con código de país, solo números (ej: 5491123456789). Vacío = no se muestra el botón.
-  SOPORTE_WSP: '',
+  SOPORTE_WSP: '5491153162392',
   // Email de contacto que aparece en términos y privacidad. Vacío = se muestra "por WhatsApp de soporte".
-  EMAIL_CONTACTO: '',
+  EMAIL_CONTACTO: 'contacto@elite-urbano.com',
   // Titular del servicio para los textos legales (nombre o razón social y CUIT). Completalo antes de cobrar.
   TITULAR: '[Nombre o razón social del titular]',
   CUIT: '[CUIT]',
