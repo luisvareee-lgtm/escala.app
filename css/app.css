@@ -396,3 +396,16 @@ h1,h2,h3,.hd,.logo-tx,.banner-name,.view-title,.kpi,.mval,.stit,.retail-price{fo
 
 .chart.ln{max-height:250px}
 .pdet-img.noimg{aspect-ratio:16/7;font-size:3.2rem}
+
+/* ---------- importador v2.5 ---------- */
+@media (min-width: 760px) { .modal.modal-ancho { max-width: 860px; border-radius: 20px; } .modal-bg:has(.modal-ancho) { align-items: center; } }
+.imp-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.imp-tbl td { vertical-align: top; }
+.imp-tbl tr.off td { opacity: .5; }
+.imp-tbl input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--ac, #1d4ba8); }
+.imp-th { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; display: block; background: var(--bg3, #222); }
+.fi.fi-s { padding: 7px 9px; font-size: .9rem; min-width: 0; width: 100%; }
+.btn-link { background: none; border: 0; color: var(--ac, #1d4ba8); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+.chk { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; cursor: pointer; }
+.chk input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+details.card > summary { cursor: pointer; }
