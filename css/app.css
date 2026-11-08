@@ -481,3 +481,16 @@ details.card > summary { cursor: pointer; }
 .dz-grid div{background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:8px;font-size:.74rem}.dz-grid i{display:block;height:54px;border-radius:7px;background:var(--acs);margin-bottom:6px}.dz-grid b{display:block}
 .dz-pop{position:absolute;inset:0;pointer-events:none}.dz-pop .modal-bg{position:absolute;inset:0;padding:12px}.dz-pop .modal{max-width:92%;pointer-events:auto}
 @media (max-width:760px){.dz-pcol{position:static}.dz-prev.cel{width:100%}}
+
+/* ---- v2.7: asistente (cobranzas, reposición, dólares) ---- */
+.ia-avisos{display:grid;gap:8px;margin-bottom:12px}
+.ia-aviso{display:flex;gap:8px;align-items:center;flex-wrap:wrap;text-align:left;width:100%;border:1px solid var(--bd);border-left:4px solid var(--ac);background:var(--bg2);color:var(--t1);border-radius:12px;padding:10px 12px;font-size:.86rem;cursor:pointer}
+.ia-aviso.bad{border-left-color:var(--red)}.ia-aviso.warn{border-left-color:var(--amber)}.ia-tx{flex:1 1 200px;min-width:0}.ia-go{margin-left:auto;font-weight:800;color:var(--ac);white-space:nowrap}
+.cob-kpis .kpi{border-top:3px solid var(--green)}.cob-kpis .kpi:first-child{border-top-color:var(--ac)}
+.kpi.cob-warn{border-top:3px solid var(--amber)}.kpi.cob-bad{border-top:3px solid var(--red)}
+.cob-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--bd)}.cob-row:last-child{border-bottom:none}
+.cob-inf{min-width:0;flex:1 1 220px}.cob-acc{display:flex;gap:8px;align-items:center}.cob-acc .btn{width:auto;margin:0}
+.rep-cfg{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}.rep-cfg label{display:flex;gap:6px;align-items:center;font-size:.82rem;font-weight:600;flex-wrap:wrap}.rep-cfg .fi{width:auto;padding:6px 8px}
+.rep-g{border:1px solid var(--bd);border-radius:12px;padding:8px 12px;margin-bottom:8px}.rep-g summary{cursor:pointer;font-size:.86rem}.rep-g[open] summary{margin-bottom:6px}
+.tbl td.r,.tbl th.r{text-align:right;white-space:nowrap}
+@media (min-width:900px){.tabs-panel{flex-wrap:wrap}.ptab{padding:13px 10px}}
