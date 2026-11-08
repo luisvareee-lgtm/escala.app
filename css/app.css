@@ -447,7 +447,7 @@ details.card > summary { cursor: pointer; }
 
 /* ---- v2.6: tienda — anuncio, banner, beneficios, testimonios, popup ---- */
 .st-anuncio{background:var(--ac);color:var(--on-ac);text-align:center;font-size:.78rem;font-weight:700;padding:7px max(16px,env(safe-area-inset-left,0px));line-height:1.35}
-.st-hero{position:relative;margin:12px 16px 0;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,var(--ac),var(--ac2));color:var(--on-ac);min-height:120px;display:flex;align-items:flex-end}
+.st-hero{position:relative;margin:0;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,var(--ac),var(--ac2));color:var(--on-ac);min-height:120px;display:flex;align-items:flex-end}
 .st-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .st-hero.con-img::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.62),rgba(0,0,0,.05) 70%)}
 .st-hero-tx{position:relative;z-index:1;padding:18px;max-width:560px}.st-hero.con-img .st-hero-tx{color:#fff}
@@ -474,7 +474,7 @@ details.card > summary { cursor: pointer; }
 .dz-pcol{position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px);align-self:start}
 .dz-prev{position:relative;margin:0 auto;border:1px solid var(--bd2);border-radius:22px;overflow:hidden;background:var(--bg);max-width:100%;transition:width .2s}
 .dz-prev.cel{width:330px;max-height:620px;overflow-y:auto}.dz-prev.pc{width:100%;max-height:560px;overflow-y:auto;border-radius:10px}
-.dz-frame{font-size:.92em}.dz-frame .st-hero{margin:10px 10px 0}.dz-frame .st-benef,.dz-frame .st-testi{margin-left:10px;margin-right:10px}
+.dz-frame{font-size:.92em}.dz-frame .st-benef,.dz-frame .st-testi{margin-left:10px;margin-right:10px}
 .dz-hdr{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--bd);font-size:.85rem}.dz-hdr img{height:22px;border-radius:5px}.dz-hdr span{margin-left:auto}
 .dz-ban{padding:10px 12px}.dz-ban b{display:block}.dz-ban small{color:var(--t3)}
 .dz-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:10px}.dz-prev.pc .dz-grid{grid-template-columns:repeat(4,1fr)}
@@ -494,3 +494,44 @@ details.card > summary { cursor: pointer; }
 .rep-g{border:1px solid var(--bd);border-radius:12px;padding:8px 12px;margin-bottom:8px}.rep-g summary{cursor:pointer;font-size:.86rem}.rep-g[open] summary{margin-bottom:6px}
 .tbl td.r,.tbl th.r{text-align:right;white-space:nowrap}
 @media (min-width:900px){.tabs-panel{flex-wrap:wrap}.ptab{padding:13px 10px}}
+
+/* ---- v2.8: anuncios que corren, carrusel de banners, cómo comprar y preguntas frecuentes ---- */
+.st-anuncio i{font-style:normal;opacity:.6;margin:0 10px}
+.st-anuncio.mov{overflow:hidden;white-space:nowrap;padding-left:0;padding-right:0}
+.st-marq{display:inline-flex;width:max-content;animation:st-marq 28s linear infinite}
+.st-marq span{display:inline-block;padding-right:10px}
+.st-anuncio.mov:hover .st-marq{animation-play-state:paused}
+@keyframes st-marq{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.st-marq{animation:none;flex-wrap:wrap;white-space:normal;width:auto}.st-marq span+span{display:none}}
+.st-heros{margin:12px 16px 0;position:relative}
+.st-heros .st-hero{margin:0}
+.st-heros.multi .st-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:16px}
+.st-heros.multi .st-track::-webkit-scrollbar{display:none}
+.st-heros.multi .st-hero{flex:0 0 100%;scroll-snap-align:start;border-radius:0}
+.st-hero{min-height:150px}
+@media (min-width:760px){.st-hero{min-height:240px}.st-hero h2{font-size:1.7rem}}
+.st-dots{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.st-dots button{width:8px;height:8px;border-radius:99px;border:none;background:var(--bd2);padding:0;cursor:pointer;transition:width .2s}
+.st-dots button.on{width:22px;background:var(--ac)}
+.st-howto{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:10px 16px 4px;padding:12px 14px;border:1px solid var(--bd);border-radius:14px;background:linear-gradient(135deg,var(--acs),transparent 70%),var(--bg2)}
+.st-howto>div{flex:1 1 200px;min-width:0}.st-howto b{display:block;font-size:.95rem}.st-howto p{margin:2px 0 0;font-size:.8rem;color:var(--t2)}
+.st-howto-i{font-size:1.6rem;width:44px;height:44px;display:grid;place-items:center;border-radius:12px;background:var(--bg3);flex:none}
+.st-howto .btn{width:auto;margin:0}
+.st-pasos{list-style:none;counter-reset:pa;padding:0;margin:6px 0 0;display:grid;gap:10px}
+.st-pasos li{counter-increment:pa;position:relative;padding-left:40px;min-height:30px}
+.st-pasos li::before{content:counter(pa);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:var(--ac);color:var(--on-ac);display:grid;place-items:center;font-weight:800;font-size:.85rem}
+.st-pasos b{display:block;font-size:.92rem}.st-pasos p{margin:2px 0 0;font-size:.84rem;color:var(--t2);line-height:1.45}
+.st-faq{margin:18px 16px 6px}.st-faq h3{font-size:1rem;margin:0 0 8px}
+.st-faq-l{display:grid;gap:6px}
+.st-faq-l details{border:1px solid var(--bd);border-radius:12px;background:var(--bg2);padding:10px 12px}
+.st-faq-l summary{cursor:pointer;font-weight:700;font-size:.88rem;list-style:none;display:flex;justify-content:space-between;gap:8px}
+.st-faq-l summary::-webkit-details-marker{display:none}.st-faq-l summary::after{content:"+";font-weight:800;color:var(--ac)}
+.st-faq-l details[open] summary::after{content:"−"}.st-faq-l p{margin:8px 0 0;font-size:.84rem;color:var(--t2);line-height:1.5}
+/* panel */
+.dc-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:center;margin-bottom:6px}.dc-grid .flabel{margin:0}
+.dz-ban-ed{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--bd);border-radius:12px;padding:8px;margin-bottom:8px}
+.dz-ban-th{flex:0 0 84px;height:56px;border-radius:8px;overflow:hidden;background:var(--bg3);display:grid;place-items:center;font-size:.65rem;color:var(--t3);text-align:center}.dz-ban-th img{width:100%;height:100%;object-fit:cover}
+.dz-ban-f{flex:1;min-width:0;display:grid;gap:6px}.dz-ban-f .dz-li{margin:0;flex-wrap:wrap}.dz-ban-f .filebtn{flex:none}
+.dz-num{flex:none;width:24px;height:24px;border-radius:50%;background:var(--ac);color:var(--on-ac);display:grid;place-items:center;font-weight:800;font-size:.78rem}
+.dz-auto{margin:0;padding-left:20px;font-size:.8rem;color:var(--t2);display:grid;gap:4px}
+.dz-frame .st-heros{margin:10px 10px 0}.dz-frame .st-howto,.dz-frame .st-faq{margin-left:10px;margin-right:10px}
