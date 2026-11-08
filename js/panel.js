@@ -12,19 +12,20 @@ import { redimensionar } from './img.js';
 import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
 import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
 import { vistaEnviosDiseno, resetDis } from './diseno.js';
+import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
 const urlTienda = () => location.origin + '/t/' + P.t.slug;
-const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
+const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
 export async function mostrarPanel(app) {
   app.innerHTML = '<div class="page center" style="padding-top:80px"><span class="spin"></span></div>';
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
-  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); P.gastos = [];
+  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos;
   await cargar();
   if (Q.stop) Q.stop();
@@ -40,7 +41,7 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => vistaResumen(urlTienda()), productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
+  const cuerpo = { resumen: () => avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><span class="chip">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</span><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
@@ -49,7 +50,7 @@ function pintar() {
 }
 
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
-const MAS = [['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
+const MAS = [['asistente', '🧠', 'Asistente', 'Cobranzas, reposición y ventas en dólares'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
   const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab);
   return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
