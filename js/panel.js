@@ -14,11 +14,12 @@ import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
 import { vistaEnviosDiseno, resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
+import { urlTiendaDe } from './marca.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
-const urlTienda = () => location.origin + '/t/' + P.t.slug;
+const urlTienda = () => urlTiendaDe(P.t.slug);
 const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 

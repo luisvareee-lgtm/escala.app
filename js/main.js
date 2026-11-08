@@ -5,10 +5,11 @@ import { mostrarTienda } from './store.js';
 import { mostrarPanel, setSalir } from './panel.js';
 import * as A from './auth.js';
 import { inicio } from './landing.js';
+import { slugDeHost } from './marca.js';
 import { terminos, privacidad } from './legal.js';
 
 const app = () => $('#root');
-const slugUrl = () => { const m = location.pathname.match(/\/t\/([a-z0-9-]+)/); return m ? m[1] : new URLSearchParams(location.search).get('t'); };
+const slugUrl = () => { const m = location.pathname.match(/\/t\/([a-z0-9-]+)/); return m ? m[1] : (new URLSearchParams(location.search).get('t') || slugDeHost()); };
 
 async function ruta() {
   if (!configurado()) { app().innerHTML = '<div class="page"><div class="err-box">Falta configurar Supabase: editá js/config.js (ver README).</div></div>'; return; }

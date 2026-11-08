@@ -3,10 +3,13 @@
 
 export const MARCA = {
   NOMBRE: 'Escala.app',
+  // Tu dominio (sin https ni www), ej: 'tumarca.com.ar'. Con esto cada tienda queda en  nombre-de-la-tienda.tumarca.com.ar
+  // Vacío = las tiendas siguen en  tu-sitio/t/nombre-de-la-tienda. Primero hacé los pasos de SUBDOMINIOS.md.
+  DOMINIO: '',
   // WhatsApp de soporte con código de país, solo números (ej: 5491123456789). Vacío = no se muestra el botón.
-  SOPORTE_WSP: '5491153162392',
+  SOPORTE_WSP: '',
   // Email de contacto que aparece en términos y privacidad. Vacío = se muestra "por WhatsApp de soporte".
-  EMAIL_CONTACTO: 'contacto@elite-urbano.com',
+  EMAIL_CONTACTO: '',
   // Titular del servicio para los textos legales (nombre o razón social y CUIT). Completalo antes de cobrar.
   TITULAR: '[Nombre o razón social del titular]',
   CUIT: '[CUIT]',
@@ -27,3 +30,15 @@ export const PLANES = [
 // Referencia para el simulador de costos: plan de una plataforma de tiendas líder que incluye listas de precios mayoristas.
 // Fuente: su página pública de planes y precios (pago mensual) y su tabla de costos por transacción. Revisalo cada tanto.
 export const REFERENCIA = { plan: 79999, pctVenta: 1, fecha: 'noviembre de 2026' };
+
+// Subdominios que nunca son tiendas.
+export const RESERVADOS = ['admin', 'api', 'app', 'www', 'demo', 'login', 'registro', 'soporte', 'panel', 'escala', 'static', 'assets', 'mail', 'ayuda', 'blog'];
+// Enlace público de una tienda (con subdominio si está configurado). extra: '?r=token', etc.
+export const urlTiendaDe = (slug, extra = '') => MARCA.DOMINIO ? `https://${slug}.${MARCA.DOMINIO}/${extra}` : `${location.origin}/t/${slug}${extra}`;
+// Si la página se abrió desde  slug.tu-dominio, devuelve el slug.
+export function slugDeHost(host = location.hostname) {
+  const d = String(MARCA.DOMINIO || '').toLowerCase().replace(/^www\./, ''); if (!d) return null;
+  host = String(host || '').toLowerCase(); if (!host.endsWith('.' + d)) return null;
+  const sub = host.slice(0, -d.length - 1);
+  return /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(sub) && !RESERVADOS.includes(sub) ? sub : null;
+}

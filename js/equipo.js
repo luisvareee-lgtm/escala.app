@@ -1,10 +1,11 @@
 // Gestión multinivel: sub-revendedores con enlace propio y comisión. La venta se atribuye por enlace y la comisión la calcula el servidor.
+import { urlTiendaDe } from './marca.js';
 import { api } from './api.js';
 import { esc, fmt, on, toast, normWsp, copiar, confirmar } from './util.js';
 import { P, can } from './state.js';
 
 const E = { err: '', msg: '' };
-const enlace = r => location.origin + '/t/' + P.t.slug + '?r=' + r.token;
+const enlace = r => urlTiendaDe(P.t.slug, '?r=' + r.token);
 function stats(r) {
   const o = P.pedidos.filter(x => x.sub_revendedor_id === r.id && x.estado !== 'cancelado');
   const cob = o.filter(x => x.estado === 'cobrado');

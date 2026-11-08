@@ -1,7 +1,7 @@
 // Guía de primeros pasos (se tilda sola) y Ayuda: buscador de soluciones + soporte por WhatsApp con el contexto armado.
 import { esc, on, store, $, waLink } from './util.js';
 import { P, PLAN_NOMBRE, planEf } from './state.js';
-import { MARCA } from './marca.js';
+import { MARCA, urlTiendaDe } from './marca.js';
 import { resetImp } from './imp_ui.js';
 
 const k = () => 'guia:' + (P.t && P.t.id);
@@ -73,7 +73,7 @@ export function buscarAyuda(q) {
 const A = { q: '', abierto: null };
 function soporteLink(q) {
   if (!MARCA.SOPORTE_WSP) return '';
-  const t = P.t, txt = `Hola, necesito ayuda con ${MARCA.NOMBRE}.\nTienda: ${t.nombre} (${location.origin}/t/${t.slug})\nPlan: ${PLAN_NOMBRE[planEf(t)] || t.plan}\nPantalla: ${P.tab}\nProblema: ${q || '(contame acá)'}\nDispositivo: ${navigator.userAgent.slice(0, 120)}`;
+  const t = P.t, txt = `Hola, necesito ayuda con ${MARCA.NOMBRE}.\nTienda: ${t.nombre} (${urlTiendaDe(t.slug)})\nPlan: ${PLAN_NOMBRE[planEf(t)] || t.plan}\nPantalla: ${P.tab}\nProblema: ${q || '(contame acá)'}\nDispositivo: ${navigator.userAgent.slice(0, 120)}`;
   return waLink(MARCA.SOPORTE_WSP, txt);
 }
 export function ayudaHtml() {
