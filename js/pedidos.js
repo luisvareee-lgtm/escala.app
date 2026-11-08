@@ -24,7 +24,7 @@ const hora = d => new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '
 
 export function vistaPedidos() {
   const q = F.q.trim().toLowerCase();
-  const L = P.pedidos.filter(o => pasa(o, F.filtro) && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', '') || (o.seguimiento || '').toLowerCase().includes(q)));
+  const L = P.pedidos.filter(o => pasa(o, F.filtro) && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', '') || (o.seguimiento || '').toLowerCase().includes(q) || (o.cliente_dni || '').includes(q.replace(/\D/g, '') || '§')));
   const n = k => P.pedidos.filter(o => pasa(o, k)).length;
   const rv = new Map(P.revs.map(r => [r.id, r.nombre]));
   return `<div class="ped-filtros" role="tablist" aria-label="Filtrar pedidos">${FILTROS.map(([k, t]) => { const c = n(k); return (k === 'todos' || c) ? `<button class="chipf ${F.filtro === k ? 'on' : ''}" data-act="pd-filtro" data-k="${k}">${t}${k !== 'todos' ? ` <b>${c}</b>` : ''}</button>` : ''; }).join('')}</div>
@@ -57,8 +57,9 @@ export function modalPedido(m) {
   const hist = (o.historial || []).map(h => `<li>${ETAPA[h.etapa] ? ETAPA[h.etapa][0] + ' ' + ETAPA[h.etapa][1] : esc(h.etapa)} <small class="muted">${hora(h.at)}</small></li>`).join('');
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Pedido ${o.numero}"><div class="view-title">Pedido #${o.numero} ${badgeEtapa(o)} ${badgeCobro(o)}</div><div id="mm"></div>
   <ol class="ped-pasos${canc ? ' canc' : ''}">${pasos}</ol>
-  <p><b>${esc(o.cliente_nombre)}</b> · <span class="muted">+${esc(o.cliente_whatsapp)}</span><br><span class="muted">${esc(o.modalidad_precio)} · pago: ${esc(o.medio_pago)} · ${hora(o.created_at)}</span>
-  ${o.envio_nombre ? `<br>🚚 ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}` : o.localidad ? `<br>📍 ${esc(o.localidad)}` : ''}
+  <p><b>${esc(o.cliente_nombre)}</b> · <span class="muted">+${esc(o.cliente_whatsapp)}${o.cliente_dni ? ' · DNI/CUIT ' + esc(o.cliente_dni) : ''}</span><br><span class="muted">${esc(o.modalidad_precio)} · pago: ${esc(o.medio_pago)} · ${hora(o.created_at)}</span>
+  ${o.envio_nombre ? `<br>🚚 ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}` : ''}${ubic(o) ? `<br>📍 ${esc(ubic(o))}` : ''}
+  ${o.nota_cliente ? `<br>💬 <i>${esc(o.nota_cliente)}</i>` : ''}
   ${rv ? `<br><span class="tag">Vendió: ${esc(rv.nombre)} · comisión ${fmt(o.comision_ars)}</span>` : ''}</p>
   <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</span><span class="v">${fmt(i.subtotal)}</span></div>`).join('')}
   ${env || o.envio_nombre ? `<div class="srow"><span class="muted">Productos</span><span class="v">${fmt(sub)}</span></div><div class="srow"><span class="muted">Envío${o.envio_nombre ? ' · ' + esc(o.envio_nombre) : ''}</span><span class="v">${env ? fmt(env) : 'Gratis'}</span></div>` : ''}
@@ -78,11 +79,12 @@ export function modalPedido(m) {
   <button class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
 
+const ubic = o => [o.localidad, o.provincia, o.codigo_postal ? 'CP ' + o.codigo_postal : ''].filter(Boolean).join(' · ');
 function remito(o, it) {
   const t = P.t, sub = it.reduce((s, i) => s + Number(i.subtotal), 0), env = Number(o.envio_costo || 0);
   return `<div class="catp remito" style="--pc:${esc(t.color)}"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h1>${esc(t.nombre)}</h1><div>WhatsApp +${esc(t.whatsapp)}</div></div>
   <div style="text-align:right"><b style="font-size:16px">REMITO · Pedido #${o.numero}</b><div>${hora(o.created_at)}</div><div>${ETAPA[etapaDe(o)][1]} · ${o.estado === 'cobrado' ? 'Cobrado' : o.estado === 'pendiente' ? 'Pendiente de cobro' : 'Cancelado'}</div></div></div>
-  <h2>Cliente</h2><div><b>${esc(o.cliente_nombre)}</b> · +${esc(o.cliente_whatsapp)}${o.localidad ? ' · ' + esc(o.localidad) : ''}</div>
+  <h2>Cliente</h2><div><b>${esc(o.cliente_nombre)}</b> · +${esc(o.cliente_whatsapp)}${o.cliente_dni ? ' · DNI/CUIT ' + esc(o.cliente_dni) : ''}${ubic(o) ? ' · ' + esc(ubic(o)) : ''}</div>${o.nota_cliente ? `<div>Aclaraciones: ${esc(o.nota_cliente)}</div>` : ''}
   ${o.envio_nombre ? `<div>Entrega: ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}${o.seguimiento ? ' · Seguimiento: ' + esc(o.seguimiento) : ''}</div>` : ''}
   <h2>Detalle</h2><table><thead><tr><th>Cant.</th><th>Producto</th><th class="r">Unitario</th><th class="r">Subtotal</th></tr></thead><tbody>
   ${it.map(i => `<tr><td>${i.cantidad}</td><td>${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</td><td class="r">${fmt(i.precio_unitario)}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')}

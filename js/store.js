@@ -2,7 +2,7 @@
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir } from './catalogo.js';
-import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn } from './bloques.js';
+import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml } from './bloques.js';
 
 const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null };
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
@@ -96,7 +96,7 @@ function pintar() {
     <div id="hdr"><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${esc(S.tienda.nombre)}</div>
       <button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">🛒${T.n ? `<span id="cart-n">${T.n}</span>` : ''}</button></div>
     ${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
-  if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarPopup(); }
+  if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarPopup(); iniciarCarrusel(app); }
 }
 function pintarPopup() {
   const d = S.tienda.diseno, k = 'pop:' + S.slug, f = firmaPopup(d), r = $('#pop-root');
@@ -107,6 +107,10 @@ function pintarPopup() {
 on('st-pop-cerrar', () => { const r = $('#pop-root'); if (r) r.innerHTML = ''; });
 on('st-pop-bg', (d, b, e) => { if (e.target === b) { const r = $('#pop-root'); if (r) r.innerHTML = ''; } });
 on('st-pop-copiar', d => copiar(d.v));
+const cerrarComprar = () => { const r = $('#pop-root'); if (r) r.innerHTML = ''; };
+on('st-comprar', () => { const r = $('#pop-root'); if (r) { r.innerHTML = comprarModalHtml(S.tienda.diseno, S.tienda); const b = r.querySelector('[data-act=st-comprar-cerrar]'); if (b) b.focus(); } });
+on('st-comprar-cerrar', cerrarComprar);
+on('st-comprar-bg', (d, b, e) => { if (e.target === b) cerrarComprar(); });
 on('st-hero', () => { const e = $('#search-row'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 function banner() {
   const aviso = S.avisoPago ? `<div class="ok-box" role="status" style="margin:12px 16px">${esc(S.avisoPago)}</div>` : '';
@@ -117,11 +121,11 @@ function banner() {
   const caja = S.pedirCodigo && !S.may ? `<form data-submit="may-codigo" id="gremio-box"><input class="fi" name="codigo" placeholder="Código de revendedor" autocomplete="off" aria-label="Código de revendedor" required><button class="btn btn-p btn-sm" type="submit">Activar</button></form><div class="ferr" id="may-err" hidden></div>` : '';
   if (+t.envio_gratis_desde > 0 && envios().some(e => e.tipo !== 'retiro')) chips += `<span class="chip">🚚 Envío gratis desde ${fmt(t.envio_gratis_desde)}</span>`;
   chips += '<button class="chip" data-act="st-pdf">📄 Lista de precios (PDF)</button>';
-  return aviso + heroHtml(t.diseno) + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>` + beneficiosHtml(t.diseno);
+  return aviso + heroHtml(t.diseno) + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>` + beneficiosHtml(t.diseno) + comprarCardHtml(t.diseno);
 }
 function pantallaCat() {
   return `${banner()}<div id="search-row"><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div></div>
-    <div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${testimoniosHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="cartbar" hidden></div></div><div style="height:90px"></div>`;
+    <div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${testimoniosHtml(S.tienda.diseno)}${faqHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="cartbar" hidden></div></div><div style="height:90px"></div>`;
 }
 function pintarGrid() {
   const cats = ['Todas', ...new Set(S.prods.map(p => p.categoria))];
@@ -176,30 +180,49 @@ function pantallaCheckout() {
     <form data-submit="st-pedir" id="co-form">
       <div class="fg"><label class="flabel" for="co-nom">Nombre completo</label><input class="fi" id="co-nom" name="nombre" data-input="st-contacto" maxlength="80" required></div>
       <div class="fg"><label class="flabel" for="co-wsp">Tu WhatsApp</label><input class="fi" id="co-wsp" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" data-input="st-contacto" required></div>
-      <div class="fg"><label class="flabel" for="co-loc">Localidad</label><input class="fi" id="co-loc" name="localidad" maxlength="80" placeholder="Barrio / ciudad"></div>
+      ${camposExtra()}
       ${envioUi()}
       <div class="fg"><label class="flabel">Medio de pago</label>${Object.keys(PAGO).map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
+      ${notaUi()}
       ${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;
 }
+const PROVINCIAS = ['Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'];
+const pide = k => { const c = S.tienda.datos_checkout || { localidad: 'opcional' }; return c[k] || 'no'; };
+function camposExtra() {
+  const lab = (k, t) => `${t}${pide(k) === 'opcional' ? ' <small class="muted">(opcional)</small>' : ''}`, req = k => pide(k) === 'obligatorio' ? 'required' : '';
+  let h = '';
+  if (pide('dni') !== 'no') h += `<div class="fg"><label class="flabel" for="co-dni">${lab('dni', 'DNI / CUIT')}</label><input class="fi" id="co-dni" name="dni" inputmode="numeric" maxlength="14" placeholder="Solo números" ${req('dni')}></div>`;
+  if (pide('localidad') !== 'no') h += `<div class="fg"><label class="flabel" for="co-loc">${lab('localidad', 'Localidad')}</label><input class="fi" id="co-loc" name="localidad" maxlength="80" placeholder="Barrio / ciudad" ${req('localidad')}></div>`;
+  if (pide('provincia') !== 'no' || pide('cp') !== 'no') {
+    h += '<div class="row2">';
+    if (pide('provincia') !== 'no') h += `<div class="fg"><label class="flabel" for="co-prov">${lab('provincia', 'Provincia')}</label><select class="fi" id="co-prov" name="provincia" ${req('provincia')}><option value="">Elegí…</option>${PROVINCIAS.map(p => `<option>${p}</option>`).join('')}</select></div>`;
+    if (pide('cp') !== 'no') h += `<div class="fg"><label class="flabel" for="co-cp">${lab('cp', 'Código postal')}</label><input class="fi" id="co-cp" name="cp" maxlength="8" placeholder="Ej: 1846" autocomplete="postal-code" ${req('cp')}></div>`;
+    h += '</div>';
+  }
+  return h;
+}
+const notaUi = () => pide('nota') !== 'no' ? `<div class="fg"><label class="flabel" for="co-nota">Aclaraciones para el vendedor${pide('nota') === 'opcional' ? ' <small class="muted">(opcional)</small>' : ''}</label><textarea class="fi" id="co-nota" name="nota" rows="2" maxlength="300" placeholder="Ej: horario de entrega, factura A, etc." ${pide('nota') === 'obligatorio' ? 'required' : ''}></textarea></div>` : '';
 function envioUi() {
   const L = envios(); if (!L.length) return '';
   if (!envioSel()) S.env = L.length === 1 ? L[0].id : null;
   const T = totales(), e = envioSel();
-  return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.total); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${x.tipo === 'acordar' && !c ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
+  return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.total); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${(x.tipo === 'acordar' || x.tipo === 'correo') && !c && !(+S.tienda.envio_gratis_desde > 0 && totales().total >= +S.tienda.envio_gratis_desde) ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
     ${e && e.tipo !== 'retiro' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección de entrega</label><input class="fi" id="co-dir" name="direccion" maxlength="160" required minlength="5" placeholder="Calle, número, piso / referencia"></div>` : ''}`;
 }
 function resumenCo() {
   const T = totales(), e = envioSel(), c = costoEnvio(e, T.total);
   if (!envios().length) return `<div class="card"><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total)}</span></div></div>`;
-  return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div><div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total + c)}</span></div></div>`;
+  return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div><div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : (e.tipo === 'acordar' || e.tipo === 'correo') && !+e.costo ? 'A coordinar' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total + c)}</span></div></div>`;
 }
 function ticket(r, cliente) {
-  let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}\nWhatsApp: ${cliente.whatsapp}\nLocalidad: ${cliente.localidad || '—'}\nModalidad: ${r.modo === 'mayorista' ? 'Mayorista' : 'Minorista'}\n\nDetalle:\n`;
+  const ubic = [cliente.localidad, cliente.provincia, cliente.cp ? 'CP ' + cliente.cp : ''].filter(Boolean).join(' · ');
+  let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}Modalidad: ${r.modo === 'mayorista' ? 'Mayorista' : 'Minorista'}\n\nDetalle:\n`;
   r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(i.subtotal)}\n`; });
   if (r.envio) t += `\nEntrega: ${r.envio}${cliente.direccion ? ' · ' + cliente.direccion : ''}\nProductos: ${fmt(r.subtotal)} · Envío: ${+r.envio_costo ? fmt(r.envio_costo) : 'sin cargo'}\n`;
   t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
   if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || '(lo coordinamos por acá)'}\n`;
+  if (cliente.nota) t += `Aclaraciones: ${cliente.nota}\n`;
   return t + `*TOTAL: ${fmt(r.total)}*`;
 }
 function pantallaOk() {
@@ -250,7 +273,7 @@ on('st-ver', d => { S.det = d.id; pintarDet(); });
 on('st-det-cerrar', () => { S.det = null; pintarDet(); });
 on('st-det-bg', (d, b, e) => { if (e.target === b) { S.det = null; pintarDet(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.det) { S.det = null; pintarDet(); } });
-const CAMPOS = ['nombre', 'whatsapp', 'localidad', 'direccion'];
+const CAMPOS = ['nombre', 'whatsapp', 'localidad', 'direccion', 'dni', 'provincia', 'cp', 'nota'];
 function repintarCo() { const v = CAMPOS.map(n => { const e = document.querySelector(`#co-form [name=${n}]`); return e ? e.value : ''; }); pintar(); CAMPOS.forEach((n, i) => { const e = document.querySelector(`#co-form [name=${n}]`); if (e && v[i]) e.value = v[i]; }); }
 on('st-pay', d => { S.pay = d.p; repintarCo(); });
 on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && !e.value) e.focus(); });
@@ -273,7 +296,9 @@ on('st-contacto', () => { const f = $('#co-form'); if (f) subirCarrito(f.nombre.
 
 on('st-pedir', async (d, f) => {
   if (S.enviando) return;
-  const cliente = { nombre: f.nombre.value.trim(), whatsapp: f.whatsapp.value.trim(), localidad: f.localidad.value.trim() };
+  const val = n => f[n] ? String(f[n].value || '').trim() : '';
+  const cliente = { nombre: val('nombre'), whatsapp: val('whatsapp'), localidad: val('localidad') };
+  ['dni', 'provincia', 'cp', 'nota'].forEach(k => { if (val(k)) cliente[k] = val(k); });
   if (envios().length) {
     if (!envioSel()) { $('#co-err').innerHTML = '<div class="err-box">Elegí cómo querés recibir el pedido.</div>'; window.scrollTo(0, 0); return; }
     cliente.envio = S.env; if (f.direccion) cliente.direccion = f.direccion.value.trim();
