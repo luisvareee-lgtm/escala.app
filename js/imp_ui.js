@@ -14,7 +14,7 @@ const nuevoEstado = () => ({
   texto: '', fotoModo: 'producto',
   opts: { moneda: 'ars', tipo: 'costo', margen: null },          // para texto pegado, fotos y WhatsApp
   pub: null,                  // {margen, unidad, contenido, unico, visible, categoria}
-  ed: {}, items: null, mostrar: 60, uso: {}, sinFotos: false, recorte: null,
+  ed: {}, items: null, mostrar: 60,
   destino: 'mis', nombre: '', msg: '', err: '', busy: false,
 });
 const I = nuevoEstado();
@@ -54,7 +54,7 @@ function procesar() {
     if (!d) d = dOcr || { nombre: '', costo_usd: null, precio_ars: null };
     if (!(d.costo_usd > 0) && dOcr && dOcr.costo_usd > 0) Object.assign(d, { costo_usd: dOcr.costo_usd, precio_ars: dOcr.precio_ars, inferido: dOcr.inferido });
     if (!d.nombre) d.nombre = (dOcr && dOcr.nombre) || nombreDeArchivo(f.archivo) || '';
-    out.push(ajuste({ ...d, uid: f.uid, foto: f.foto, fotoUrl: f.url, captura: !!f.captura, categoria: 'General', variantes: [], fuente: f.fuente || 'foto', revisar: true }));
+    out.push(ajuste({ ...d, uid: f.uid, foto: f.foto, fotoUrl: f.url, categoria: 'General', variantes: [], fuente: f.fuente || 'foto', revisar: true }));
   });
   // ediciones hechas a mano en la revisión
   out.forEach(it => {
@@ -65,11 +65,7 @@ function procesar() {
   let items = cruzar(out.filter(x => (x.nombre || '').trim() || x.foto), P.prods);
   const ult = new Map(); items.forEach((x, i) => { if (x.existente) ult.set(x.existente.id, i); });
   items = items.filter((x, i) => !x.existente || ult.get(x.existente.id) === i);
-  items.forEach(x => {
-    const e = I.ed[x.uid]; x.incluir = e && e.incluir != null ? e.incluir : x.costo_usd > 0 && !!(x.nombre || '').trim();
-    // foto para la tienda: 'usar' | 'no'. Las capturas vienen en 'no' (tienen el precio del proveedor); se pueden recortar.
-    if (x.foto) x.usoFoto = (e && e.usoFoto) || (I.sinFotos ? 'no' : x.captura ? 'no' : 'usar');
-  });
+  items.forEach(x => { const e = I.ed[x.uid]; x.incluir = e && e.incluir != null ? e.incluir : x.costo_usd > 0 && !!(x.nombre || '').trim(); });
   I.items = items.length ? items : null;
 }
 const listos = () => (I.items || []).filter(x => x.incluir && x.costo_usd > 0 && (x.nombre || '').trim());
@@ -94,9 +90,7 @@ function vistaOpcionesLectura() {
     <div class="row2"><div class="fg"><label class="flabel">El precio que aparece es</label><select class="fi" data-change="i-opt" data-k="tipo"><option value="costo" ${I.opts.tipo === 'costo' ? 'selected' : ''}>Lo que me cobra el proveedor (mi costo)</option><option value="venta" ${I.opts.tipo === 'venta' ? 'selected' : ''}>Un precio de venta</option><option value="ninguno" ${I.opts.tipo === 'ninguno' ? 'selected' : ''}>No usarlo: cargo el costo yo</option></select></div>
     <div class="fg"><label class="flabel">Números sin $ ni USD son</label><select class="fi" data-change="i-opt" data-k="moneda"><option value="ars" ${I.opts.moneda === 'ars' ? 'selected' : ''}>Pesos</option><option value="usd" ${I.opts.moneda === 'usd' ? 'selected' : ''}>Dólares</option></select></div></div>
     ${I.opts.tipo === 'venta' ? `<div class="fg"><label class="flabel">¿Qué ganancia tenía ese precio? (%)</label><input class="fi" type="number" min="0" max="900" value="${esc(I.opts.margen)}" data-input="i-opt" data-k="margen"></div>` : ''}
-    <p class="hint">Lo leído de una foto puede tener errores: los marcamos con 🔎 para que los revises.</p>
-    ${I.fotos.some(f => f.foto) ? `<p class="hint">📸 <b>Fotos con el precio del proveedor:</b> sirven para leer tu costo, pero no para publicarlas (tu cliente vería ese precio). Las <b>capturas de pantalla</b> ya vienen en "Sin foto". En cada producto podés elegir <b>Usar foto</b>, <b>Sin foto</b> o <b>✂️ Recortar</b> solo el producto.</p>
-    <label class="chk"><input type="checkbox" data-change="i-sinfotos" ${I.sinFotos ? 'checked' : ''}> No usar ninguna de estas imágenes como foto (solo leer nombre y costo)</label>` : ''}</div>`;
+    <p class="hint">Lo leído de una foto puede tener errores: los marcamos con 🔎 para que los revises.</p></div>`;
 }
 function vistaPublicar(nNuevos) {
   if (I.destino !== 'mis' || !nNuevos) return '';
@@ -114,20 +108,12 @@ function fila(x) {
   const e = x.existente, estado = !(x.costo_usd > 0) ? '<span class="tag bad">falta el costo</span>' : I.destino !== 'mis' ? (e ? `<span class="tag ok">→ ${esc(e.nombre)}</span>` : '<span class="tag">no está en tu catálogo</span>') : e ? `<span class="tag warn">actualiza${e.costo_usd != null && Math.abs(Number(e.costo_usd) - x.costo_usd) > 0.001 ? ' costo' : ''}</span>` : '<span class="tag ok">nuevo</span>';
   const costoArs = x.costo_usd > 0 ? Math.round(x.costo_usd * cot()) : '';
   return `<tr class="${x.incluir ? '' : 'off'}"><td><input type="checkbox" aria-label="Incluir" data-change="i-inc" data-u="${esc(x.uid)}" ${x.incluir ? 'checked' : ''}></td>
-    <td>${x.fotoUrl ? `<img class="imp-th${x.usoFoto === 'no' ? ' imp-th-no' : ''}" src="${esc(x.fotoUrl)}" alt=""><select class="imp-uso" aria-label="Foto para la tienda" data-change="i-uso" data-u="${esc(x.uid)}"><option value="usar" ${x.usoFoto === 'usar' ? 'selected' : ''}>Usar foto</option><option value="no" ${x.usoFoto === 'no' ? 'selected' : ''}>Sin foto</option><option value="recortar">✂️ Recortar…</option></select>${x.captura ? '<small class="muted">captura</small>' : ''}` : x.imagen_url ? `<img class="imp-th" src="${esc(x.imagen_url)}" alt="" loading="lazy">` : ''}</td>
+    <td>${x.fotoUrl ? `<img class="imp-th" src="${esc(x.fotoUrl)}" alt="">` : x.imagen_url ? `<img class="imp-th" src="${esc(x.imagen_url)}" alt="" loading="lazy">` : ''}</td>
     <td><input class="fi fi-s" maxlength="160" value="${esc(x.nombre || '')}" placeholder="Escribí el nombre" data-input="i-ed" data-u="${esc(x.uid)}" data-k="nombre">${x.revisar ? ' <span title="Leído de una foto: revisalo">🔎</span>' : ''}${x.variantes && x.variantes.length ? '<br><small class="muted">' + esc(x.variantes.join(', ')) + '</small>' : ''}<br><small class="muted">${esc(x.fuente || '')}${x.activo === false ? ' · estaba oculto' : ''}</small></td>
     <td><input class="fi fi-s" type="number" min="0" step="any" value="${costoArs}" placeholder="$" data-input="i-ed" data-u="${esc(x.uid)}" data-k="costo" style="max-width:110px">${x.inferido ? '<br><small class="muted">número sin $: revisalo</small>' : ''}</td>
     ${I.destino === 'mis' ? `<td class="r">${x.costo_usd > 0 ? fmt(pv(x.costo_usd)) : '—'}</td>` : ''}<td>${estado}</td></tr>`;
 }
-function vistaRecorte() {
-  const f = I.fotos.find(x => x.uid === I.recorte.uid); if (!f) return '';
-  return `<div class="modal-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">✂️ Recortar la foto</div>
-    <p class="hint">Arrastrá con el dedo o el mouse sobre la imagen para marcar <b>solo el producto</b> (dejá afuera el precio del proveedor y lo de WhatsApp).</p>
-    <div id="rec-box" class="rec-box"><img id="rec-img" src="${esc(f.url)}" alt="" draggable="false"><div id="rec-sel" class="rec-sel"></div></div>
-    <button class="btn btn-p" style="margin-top:10px" data-act="i-rec-ok" disabled>Usar este recorte</button><button class="btn btn-s" style="margin-top:8px" data-act="i-rec-no">Cancelar</button></div></div>`;
-}
 export function vistaImportar() {
-  if (I.recorte) return vistaRecorte();
   const it = I.items, ok = listos(), nuevos = ok.filter(x => !x.existente), upd = ok.filter(x => x.existente);
   const sinCosto = (it || []).filter(x => !(x.costo_usd > 0)).length;
   const tabla = it ? `<div class="card" style="margin-top:10px"><div class="imp-bar"><b>${it.length} productos encontrados</b> · <span class="tag ok">${ok.length} elegidos</span>${I.destino === 'mis' ? ` <span class="tag">${nuevos.length} nuevos · ${upd.length} actualizan</span>` : ''}${sinCosto ? ` <span class="tag bad">${sinCosto} sin costo</span>` : ''}
@@ -157,12 +143,6 @@ const refrescar = () => P.repintar();
 const progreso = m => { I.msg = m; const n = $('#imp-prog'); if (n) n.textContent = m; };
 on('i-texto', (d, el) => { I.texto = el.value; clearTimeout(on.t); on.t = setTimeout(() => { procesar(); const pos = el.selectionStart; refrescar(); const n = $('#imp-t'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }, 500); });
 
-// Captura de pantalla del celular (canal / grupo): por nombre o por forma (alta y angosta). Esa imagen trae el precio
-// del proveedor y la interfaz de WhatsApp: sirve para LEER el costo, no para publicarla tal cual.
-async function esCaptura(f) {
-  if (/screenshot|captura|screen ?shot|pantallazo/i.test(f.name)) return true;
-  try { const b = await createImageBitmap(f); const r = b.height / b.width; b.close && b.close(); return r >= 1.7; } catch (e) { return false; }
-}
 async function cargar(lista) {
   const files = [...(lista || [])]; if (!files.length) return;
   I.busy = true; I.err = ''; refrescar();
@@ -176,9 +156,7 @@ async function cargar(lista) {
       if (esImg) {
         let texto = '';
         try { texto = await ocr(f, () => { }); } catch (e) { errores.push(f.name + ': no se pudo leer el texto (' + e.message + '). La cargamos igual con su foto.'); }
-        const cap = await esCaptura(f);
-        I.fotos.push({ uid: 'f' + I.fotos.length + '-' + Date.now(), archivo: f.name, foto: f, url: URL.createObjectURL(f), texto, fuente: (cap ? 'captura ' : 'foto ') + f.name, captura: cap });
-        if (cap) I.uso['f' + (I.fotos.length - 1)] = null;
+        I.fotos.push({ uid: 'f' + I.fotos.length + '-' + Date.now(), archivo: f.name, foto: f, url: URL.createObjectURL(f), texto, fuente: 'foto ' + f.name });
         continue;
       }
       const r = await leerArchivo(f, progreso);
@@ -220,49 +198,18 @@ on('i-ed', (d, el) => {
   if ((e.nombre || '').trim() && e.costoArs > 0 && e.incluir == null) e.incluir = true;
   clearTimeout(on.t4); on.t4 = setTimeout(() => { procesar(); const id = el.dataset.u, k = el.dataset.k, pos = el.selectionStart; refrescar(); const n = document.querySelector(`[data-input=i-ed][data-u="${CSS.escape(id)}"][data-k="${k}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { } } }, 700);
 });
-on('i-sinfotos', (d, el) => { I.sinFotos = el.checked; Object.values(I.ed).forEach(e => { delete e.usoFoto; }); procesar(); refrescar(); });
-on('i-uso', (d, el) => {
-  if (el.value === 'recortar') { I.recorte = { uid: d.u }; refrescar(); return; }
-  (I.ed[d.u] = I.ed[d.u] || {}).usoFoto = el.value; procesar(); refrescar();
-});
-on('i-rec-ok', async () => {
-  const R = I.recorte, f = I.fotos.find(x => x.uid === R.uid), img = $('#rec-img');
-  if (!f || !img || !R.sel || R.sel.w < 10 || R.sel.h < 10) { I.recorte = null; refrescar(); return; }
-  const k = img.naturalWidth / img.clientWidth, c = document.createElement('canvas');
-  c.width = Math.round(R.sel.w * k); c.height = Math.round(R.sel.h * k);
-  c.getContext('2d').drawImage(img, R.sel.x * k, R.sel.y * k, c.width, c.height, 0, 0, c.width, c.height);
-  const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
-  if (blob) { URL.revokeObjectURL(f.url); f.foto = new File([blob], 'recorte-' + f.archivo.replace(/\.[a-z]+$/i, '') + '.jpg', { type: 'image/jpeg' }); f.url = URL.createObjectURL(blob); (I.ed[f.uid] = I.ed[f.uid] || {}).usoFoto = 'usar'; }
-  I.recorte = null; procesar(); refrescar();
-});
-on('i-rec-no', () => { I.recorte = null; refrescar(); });
-// arrastrar para marcar el recorte (mouse o dedo)
-document.addEventListener('pointerdown', e => {
-  const box = e.target.closest && e.target.closest('#rec-box'); if (!box || !I.recorte) return;
-  e.preventDefault(); const r0 = box.getBoundingClientRect(), x0 = e.clientX - r0.left, y0 = e.clientY - r0.top;
-  const marco = $('#rec-sel');
-  const mover = ev => {
-    const x1 = Math.max(0, Math.min(r0.width, ev.clientX - r0.left)), y1 = Math.max(0, Math.min(r0.height, ev.clientY - r0.top));
-    I.recorte.sel = { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
-    Object.assign(marco.style, { left: I.recorte.sel.x + 'px', top: I.recorte.sel.y + 'px', width: I.recorte.sel.w + 'px', height: I.recorte.sel.h + 'px', display: 'block' });
-    const b = $('[data-act=i-rec-ok]'); if (b) b.disabled = !(I.recorte.sel.w >= 10 && I.recorte.sel.h >= 10);
-  };
-  const fin = () => { document.removeEventListener('pointermove', mover); document.removeEventListener('pointerup', fin); };
-  document.addEventListener('pointermove', mover); document.addEventListener('pointerup', fin);
-});
 on('i-todos', d => { (I.items || []).forEach(x => { (I.ed[x.uid] = I.ed[x.uid] || {}).incluir = d.v === '1'; }); procesar(); refrescar(); });
 on('i-mas', () => { I.mostrar += 200; refrescar(); });
 
 async function subirFotos(items) {      // fotos de productos nuevos (achicadas a 900 px WebP), de a 3
   let hechas = 0;
-  items = items.filter(x => x.foto && x.usoFoto === 'usar');
-  const cola = items.slice();
+  const cola = items.filter(x => x.foto);
   const trabajar = async () => {
     while (cola.length) {
       const x = cola.shift();
       try { const blob = await redimensionar(x.foto instanceof File ? x.foto : new File([x.foto], 'foto.jpg', { type: x.foto.type || 'image/jpeg' })); x.imagen_url = await api.subirFoto(P.t.id, blob, 'imp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)); }
       catch (e) { x.errorFoto = e.message; }
-      hechas++; progreso(`Subiendo fotos: ${hechas} de ${items.length}…`);
+      hechas++; progreso(`Subiendo fotos: ${hechas} de ${items.filter(y => y.foto).length}…`);
     }
   };
   await Promise.all([trabajar(), trabajar(), trabajar()]);
