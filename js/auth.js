@@ -23,7 +23,8 @@ export function pantallaRegistro(app) {
     <div class="fg"><label class="flabel" for="e">Email</label><input class="fi" id="e" name="email" type="email" autocomplete="email" required></div>
     <div class="fg"><label class="flabel" for="p">Contraseña (mínimo 8 caracteres)</label><input class="fi" id="p" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Crear cuenta gratis</button></form>
-    <p class="hint center" style="margin-top:12px">7 días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>`);
+    <p class="hint center" style="margin-top:10px">Al crear tu cuenta aceptás los <a href="#/terminos">Términos y condiciones</a> y la <a href="#/privacidad">Política de privacidad</a>.</p>
+    <p class="hint center" style="margin-top:8px">7 días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>`);
 }
 export function pantallaOlvide(app) {
   app.innerHTML = caja('Recuperar contraseña', `<div id="m"></div><form data-submit="a-olvide"><div class="fg"><label class="flabel" for="e">Tu email</label><input class="fi" id="e" name="email" type="email" required></div><button class="btn btn-p" type="submit" id="go">Enviarme el enlace</button></form>`);

@@ -13,6 +13,7 @@ import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
 import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
 import { vistaEnviosDiseno, resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
+import { guiaHtml, ayudaHtml } from './guia.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
@@ -41,11 +42,11 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
+  const cuerpo = { resumen: () => guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><span class="chip">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</span><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
-    <div class="page wide" style="padding-top:16px">${cuerpo}</div>${navMovil()}</div>${P.modal ? modal() : ''}`;
+    <div class="page wide" style="padding-top:16px">${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
 }
 
@@ -57,6 +58,7 @@ function navMovil() {
 }
 function menuMas() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
+    <button data-act="p-ayuda"><span class="i">💬</span><span>Ayuda<small>Buscá una solución o escribinos</small></span></button>
     <button data-act="p-ver-tienda"><span class="i">👀</span><span>Ver mi tienda<small>Como la ven tus clientes</small></span></button>
     <button data-act="p-salir"><span class="i">🚪</span><span>Salir<small>Cerrar sesión en este dispositivo</small></span></button></div>
     <button class="btn btn-s" style="margin-top:12px" data-act="p-cerrar">Cerrar</button></div></div>`;
@@ -97,6 +99,7 @@ function carritos() {
 function modal() {
   const m = P.modal;
   if (m.tipo === 'mas') return menuMas();
+  if (m.tipo === 'ayuda') return ayudaHtml();
   if (m.tipo === 'imp') return vistaImportar();
   if (m.tipo === 'cat') return vistaCatalogo();
   if (m.tipo === 'prod') {
