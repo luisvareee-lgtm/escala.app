@@ -9,20 +9,23 @@ import { vistaPrecios } from './precios.js';
 import { vistaEquipo } from './equipo.js';
 import { vistaTienda, vistaAjustes, resetAj } from './ajustes.js';
 import { redimensionar } from './img.js';
+import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
+import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
+import { vistaEnviosDiseno, resetDis } from './diseno.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
 const urlTienda = () => location.origin + '/t/' + P.t.slug;
-const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['precios', '💹 Precios'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
-const ESTADO = { pendiente: '🟡 Pendiente', cobrado: '🟢 Cobrado', cancelado: '⚪ Cancelado' };
+const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
+const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
 export async function mostrarPanel(app) {
   app.innerHTML = '<div class="page center" style="padding-top:80px"><span class="spin"></span></div>';
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
-  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp();
-  P.repintar = pintar;
+  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); P.gastos = [];
+  P.repintar = pintar; P.recargarPedidos = recargarPedidos;
   await cargar();
   if (Q.stop) Q.stop();
   Q.stop = api.escucharPedidos(P.t.id, async () => { toast('🔔 Pedido nuevo'); await recargarPedidos(); if (P.modal || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { Q.pendiente = true; return; } pintar(); });
@@ -37,19 +40,19 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => vistaResumen(urlTienda()), productos, pedidos, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTienda, ajustes: vistaAjustes }[P.tab]();
+  const cuerpo = { resumen: () => vistaResumen(urlTienda()), productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><span class="chip">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</span><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
-    <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && P.pedidos.some(o => o.estado === 'pendiente') ? ' •' : ''}</button>`).join('')}</div>
+    <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
     <div class="page wide" style="padding-top:16px">${cuerpo}</div>${navMovil()}</div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
 }
 
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
-const MAS = [['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
+const MAS = [['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
-  const pend = P.pedidos.some(o => o.estado === 'pendiente'), enMas = MAS.some(m => m[0] === P.tab);
-  return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pendientes"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
+  const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab);
+  return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
 }
 function menuMas() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
@@ -83,13 +86,6 @@ function filaProd(p) {
     <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div></span>
     <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
 }
-function pedidos() {
-  const q = Q.q.toLowerCase(), L = P.pedidos.filter(o => (Q.filtro === 'todos' || o.estado === Q.filtro) && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q));
-  const rv = new Map(P.revs.map(r => [r.id, r.nombre]));
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><div class="seg">${['todos', 'pendiente', 'cobrado', 'cancelado'].map(k => `<button class="${Q.filtro === k ? 'on' : ''}" data-act="p-filtro" data-k="${k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div></div>
-  <input class="fi" id="oq" placeholder="Buscar por cliente o N° de pedido…" data-input="p-oq" value="${esc(Q.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">
-  <div class="card">${L.slice(0, Q.olim || 100).map(o => `<div class="srow" style="cursor:pointer" data-act="p-pedido" data-id="${o.id}" role="button" tabindex="0"><span>#${o.numero} · ${esc(o.cliente_nombre)}${o.sub_revendedor_id ? ` <span class="tag">${esc(rv.get(o.sub_revendedor_id) || 'revendedor')}</span>` : ''}<br><small class="muted">${ESTADO[o.estado]} · ${new Date(o.created_at).toLocaleDateString('es-AR')} · ${esc(o.modalidad_precio)}</small></span><span class="v">${fmt(o.total_ars)}</span></div>`).join('') || '<p class="muted">Sin pedidos para mostrar.</p>'}${L.length > (Q.olim || 100) ? `<button class="btn btn-s btn-sm" data-act="p-omas">Ver más (${L.length - (Q.olim || 100)})</button>` : ''}</div>`;
-}
 function carritos() {
   if (!can('carritos')) return '<div class="locked"><b>🛒 Carritos abandonados</b><p style="margin:6px 0">Recontactá por WhatsApp a quienes dejaron productos sin comprar.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>';
   return `<div class="card">${P.carritos.map(c => { const it = (c.items || []).map(i => `${esc(i.q)}× ${esc(i.n)}`).join(', '); const msg = `Hola ${c.nombre}, vimos que dejaste productos en tu carrito en ${P.t.nombre}. ¿Querés que te ayudemos a cerrar el pedido?`;
@@ -121,15 +117,7 @@ function modal() {
     <div class="fg"><label class="flabel"><input type="checkbox" name="activo" ${p.activo === false ? '' : 'checked'}> Visible en la tienda</label></div>
     <button class="btn btn-p" type="submit">Guardar</button>${p.id ? '<button type="button" class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="p-borrar" data-id="' + p.id + '">Eliminar producto</button>' : ''}<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cancelar</button></form></div></div>`;
   }
-  if (m.tipo === 'ped') {
-    const o = m.o, it = m.items || [], rv = P.revs.find(r => r.id === o.sub_revendedor_id);
-    return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true"><div class="view-title">Pedido #${o.numero}</div><div id="mm"></div>
-    <p><b>${esc(o.cliente_nombre)}</b> · ${esc(o.localidad || '—')}<br><span class="muted">${esc(o.modalidad_precio)} · ${esc(o.medio_pago)} · ${ESTADO[o.estado]}</span>${rv ? `<br><span class="tag">Vendió: ${esc(rv.nombre)} · comisión ${fmt(o.comision_ars)}</span>` : ''}</p>
-    <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</span><span class="v">${fmt(i.subtotal)}</span></div>`).join('')}<div class="srow tot"><span>Total</span><span class="v">${fmt(o.total_ars)}</span></div></div>
-    <a class="btn btn-wa" target="_blank" rel="noopener" href="${esc(waLink(normWsp(o.cliente_whatsapp), 'Hola ' + o.cliente_nombre + ', te escribimos por tu pedido #' + o.numero + '.'))}">Escribir al cliente</a>
-    ${o.estado === 'pendiente' ? `<button class="btn btn-p" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cobrado">Marcar cobrado</button><button class="btn btn-s" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cancelado">Cancelar pedido</button>` : o.estado === 'cobrado' ? `<button class="btn btn-s" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cancelado">Cancelar (devuelve stock)</button>` : ''}
-    <button class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cerrar</button></div></div>`;
-  }
+  if (m.tipo === 'ped') return modalPedido(m);
   return '';
 }
 function prevHtml(costo, ovr) {
@@ -142,14 +130,11 @@ const fotoHtml = foto => `${foto ? `<img src="${esc(foto)}" alt="Foto actual" st
 const mm = (t, ok) => { const e = $('#mm'); if (e) e.innerHTML = `<div class="${ok ? 'ok-box' : 'err-box'}">${esc(t)}</div>`; };
 
 /* ---------- acciones ---------- */
-on('p-tab', d => { P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; pintar(); window.scrollTo(0, 0); });
+on('p-tab', async d => { P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado') await cargarGastos(); pintar(); window.scrollTo(0, 0); });
 on('p-salir', async () => { if (Q.stop) Q.stop(); Q.stop = null; await api.salir(); salirFn(); });
 on('p-copiar', d => copiar(d.v));
 on('p-q', (d, el) => { Q.pq = el.value; Q.lim = 60; pintar(); });
-on('p-oq', (d, el) => { Q.q = el.value; pintar(); });
-on('p-filtro', d => { Q.filtro = d.k; pintar(); });
 on('p-mas', () => { Q.lim += 60; pintar(); });
-on('p-omas', () => { Q.olim = (Q.olim || 100) + 100; pintar(); });
 on('p-cerrar', () => { P.modal = null; Q.pendiente = false; pintar(); });
 on('p-cerrar-bg', (d, b, e) => { if (e.target === b) { P.modal = null; pintar(); } });
 on('p-nuevo', () => { P.modal = { tipo: 'prod', p: null }; pintar(); });
@@ -162,7 +147,12 @@ on('p-pedido', async d => {
 });
 on('p-estado', async (d, b) => {
   if (d.e === 'cancelado' && !confirmar(b, '¿Cancelar el pedido? Tocá de nuevo')) return;
-  try { await api.estadoPedido(d.id, d.e); await recargarPedidos(); P.modal = null; pintar(); toast('Pedido actualizado'); } catch (e) { mm(e.message); }
+  try {
+    await api.estadoPedido(d.id, d.e); await recargarPedidos();
+    const o = P.pedidos.find(x => x.id === d.id);
+    if (o && P.modal && P.modal.tipo === 'ped') P.modal = Object.assign({}, P.modal, { o, avisar: null }); else P.modal = null;
+    pintar(); toast(d.e === 'cobrado' ? 'Cobro registrado' : 'Pedido actualizado');
+  } catch (e) { mm(e.message); }
 });
 on('p-foto', async (d, el) => {
   try { const f = el.files[0]; if (!f) return; const box = $('#foto-box'); if (box) box.insertAdjacentHTML('afterbegin', '<p class="hint" id="foto-sub"><span class="spin"></span> Subiendo…</p>'); const b = await redimensionar(f, 900); P.modal.foto = await api.subirFoto(P.t.id, b, (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))); const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(P.modal.foto); } catch (e) { const s2 = $('#foto-sub'); if (s2) s2.remove(); mm(e.message); }

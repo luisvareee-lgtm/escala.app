@@ -273,7 +273,9 @@ export async function ocr(f, progreso = () => { }) {
 const NO_NOMBRE = /^(precio|precios|stock|disponible|consult|whats|wsp|envio|envíos|mayorista|minorista|oferta|promo|nuevo|ingreso|unidad|unidades|x\s?\d+|cod|código|ref)\b/i;
 export function deTextoDeFoto(texto, cotizacion, sinSimbolo = 'ars') {
   const cot = Number(cotizacion) > 0 ? Number(cotizacion) : 1;
-  const lineas = String(texto || '').split(/\r?\n/).map(l => l.replace(EMOJI, ' ').replace(/[|_~*`©®™•·]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(l => l.length >= 2);
+  // en capturas de pantalla aparecen textos de la app (seguidores, hora, "Reenviado"…): se descartan para no confundirlos con el precio
+  const UI = /seguidor|followers|vistas|views|reenviad|forwarded|reacci|miembros|members|escribiendo|en l[ií]nea|online|[uú]lt\.? vez|visto por|canal|channel|silenciad|@\w|^\s*\d{1,2}[:.]\d{2}\s*(?:[ap]\.?\s?m\.?)?\s*$|\b\d{1,2}:\d{2}\b|%|\bwhatsapp\b/i;
+  const lineas = String(texto || '').split(/\r?\n/).map(l => l.replace(EMOJI, ' ').replace(/[|_~*`©®™•·]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(l => l.length >= 2 && !UI.test(l));
   // precio: primero con símbolo ($ / USD); si no, el número "de precio" más grande (≥ 3 cifras)
   let precio = null;
   for (const l of lineas) { const p = extraerPrecio(l, cot); if (p && p.usd > 0) { precio = p; break; } }

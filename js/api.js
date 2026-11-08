@@ -13,6 +13,9 @@ const amable = m => {
   if (/Password should be at least/i.test(m)) return 'La contraseña debe tener al menos 8 caracteres.';
   if (/rate limit|too many/i.test(m)) return 'Demasiados intentos. Esperá unos minutos.';
   if (/margenes_ordenados/.test(m)) return 'Los márgenes deben ir de mayor a menor: x1 ≥ x3 ≥ x6 ≥ x12.';
+  if (/tenants_envios_chk/.test(m)) return 'Revisá los métodos de envío: cada uno necesita nombre (2 a 60 letras) y un costo válido.';
+  if (/tenants_diseno_chk/.test(m)) return 'Revisá el diseño: algún texto es muy largo o la imagen no es un enlace https://.';
+  if (/orders_nota_chk|orders_seg_chk/.test(m)) return 'La nota admite hasta 500 caracteres y el seguimiento hasta 120.';
   if (/violates check constraint/.test(m)) return 'Algún dato no es válido. Revisá los valores e intentá de nuevo.';
   return m;
 };
@@ -77,6 +80,10 @@ export const api = {
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),
   estadoPedido: async (id, estado) => ok(await sb.from('orders').update({ estado }).eq('id', id).select().maybeSingle()),
+  actualizarPedido: async (id, cambios) => ok(await sb.from('orders').update(cambios).eq('id', id).select().maybeSingle()),
+  misGastos: () => todo(() => sb.from('gastos').select('*').order('fecha', { ascending: false }).order('id')),
+  guardarGasto: async (id, d) => id ? ok(await sb.from('gastos').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('gastos').insert(d).select().maybeSingle()),
+  borrarGasto: async id => ok(await sb.from('gastos').delete().eq('id', id)),
   misCarritos: async () => ok(await sb.from('carritos_pendientes').select('*').order('updated_at', { ascending: false })),
   marcarCarrito: async id => ok(await sb.from('carritos_pendientes').update({ recontactado: true }).eq('id', id)),
   borrarCarrito: async id => ok(await sb.from('carritos_pendientes').delete().eq('id', id)),
