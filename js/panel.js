@@ -15,6 +15,7 @@ import { vistaEnviosDiseno, resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe } from './marca.js';
+import { planesHtml, avisoPlan } from './planes.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
@@ -45,9 +46,9 @@ function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
   const cuerpo = { resumen: () => guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
-  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><span class="chip">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</span><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
+  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
-    <div class="page wide" style="padding-top:16px">${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
+    <div class="page wide" style="padding-top:16px">${avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
 }
 
@@ -91,7 +92,7 @@ function filaProd(p) {
     <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
 }
 function carritos() {
-  if (!can('carritos')) return '<div class="locked"><b>🛒 Carritos abandonados</b><p style="margin:6px 0">Recontactá por WhatsApp a quienes dejaron productos sin comprar.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>';
+  if (!can('carritos')) return '<div class="locked"><b>🛒 Carritos abandonados</b><p style="margin:6px 0">Recontactá por WhatsApp a quienes dejaron productos sin comprar.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>';
   return `<div class="card">${P.carritos.map(c => { const it = (c.items || []).map(i => `${esc(i.q)}× ${esc(i.n)}`).join(', '); const msg = `Hola ${c.nombre}, vimos que dejaste productos en tu carrito en ${P.t.nombre}. ¿Querés que te ayudemos a cerrar el pedido?`;
     return `<div class="srow" style="align-items:flex-start"><span>${esc(c.nombre)} · ${fmt(c.total_ars)}${c.recontactado ? ' <span class="tag ok">contactado</span>' : ''}<br><small class="muted">${it}</small></span><span style="display:flex;gap:6px"><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" data-act="p-recont" data-id="${c.id}" href="${esc(waLink(normWsp(c.whatsapp), msg))}">WhatsApp</a><button class="btn btn-s btn-sm" data-act="p-delcar" data-id="${c.id}" aria-label="Descartar">✕</button></span></div>`; }).join('') || '<p class="muted">Sin carritos pendientes.</p>'}</div>`;
 }
@@ -101,6 +102,7 @@ function modal() {
   const m = P.modal;
   if (m.tipo === 'mas') return menuMas();
   if (m.tipo === 'ayuda') return ayudaHtml();
+  if (m.tipo === 'planes') return planesHtml(m);
   if (m.tipo === 'imp') return vistaImportar();
   if (m.tipo === 'cat') return vistaCatalogo();
   if (m.tipo === 'prod') {

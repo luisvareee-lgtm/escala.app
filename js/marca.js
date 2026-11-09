@@ -6,10 +6,12 @@ export const MARCA = {
   // Tu dominio (sin https ni www), ej: 'tumarca.com.ar'. Con esto cada tienda queda en  nombre-de-la-tienda.tumarca.com.ar
   // Vacío = las tiendas siguen en  tu-sitio/t/nombre-de-la-tienda. Primero hacé los pasos de SUBDOMINIOS.md.
   DOMINIO: '',
+  // Enlace a una tienda de ejemplo para mostrar en la portada (ej: 'https://demo.tumarca.com.ar/'). Vacío = no se muestra.
+  DEMO_URL: '',
   // WhatsApp de soporte con código de país, solo números (ej: 5491123456789). Vacío = no se muestra el botón.
-  SOPORTE_WSP: '5491153162392',
+  SOPORTE_WSP: '',
   // Email de contacto que aparece en términos y privacidad. Vacío = se muestra "por WhatsApp de soporte".
-  EMAIL_CONTACTO: 'contacto@elite-urbano.com',
+  EMAIL_CONTACTO: '',
   // Titular del servicio para los textos legales (nombre o razón social y CUIT). Completalo antes de cobrar.
   TITULAR: '[Nombre o razón social del titular]',
   CUIT: '[CUIT]',
@@ -17,13 +19,15 @@ export const MARCA = {
   FECHA_LEGALES: '8 de noviembre de 2026'
 };
 
-// Precios de lanzamiento en pesos por mes (los ves en la portada). Cambiá los números y listo.
+// Precios de lanzamiento en pesos por mes (los ves en la portada y en el panel). Cambiá los números y listo.
+// link (opcional): enlace de pago o suscripción de ese plan (por ejemplo de Mercado Pago). Si está vacío, el botón
+// “Quiero este plan” abre tu WhatsApp de soporte con el pedido armado.
 export const PLANES = [
-  { id: 'base', nombre: 'Catálogo Base', precio: 14900, para: 'Para empezar a vender por WhatsApp',
+  { id: 'base', link: '', nombre: 'Catálogo Base', precio: 9900, para: 'Para empezar a vender por WhatsApp',
     incluye: ['Productos y pedidos ilimitados', 'Precios por volumen x1 · x3 · x6 · x12', 'Importador inteligente (fotos, chats, Excel, PDF, CSV)', 'Pedidos por etapas, remito y mensajes de WhatsApp', 'Envíos, “Cómo comprar” y diseño de tu tienda', 'Cobranzas: quién te debe y recordatorios', 'Resultado del negocio: ganancia neta y gastos', 'Catálogo en PDF'] },
-  { id: 'pro', nombre: 'Mayorista Pro', precio: 29900, destacado: true, para: 'Para mayoristas y revendedores que crecen',
+  { id: 'pro', link: '', nombre: 'Mayorista Pro', precio: 29900, destacado: true, para: 'Para mayoristas y revendedores que crecen',
     incluye: ['Todo lo de Base', 'Minorista + mayorista con código de acceso', 'Dashboard interactivo completo', 'Reposición inteligente: días de stock y qué comprar', 'Ventas y ganancia en dólares', 'Stock automático y “¡Últimas unidades!”', 'Comparador de proveedores y precios de mercado', 'Revendedores con enlace y comisión', 'Carritos abandonados para recontactar'] },
-  { id: 'api', nombre: 'Suite Full API', precio: 49900, para: 'Para automatizar y cobrar online',
+  { id: 'api', link: '', nombre: 'Suite Full API', precio: 49900, para: 'Para automatizar y cobrar online',
     incluye: ['Todo lo de Pro', 'Mercado Pago en el carrito (la plata va directo a tu cuenta)', 'Aviso de pedido nuevo por email', 'Webhooks firmados para n8n, Make o tu CRM'] }
 ];
 

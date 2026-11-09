@@ -8,7 +8,7 @@ const k = () => 'guia:' + (P.t && P.t.id);
 const marcas = () => store.get(k(), {}) || {};
 const marcar = (x, v = true) => { const m = marcas(); m[x] = v; store.set(k(), m); };
 // los productos de ejemplo se crean junto con la tienda (mismo minuto)
-const ejemplo = p => P.t && p.created_at && Math.abs(new Date(p.created_at) - new Date(P.t.created_at)) < 120000;
+const ejemplo = p => P.t && p.created_at && Math.abs(new Date(p.created_at) - new Date(P.t.created_at)) < 5000;
 
 export function pasosGuia() {
   const t = P.t, m = marcas(), reales = P.prods.filter(p => !ejemplo(p));

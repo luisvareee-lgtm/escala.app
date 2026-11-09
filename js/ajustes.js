@@ -1,4 +1,5 @@
 // Pestañas "Tienda" (estilos), "Ajustes" (precios, cobro, integraciones), accesos y plan.
+import { datosHtml } from './planes.js';
 import { api } from './api.js';
 import { esc, fmt, on, toast, $ } from './util.js';
 import { P, can, aviso, planEf, PLAN_NOMBRE } from './state.js';
@@ -83,7 +84,7 @@ export function vistaAjustes() {
   const dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
   const lock = f => can(f) ? '' : ' disabled';
   const plan = `<div class="cc"><h3>📦 Tu plan: ${esc(PLAN_NOMBRE[t.plan])}</h3>${dias > 0 ? `<p class="ok-box">Prueba gratis: te quedan ${dias} días con todo desbloqueado (Full API).</p>` : ''}
-  <p class="hint">Productos ilimitados y 0% de comisión por venta en todos los planes.</p><div class="tblw"><table class="tbl"><tr><th>Herramienta</th><th>Base</th><th>Pro</th><th>Full API</th></tr>${[['Catálogo ilimitado, escalas x1/x3/x6/x12, importador, carrito, pedidos, catálogo PDF, actualización masiva', 1, 1, 1], ['Dashboard, bimonetario USD/ARS, Meta Pixel, stock crítico y automático, carritos abandonados', 0, 1, 1], ['Modo híbrido, sub-revendedores, comparador de proveedores, referencia de mercado', 0, 1, 1], ['Mercado Pago en el carrito, webhooks firmados y aviso de pedidos nuevos', 0, 0, 1]].map(r => `<tr><td>${r[0]}</td>${r.slice(1).map(x => `<td>${x ? '✅' : '—'}</td>`).join('')}</tr>`).join('')}</table></div></div>`;
+  <p class="hint">Productos ilimitados y 0% de comisión por venta en todos los planes.</p><div class="tblw"><table class="tbl"><tr><th>Herramienta</th><th>Base</th><th>Pro</th><th>Full API</th></tr>${[['Catálogo ilimitado, escalas x1/x3/x6/x12, importador, carrito, pedidos, catálogo PDF, actualización masiva', 1, 1, 1], ['Dashboard, bimonetario USD/ARS, Meta Pixel, stock crítico y automático, carritos abandonados', 0, 1, 1], ['Modo híbrido, sub-revendedores, comparador de proveedores, referencia de mercado', 0, 1, 1], ['Mercado Pago en el carrito, webhooks firmados y aviso de pedidos nuevos', 0, 0, 1]].map(r => `<tr><td>${r[0]}</td>${r.slice(1).map(x => `<td>${x ? '✅' : '—'}</td>`).join('')}</tr>`).join('')}</table></div><button class="btn btn-p btn-sm" style="margin-top:10px;width:auto" data-act="p-planes">Ver precios y cambiar de plan</button></div>${datosHtml()}`;
   return `<div id="aj-m">${msgs()}</div><div class="grid2"><form data-submit="p-guardar" class="cc" id="aj">
   <h3>⚙️ Datos y precios</h3>
   <div class="fg"><label class="flabel">WhatsApp (con 549…)</label><input class="fi" name="whatsapp" value="${esc(t.whatsapp)}" inputmode="numeric" required></div>

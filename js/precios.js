@@ -18,7 +18,7 @@ export function vistaPrecios() {
   return msgs + masivo + vistaProv() + vistaMercado();
 }
 function vistaProv() {
-  if (!can('proveedores')) return `<div class="locked"><b>🏭 Comparador de proveedores</b><p style="margin:6px 0">Cargá las listas de 2 o 3 proveedores y elegí el costo más bajo, producto por producto.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>`;
+  if (!can('proveedores')) return `<div class="locked"><b>🏭 Comparador de proveedores</b><p style="margin:6px 0">Cargá las listas de 2 o 3 proveedores y elegí el costo más bajo, producto por producto.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>`;
   const por = new Map(); P.provs.forEach(s => { const l = por.get(s.product_id) || []; l.push(s); por.set(s.product_id, l); });
   const filas = P.prods.filter(p => por.has(p.id));
   return `<div class="cc"><h3>🏭 Comparador de proveedores</h3><p class="hint" style="margin-bottom:8px">Subí cada lista desde <b>Productos → Importar → Lista de un proveedor</b>. Acá ves quién tiene el mejor costo y lo aplicás cuando quieras.</p>
@@ -27,7 +27,7 @@ function vistaProv() {
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn btn-p btn-sm" data-act="pv-ap" ${R.psel.size ? '' : 'disabled'}>Usar el más barato en los elegidos (${R.psel.size})</button><button class="btn btn-s btn-sm" data-act="pv-todos">Elegir todos</button></div>` : '<p class="muted">Todavía no cargaste listas de proveedores.</p>'}</div>`;
 }
 function vistaMercado() {
-  if (!can('mercado')) return `<div class="locked"><b>💹 Referencia de mercado</b><p style="margin:6px 0">Compará tus precios con los de tu competencia y recibí una sugerencia para cada producto.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>`;
+  if (!can('mercado')) return `<div class="locked"><b>💹 Referencia de mercado</b><p style="margin:6px 0">Compará tus precios con los de tu competencia y recibí una sugerencia para cada producto.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>`;
   const A = R.an;
   const tabla = A ? `<div class="tblw"><table class="tbl"><tr><th></th><th>Producto</th><th>Mi precio</th><th>Mercado (mín · med · máx)</th><th>Sugerido</th></tr>${A.filter(a => a.estado !== 'sin_referencia').map(a => { const [c, n] = ESTADO[a.estado]; const ap = a.estado === 'caro' || a.estado === 'barato';
     return `<tr><td>${ap ? `<input type="checkbox" data-change="mk-sel" data-id="${a.product_id}" ${R.sel.has(a.product_id) ? 'checked' : ''} aria-label="Elegir ${esc(a.nombre)}">` : ''}</td><td>${esc(a.nombre)}<br><span class="tag ${c}">${n}</span></td><td>${fmt(a.precio_actual)}</td><td>${fmt(a.ref_min)} · ${fmt(a.ref_med)} · ${fmt(a.ref_max)}<br><small class="muted">${a.n_refs} ref.</small></td><td>${ap ? '<b>' + fmt(a.precio_sugerido) + '</b><br><small class="muted">margen ' + Math.round(a.margen_sugerido * 100) + '%</small>' : '—'}</td></tr>`; }).join('')}</table></div>

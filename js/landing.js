@@ -26,6 +26,22 @@ const FAQ = [
   ['¿Mis datos y los de mis clientes están protegidos?', 'Cada tienda ve solo lo suyo, los precios y el stock los calcula el servidor (nadie puede cambiarlos desde el navegador) y las claves de pago se guardan protegidas. Leé la política de privacidad.']
 ];
 
+// Comparación general (sin nombrar a nadie): datos de los planes publicados por plataformas líderes, a la fecha de REFERENCIA.
+const VS = [
+  ['Comisión por cada venta', '0%, siempre', 'Hasta 2% si no cobrás con su medio de pago', '0%'],
+  ['Precios por cantidad (x1 · x3 · x6 · x12)', 'Automáticos, en todos los planes', 'Un solo descuento por cantidad, o variantes cargadas a mano producto por producto', 'A mano, en cada mensaje'],
+  ['Lista mayorista separada del público', `Con código de acceso, desde ${fmt(PLANES.find(p => p.id === 'pro').precio)}/mes`, `Recién en planes de ${fmt(REFERENCIA.plan)}/mes o más`, 'Mandando un PDF'],
+  ['Precio calculado desde tu costo y el dólar', 'Sí: cambia el dólar y se recalcula todo', 'Cargás el precio final de cada producto', 'Rehacés la lista entera'],
+  ['Cargar la lista del proveedor', 'Fotos, capturas, chat de WhatsApp, Excel, PDF o CSV', 'Una planilla con su formato', 'No aplica'],
+  ['Saber quién te debe y qué reponer', 'Incluido', 'Según el plan o con apps aparte', 'De memoria'],
+  ['Valor del abono', 'Fijo; si cambia, avisamos 30 días antes', 'Se ajusta cada trimestre', 'Gratis, pero te cuesta horas']
+];
+const GAR = [
+  ['Sin permanencia', 'Pagás mes a mes. Te vas cuando quieras, sin letra chica.'],
+  ['Tus datos son tuyos', 'Descargás tus productos y pedidos en un clic, cuando quieras.'],
+  ['Tu plata, directo a vos', 'No tocamos tus cobros ni te cobramos por vender.'],
+  ['Te acompañamos', 'Guía paso a paso y ayuda dentro del panel desde el primer día.']
+];
 function simPrecios() {
   const { costo, dolar, m1, m12 } = SIM, m3 = m12 + (m1 - m12) * 0.6, m6 = m12 + (m1 - m12) * 0.3;
   const p = { 1: precio(costo, dolar, m1), 3: precio(costo, dolar, m3), 6: precio(costo, dolar, m6), 12: precio(costo, dolar, m12) }, c = costo * dolar;
@@ -46,10 +62,14 @@ export function inicio(app) {
   <section class="lp-hero"><div class="tag">0% de comisión por venta · productos y pedidos ilimitados</div>
     <h1>Vendé por menor y por mayor desde WhatsApp, con tus costos reales</h1>
     <p>${N} arma tu tienda con precios por volumen calculados desde tu costo, lee las listas de tus proveedores y te dice a quién cobrarle y qué reponer. 7 días gratis con todo desbloqueado, sin tarjeta.</p>
-    <div class="lp-cta"><a class="btn btn-p" href="#/registro">Crear mi tienda gratis</a><a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
+    <div class="lp-cta"><a class="btn btn-p" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
     <ul class="lp-pills"><li>💲 Desde tu costo</li><li>📦 x1 · x3 · x6 · x12</li><li>♾️ Sin límites</li><li>💵 Pesos y dólares</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
 
   <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
+
+  <section class="lp-sec"><h2>Compará antes de elegir</h2><p class="lp-sub">Lo que cambia entre vender con ${N}, con una plataforma de tiendas tradicional o solo por WhatsApp.</p>
+    <div class="lp-vsw"><table class="lp-vs"><thead><tr><th></th><th class="on">${N}</th><th>Plataforma tradicional</th><th>Solo WhatsApp y planilla</th></tr></thead><tbody>${VS.map(r => `<tr><td>${r[0]}</td><td class="on">${r[1]}</td><td>${r[2]}</td><td class="no">${r[3]}</td></tr>`).join('')}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Comparación general con los planes y condiciones publicados por plataformas líderes a ${esc(REFERENCIA.fecha)}. Cada una tiene sus particularidades.</p></section>
 
   <section class="lp-sec lp-sim"><h2>Simulá tus precios por volumen</h2><p class="lp-sub">Probá con un producto tuyo: así se ve tu lista sin hacer una sola cuenta.</p>
     <div class="lp-form"><label>Costo en dólares<input class="fi" type="number" min="0.1" step="0.1" value="${SIM.costo}" data-input="lp-sim" data-k="costo"></label>
@@ -64,7 +84,8 @@ export function inicio(app) {
 
   <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento por mes, en pesos. Probá 7 días con todo desbloqueado.</p>
     <div class="lp-planes">${PLANES.map(p => `<div class="lp-plan${p.destacado ? ' on' : ''}">${p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
-      <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul><a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">Empezar gratis</a></div>`).join('')}</div></section>
+      <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul><a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">Empezar gratis</a></div>`).join('')}</div>
+    <ul class="lp-gar">${GAR.map(([t, d]) => `<li><b>${t}</b>${d}</li>`).join('')}</ul></section>
 
   <section class="lp-sec"><h2>Así arrancás</h2><ol class="home-steps"><li>Creás tu cuenta con email y contraseña.</li><li>Ponés el nombre de tu negocio y tu WhatsApp: te armamos la tienda con productos de ejemplo.</li><li>Una guía te lleva paso a paso: tu logo, tu alias, tu lista de precios y tus envíos.</li><li>Compartís tu enlace y los pedidos te llegan al WhatsApp.</li></ol>
     <a class="btn btn-p lp-mid" href="#/registro">Empezar ahora</a></section>

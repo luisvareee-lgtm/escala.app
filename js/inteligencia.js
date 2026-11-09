@@ -86,7 +86,7 @@ function textoPedido(g) {
   return `Hola! Te paso el pedido de ${P.t.nombre}:\n` + g.filas.map(f => `• ${f.sug} × ${f.p.nombre}${f.p.sku ? ' (' + f.p.sku + ')' : ''}`).join('\n') + '\n¿Me confirmás stock y precio? Gracias.';
 }
 function reposicion() {
-  if (!can('stock')) return `<div class="locked"><b>📦 Reposición inteligente</b><p style="margin:6px 0">Te dice cuántos días de stock te quedan de cada producto y qué comprarle a cada proveedor.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>`;
+  if (!can('stock')) return `<div class="locked"><b>📦 Reposición inteligente</b><p style="margin:6px 0">Te dice cuántos días de stock te quedan de cada producto y qué comprarle a cada proveedor.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>`;
   const c = CFG(), R = calcReposicion(c), urg = R.filas.filter(f => ['agotado', 'ya', 'pronto'].includes(f.est));
   const sel = (k, v, ops) => `<select class="fi" data-change="ia-cfg" data-k="${k}" aria-label="${k}">${ops.map(o => `<option value="${o}" ${+v === o ? 'selected' : ''}>${o} días</option>`).join('')}</select>`;
   return `<div class="cc"><h3>⚙️ Cómo calculamos</h3><div class="rep-cfg"><label>Mirar las ventas de los últimos ${sel('periodo', c.periodo, [30, 60, 90])}</label><label>Tu proveedor tarda ${sel('demora', c.demora, [1, 2, 3, 5, 7, 10, 15, 21, 30])}</label><label>Comprar para cubrir ${sel('cubrir', c.cubrir, [7, 15, 30, 45, 60, 90])}</label></div>
@@ -123,7 +123,7 @@ export function calcDolares(meses = 12) {
   return M;
 }
 function dolares() {
-  if (!can('usd')) return `<div class="locked"><b>💵 Ventas en dólares</b><p style="margin:6px 0">Con inflación, vender más pesos no siempre es crecer. Medí tus ventas y tu ganancia en dólares, con la cotización de cada pedido.</p><span class="tag warn">🔒 Plan Mayorista Pro</span></div>`;
+  if (!can('usd')) return `<div class="locked"><b>💵 Ventas en dólares</b><p style="margin:6px 0">Con inflación, vender más pesos no siempre es crecer. Medí tus ventas y tu ganancia en dólares, con la cotización de cada pedido.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>`;
   const M = calcDolares(12), act = M[M.length - 1], ant = M[M.length - 2], ant2 = M[M.length - 3];
   const hayDatos = M.some(m => m.n);
   if (!hayDatos) return `<div class="cc"><h3>💵 Ventas en dólares</h3><p class="muted">Todavía no hay pedidos para comparar.</p></div>`;
