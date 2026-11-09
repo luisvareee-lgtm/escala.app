@@ -588,3 +588,17 @@ details.card > summary { cursor: pointer; }
 .ayuda .ay-art{border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:6px;background:var(--bg)}
 .ayuda .ay-art summary{cursor:pointer;font-weight:700;font-size:.88rem}.ayuda .ay-art p{margin:8px 0;font-size:.85rem;color:var(--t2);line-height:1.5}.ayuda .ay-art .btn{width:auto}
 .ay-sop{margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)}.ay-sop p{margin:4px 0 8px}
+
+/* ---- v2.11: planes, avisos de prueba ---- */
+.lock-cta{margin-top:10px;width:auto}
+.chip-btn{cursor:pointer;font:inherit;font-size:.72rem;font-weight:700}
+.plan-aviso{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--bd);border-left:4px solid var(--ac);background:var(--bg2);border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:.86rem}
+.plan-aviso.warn{border-left-color:var(--amber)}.plan-aviso .btn{width:auto;margin:0}.plan-aviso-acc{display:flex;gap:10px;align-items:center}
+.planes .lp-planes{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.lp-vs{width:100%;border-collapse:collapse;font-size:.86rem;min-width:560px}
+.lp-vs th,.lp-vs td{padding:10px 12px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}
+.lp-vs th{font-size:.78rem;color:var(--t3);font-weight:700}.lp-vs th.on,.lp-vs td.on{background:var(--acs);color:var(--t1);font-weight:700}
+.lp-vs td:first-child{font-weight:700}.lp-vs .no{color:var(--t3)}
+.lp-vsw{overflow-x:auto;border:1px solid var(--bd);border-radius:14px;background:var(--bg2)}
+.lp-gar{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.lp-gar li{border:1px solid var(--bd);border-radius:12px;padding:12px 14px;background:var(--bg2);font-size:.86rem;color:var(--t2)}.lp-gar b{display:block;color:var(--t1);margin-bottom:2px}
