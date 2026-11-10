@@ -25,6 +25,19 @@ const porUnidad = p => { const u = unidadTxt(p.unidad, p.contenido); return u ? 
 const unidad = (p, q) => { const t = tramos(p); if (!t) return +p.precio_1; return q >= 12 ? t[12] : q >= 6 ? t[6] : q >= 3 ? t[3] : t[1]; };
 const qtyDe = id => S.cart.filter(l => l.id === id).reduce((a, l) => a + l.qty, 0);
 const prod = id => S.prods.find(p => p.id === id);
+// "Tu ganancia": lo que gana el cliente que revende (solo en lista mayorista y si la tienda lo activó)
+const ganOn = () => !!S.tienda.reventa_activa && vista() === 'may';
+const pvpDe = p => +p.pvp_sugerido > 0 ? +p.pvp_sugerido : Math.ceil(unidad(p, 1) * (1 + (+S.tienda.reventa_margen || 0.6)) / 10) * 10;
+function ganHtml(p, q) {
+  if (!ganOn()) return '';
+  const u = unidad(p, Math.max(1, q)), pv = pvpDe(p), g = pv - u; if (!(g > 0)) return '';
+  return `<div class="gan"><span>🏷️ Vendelo a <b>${fmt(pv)}</b></span><span class="gan-g">💰 Ganás <b>${fmt(g)}</b> c/u · ${Math.round(g / u * 100)}%</span></div>`;
+}
+function ganCarrito() {
+  if (!ganOn()) return '';
+  const L = lineas(), inv = L.reduce((a, l) => a + l.sub, 0), fac = L.reduce((a, l) => a + pvpDe(l.p) * l.qty, 0), g = fac - inv; if (!(g > 0) || !inv) return '';
+  return `<div class="gan gan-tot"><div class="srow"><span>Vendiendo todo al precio sugerido</span><span class="v">${fmt(fac)}</span></div><div class="srow tot"><span>💰 Tu ganancia estimada</span><span class="v">+${fmt(g)} · ${Math.round(g / inv * 100)}%</span></div></div>`;
+}
 function lineas() {
   return S.cart.map((l, i) => { const p = prod(l.id); if (!p) return null; const q = qtyDe(l.id); const pu = unidad(p, q); return { i, p, vr: l.vr, qty: l.qty, pu, sub: pu * l.qty, base: +p.precio_1 * l.qty }; }).filter(Boolean);
 }
@@ -119,6 +132,7 @@ function banner() {
     : `<span class="chip">📦 ${t.escalas_activas ? 'Precios por volumen x1 · x3 · x6 · x12' : 'Lista mayorista'}${minimo() ? ' · mínimo ' + fmt(minimo()) : ''}</span>`;
   if (t.modalidad === 'hibrido') chips += S.may ? '<button class="chip" data-act="may-salir">✓ Lista mayorista activa · Salir</button>' : '<button class="chip" data-act="may-abrir">💼 Acceso Mayorista</button>';
   const caja = S.pedirCodigo && !S.may ? `<form data-submit="may-codigo" id="gremio-box"><input class="fi" name="codigo" placeholder="Código de revendedor" autocomplete="off" aria-label="Código de revendedor" required><button class="btn btn-p btn-sm" type="submit">Activar</button></form><div class="ferr" id="may-err" hidden></div>` : '';
+  if (t.modo_stock === 'encargo') chips += `<span class="chip">📦 Por encargo · llega en ${+t.demora_encargo || 7} días</span>`;
   if (+t.envio_gratis_desde > 0 && envios().some(e => e.tipo !== 'retiro')) chips += `<span class="chip">🚚 Envío gratis desde ${fmt(t.envio_gratis_desde)}</span>`;
   chips += '<button class="chip" data-act="st-pdf">📄 Lista de precios (PDF)</button>';
   return aviso + heroHtml(t.diseno) + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>` + beneficiosHtml(t.diseno) + comprarCardHtml(t.diseno);
@@ -147,8 +161,8 @@ function pintarGrid() {
     const ctrl = p.agotado ? '<button class="qadd" disabled>Agotado</button>' : qty > 0
       ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span><button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
       : `<button class="qadd" data-act="st-add" data-id="${p.id}">+ Agregar</button>`;
-    return `<div class="pcard${qty ? ' in-cart' : ''}"><div class="pimg${p.imagen_url ? '' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;background:${p.imagen_url ? 'var(--bg3)' : 'linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
-      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${precio}<div class="pqty">${ctrl}</div></div></div>`;
+    return `<div class="pcard${qty ? ' in-cart' : ''}"><div class="pimg${p.imagen_url ? '' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;background:${p.imagen_url ? 'var(--bg3)' : 'linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.a_pedido && S.tienda.modo_stock === 'mixto' ? '<span class="badge badge-enc">Por encargo</span>' : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
+      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${precio}${p.a_pedido && S.tienda.modo_stock === 'mixto' ? `<div class="enc-note">📦 Llega en ${+p.demora_dias} días</div>` : ''}${ganHtml(p, qty)}<div class="pqty">${ctrl}</div></div></div>`;
   }).join('');
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
 }
@@ -171,7 +185,7 @@ function pantallaCarrito() {
   const T = totales(), mc = minimo(), bloq = mc && T.total < mc;
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
     ${L.map(l => `<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>`).join('')}
-    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>
+    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
     <button class="btn btn-p" ${bloq ? 'disabled' : ''} data-act="st-ir" data-v="co">${bloq ? 'Faltan ' + fmt(mc - T.total) + ' para el mínimo' : 'Continuar →'}</button></div>`;
 }
 function pantallaCheckout() {
@@ -183,7 +197,7 @@ function pantallaCheckout() {
       ${camposExtra()}
       ${envioUi()}
       <div class="fg"><label class="flabel">Medio de pago</label>${Object.keys(PAGO).map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
-      ${notaUi()}
+      ${encargoUi()}${notaUi()}
       ${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;
 }
@@ -201,6 +215,11 @@ function camposExtra() {
     h += '</div>';
   }
   return h;
+}
+function encargoUi() {
+  const L = lineas().filter(l => l.p.a_pedido); if (!L.length) return '';
+  const max = Math.max(...L.map(l => +l.p.demora_dias || 0));
+  return `<div class="enc-note enc-co">📦 ${S.tienda.modo_stock === 'encargo' ? 'Trabajamos por encargo' : (L.length === 1 ? '1 producto es por encargo' : L.length + ' productos son por encargo')}: tu pedido llega en hasta <b>${max} días</b> desde que lo confirmamos.</div>`;
 }
 const notaUi = () => pide('nota') !== 'no' ? `<div class="fg"><label class="flabel" for="co-nota">Aclaraciones para el vendedor${pide('nota') === 'opcional' ? ' <small class="muted">(opcional)</small>' : ''}</label><textarea class="fi" id="co-nota" name="nota" rows="2" maxlength="300" placeholder="Ej: horario de entrega, factura A, etc." ${pide('nota') === 'obligatorio' ? 'required' : ''}></textarea></div>` : '';
 function envioUi() {
@@ -223,6 +242,7 @@ function ticket(r, cliente) {
   t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
   if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || '(lo coordinamos por acá)'}\n`;
   if (cliente.nota) t += `Aclaraciones: ${cliente.nota}\n`;
+  { const enc = lineas().filter(l => l.p.a_pedido); if (enc.length) t += `Por encargo: llega en hasta ${Math.max(...enc.map(l => +l.p.demora_dias || 0))} días\n`; }
   return t + `*TOTAL: ${fmt(r.total)}*`;
 }
 function pantallaOk() {
@@ -264,7 +284,7 @@ function pintarDet() {
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
     ${p.descripcion ? `<div class="pdet-desc">${esc(p.descripcion)}</div>` : ''}
     ${vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}
-    ${precios}
+    ${precios}${p.a_pedido ? `<div class="enc-note">📦 Por encargo: llega en ${+p.demora_dias} días desde que confirmás el pedido.</div>` : ''}${ganHtml(p, qty)}
     ${p.agotado ? '<button class="btn btn-s" disabled>Sin stock</button>' : `<div style="display:flex;gap:8px;align-items:center">${qty ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>` : ''}<button class="btn btn-p" style="flex:1" data-act="st-add" data-id="${p.id}">${qty ? '+ Agregar otro' : '+ Agregar al carrito'}</button></div>`}
     ${qty ? `<button class="btn btn-s" style="margin-top:8px" data-act="st-ir" data-v="cart">Ver carrito (${totales().n} u.)</button>` : ''}
     <button class="btn btn-s" style="margin-top:8px" data-act="st-det-cerrar">Seguir mirando</button></div></div>`;

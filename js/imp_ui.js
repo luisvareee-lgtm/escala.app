@@ -1,8 +1,9 @@
 // Pantalla del importador (v2.5): varios archivos a la vez (CSV, Excel, PDF, chat de WhatsApp con fotos, fotos de proveedores),
 // texto pegado, revisión producto por producto y cómo publicar (margen, unidad de venta, precio único o con escala, visible).
 import { api } from './api.js';
-import { $, esc, fmt, on, toast } from './util.js';
-import { P, can } from './state.js';
+import { $, esc, fmt, on, toast, copiar, waLink } from './util.js';
+import { P, can, precioArs } from './state.js';
+import { urlTiendaDe } from './marca.js';
 import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, ocr } from './importer.js';
 import { redimensionar } from './img.js';
 
@@ -14,10 +15,12 @@ const nuevoEstado = () => ({
   texto: '', fotoModo: 'producto',
   opts: { moneda: 'ars', tipo: 'costo', margen: null },          // para texto pegado, fotos y WhatsApp
   pub: null,                  // {margen, unidad, contenido, unico, visible, categoria}
-  ed: {}, items: null, mostrar: 60, uso: {}, sinFotos: false, recorte: null,
+  ed: {}, items: null, mostrar: 60, uso: {}, sinFotos: false, recorte: null, ocultarFaltan: false,
   destino: 'mis', nombre: '', msg: '', err: '', busy: false,
 });
 const I = nuevoEstado();
+// Aviso para los clientes después de actualizar la lista (sobrevive al reinicio del importador)
+const AV = { texto: '', resumen: '' };
 export const resetImp = () => { I.fotos.forEach(f => f.url && URL.revokeObjectURL(f.url)); Object.assign(I, nuevoEstado()); };
 
 const cot = () => Number(P.t.cotizacion_usd) > 0 ? Number(P.t.cotizacion_usd) : 1;
@@ -62,11 +65,13 @@ function procesar() {
     if (e.nombre != null) it.nombre = e.nombre;
     if (e.costoArs != null) { it.precio_ars = e.costoArs; it.costo_usd = e.costoArs > 0 ? Math.round(e.costoArs / c * 10000) / 10000 : null; it.inferido = false; }
   });
-  let items = cruzar(out.filter(x => (x.nombre || '').trim() || x.foto), P.prods);
+  const rech = new Set(Object.entries(I.ed).filter(([, e]) => e.mismo === false).map(([u]) => u));
+  let items = cruzar(out.filter(x => (x.nombre || '').trim() || x.foto), P.prods, rech);
+  items.forEach(x => { if (x.duda && I.ed[x.uid] && I.ed[x.uid].mismo === true) x.duda = false; });
   const ult = new Map(); items.forEach((x, i) => { if (x.existente) ult.set(x.existente.id, i); });
   items = items.filter((x, i) => !x.existente || ult.get(x.existente.id) === i);
   items.forEach(x => {
-    const e = I.ed[x.uid]; x.incluir = e && e.incluir != null ? e.incluir : x.costo_usd > 0 && !!(x.nombre || '').trim();
+    const e = I.ed[x.uid]; x.incluir = x.duda ? false : e && e.incluir != null ? e.incluir : x.costo_usd > 0 && !!(x.nombre || '').trim();
     // foto para la tienda: 'usar' | 'no'. Las capturas vienen en 'no' (tienen el precio del proveedor); se pueden recortar.
     if (x.foto) x.usoFoto = (e && e.usoFoto) || (I.sinFotos ? 'no' : x.captura ? 'no' : 'usar');
   });
@@ -75,6 +80,51 @@ function procesar() {
 const listos = () => (I.items || []).filter(x => x.incluir && x.costo_usd > 0 && (x.nombre || '').trim());
 const pv = costoUsd => Math.ceil(Number(costoUsd) * cot() * (1 + Number(I.pub.margen) / 100) / 10) * 10;
 const etiquetaUnidad = (u, n) => { const b = (UNIDADES.find(x => x[0] === u) || ['', 'Unidad'])[1]; return CON_CONTENIDO.includes(u) && n ? `${b} x${n}` : b; };
+
+/* ---------- LISTA VIVA: qué cambió respecto del catálogo ---------- */
+const margenDe = p => p.margen_override != null ? Number(p.margen_override) : Number(P.t.margen_1);
+const ventaDe = (p, costo) => precioArs(costo, cot(), margenDe(p));
+const cambio = x => { const e = x.existente; if (!e || !(Number(e.costo_usd) > 0) || !(x.costo_usd > 0)) return 0; const d = (x.costo_usd - Number(e.costo_usd)) / Number(e.costo_usd); return Math.abs(d) < 0.005 ? 0 : d; };
+export function diffLista() {
+  const ok = listos(), upd = ok.filter(x => x.existente), suben = upd.filter(x => cambio(x) > 0), bajan = upd.filter(x => cambio(x) < 0);
+  const tocados = new Set((I.items || []).filter(x => x.existente).map(x => x.existente.id)), activos = P.prods.filter(p => p.activo);
+  // "no vinieron": solo tiene sentido si la lista cubre buena parte del catálogo
+  const faltan = tocados.size >= 5 && tocados.size >= activos.length * 0.3 ? activos.filter(p => !tocados.has(p.id)) : [];
+  const prom = L => L.length ? Math.round(L.reduce((a, x) => a + Math.abs(cambio(x)), 0) / L.length * 100) : 0;
+  return { upd, suben, bajan, iguales: upd.length - suben.length - bajan.length, nuevos: ok.filter(x => !x.existente), faltan, dudas: (I.items || []).filter(x => x.duda), promSube: prom(suben), promBaja: prom(bajan) };
+}
+function vistaListaViva() {
+  if (I.destino !== 'mis' || !I.items) return '';
+  const D = diffLista(); if (!D.upd.length && !D.dudas.length) return '';
+  return `<div class="lv" id="lv"><b>🔄 Lista viva · qué cambió respecto de tu catálogo</b>
+    <div class="lv-n"><span class="lv-up">⬆️ <b>${D.suben.length}</b> subieron${D.suben.length ? ' (prom. +' + D.promSube + '%)' : ''}</span><span class="lv-dn">⬇️ <b>${D.bajan.length}</b> bajaron${D.bajan.length ? ' (prom. −' + D.promBaja + '%)' : ''}</span><span>＝ <b>${D.iguales}</b> sin cambio</span><span>🆕 <b>${D.nuevos.length}</b> nuevos</span>${D.faltan.length ? `<span>❓ <b>${D.faltan.length}</b> no vinieron</span>` : ''}</div>
+    ${D.dudas.length ? `<p class="lv-duda">🤔 Hay ${D.dudas.length} ${D.dudas.length === 1 ? 'producto parecido' : 'productos parecidos'} a uno que ya tenés: decidí abajo si es el mismo.</p>` : ''}
+    ${D.faltan.length ? `<details class="lv-f"><summary>Ver los ${D.faltan.length} que no vinieron en esta lista</summary><p class="hint">${esc(D.faltan.slice(0, 40).map(p => p.nombre).join(' · '))}${D.faltan.length > 40 ? ' y ' + (D.faltan.length - 40) + ' más' : ''}</p></details>
+      <label class="chk"><input type="checkbox" data-change="i-faltan" ${I.ocultarFaltan ? 'checked' : ''}> Ocultarlos de mi tienda (el proveedor ya no los tiene)</label>` : ''}
+    <p class="hint">Al cargar, tus precios de venta se recalculan con tu ganancia y te dejamos listo el aviso para tus clientes.</p></div>`;
+}
+function armarAviso(D, margenNuevos) {
+  const t = P.t, L = [], top = (arr, f) => arr.slice(0, 12).map(f).concat(arr.length > 12 ? [`…y ${arr.length - 12} más`] : []);
+  const pvN = x => precioArs(x.costo_usd, cot(), margenNuevos);
+  L.push(`📢 *Lista actualizada · ${t.nombre}* (${new Date().toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })})`);
+  const sube = D.suben.filter(x => ventaDe(x.existente, x.costo_usd) !== ventaDe(x.existente, x.existente.costo_usd)), baja = D.bajan.filter(x => ventaDe(x.existente, x.costo_usd) !== ventaDe(x.existente, x.existente.costo_usd));
+  const lin = x => `• ${x.existente.nombre}: ${fmt(ventaDe(x.existente, x.existente.costo_usd))} → ${fmt(ventaDe(x.existente, x.costo_usd))}`;
+  if (baja.length) L.push('', `⬇️ *Bajaron (${baja.length})*`, ...top(baja, lin));
+  if (sube.length) L.push('', `⬆️ *Actualizaron precio (${sube.length})*`, ...top(sube, lin));
+  if (D.nuevos.length) L.push('', `🆕 *Novedades (${D.nuevos.length})*`, ...top(D.nuevos, x => `• ${x.nombre.trim()}: ${fmt(pvN(x))}`));
+  if (D.ocultos && D.ocultos.length) L.push('', `❌ *Sin stock por ahora (${D.ocultos.length})*: ${D.ocultos.slice(0, 10).map(p => p.nombre).join(', ')}${D.ocultos.length > 10 ? '…' : ''}`);
+  if (L.length === 1) return '';
+  L.push('', 'Mirá todos los precios y hacé tu pedido acá:', urlTiendaDe(t.slug));
+  return L.join('\n');
+}
+const vistaAviso = () => AV.texto ? `<div class="lv lv-ok" id="lv-aviso"><b>📢 Avisales a tus clientes</b><p class="hint">${esc(AV.resumen)} Editá el mensaje si querés y compartilo en tus grupos, estados o lista de difusión.</p>
+    <textarea class="fi" id="lv-txt" rows="9" data-input="lv-txt">${esc(AV.texto)}</textarea>
+    <div class="lv-acc"><a class="btn btn-wa btn-sm" id="lv-wa" target="_blank" rel="noopener" href="${esc(waLink('', AV.texto))}">Compartir por WhatsApp</a><button class="btn btn-s btn-sm" data-act="lv-copiar">📋 Copiar</button><button class="btn-link" data-act="lv-cerrar">Listo, ocultar</button></div></div>` : '';
+on('lv-txt', (d, el) => { AV.texto = el.value; const a = $('#lv-wa'); if (a) a.href = waLink('', AV.texto); });
+on('lv-copiar', () => copiar(AV.texto));
+on('lv-cerrar', () => { AV.texto = ''; AV.resumen = ''; P.repintar(); });
+on('i-faltan', (d, el) => { I.ocultarFaltan = el.checked; });
+on('i-mismo', d => { (I.ed[d.u] = I.ed[d.u] || {}).mismo = d.v === '1'; if (d.v === '1') I.ed[d.u].incluir = true; procesar(); P.repintar(); });
 
 /* ---------- vista ---------- */
 function vistaTablas() {
@@ -111,13 +161,15 @@ function vistaPublicar(nNuevos) {
     <p class="hint">Los productos que ya existen solo actualizan su costo (y el stock o la foto si faltaban): no cambian cómo se publican.</p></div>`;
 }
 function fila(x) {
-  const e = x.existente, estado = !(x.costo_usd > 0) ? '<span class="tag bad">falta el costo</span>' : I.destino !== 'mis' ? (e ? `<span class="tag ok">→ ${esc(e.nombre)}</span>` : '<span class="tag">no está en tu catálogo</span>') : e ? `<span class="tag warn">actualiza${e.costo_usd != null && Math.abs(Number(e.costo_usd) - x.costo_usd) > 0.001 ? ' costo' : ''}</span>` : '<span class="tag ok">nuevo</span>';
+  const e = x.existente, estado = !(x.costo_usd > 0) ? '<span class="tag bad">falta el costo</span>' : I.destino !== 'mis' ? (e ? `<span class="tag ok">→ ${esc(e.nombre)}</span>` : '<span class="tag">no está en tu catálogo</span>') : x.duda ? `<span class="lv-q">¿Es “${esc(e.nombre)}”?<br><button class="btn btn-s btn-sm" data-act="i-mismo" data-u="${esc(x.uid)}" data-v="1">Sí, es el mismo</button> <button class="btn btn-s btn-sm" data-act="i-mismo" data-u="${esc(x.uid)}" data-v="0">No, es nuevo</button></span>`
+    : e ? (() => { const c = cambio(x); return c ? `<span class="tag ${c > 0 ? 'warn' : 'ok'}">${c > 0 ? '⬆️ +' : '⬇️ −'}${Math.abs(Math.round(c * 100))}%</span><br><small class="muted">${fmt(ventaDe(e, e.costo_usd))} → <b>${fmt(ventaDe(e, x.costo_usd))}</b></small>` : '<span class="tag">sin cambio</span>'; })() + (x.aprox ? `<br><small class="muted">≈ ${esc(e.nombre)} <button class="btn-link" data-act="i-mismo" data-u="${esc(x.uid)}" data-v="0">no es</button></small>` : '')
+    : '<span class="tag ok">nuevo</span>';
   const costoArs = x.costo_usd > 0 ? Math.round(x.costo_usd * cot()) : '';
   return `<tr class="${x.incluir ? '' : 'off'}"><td><input type="checkbox" aria-label="Incluir" data-change="i-inc" data-u="${esc(x.uid)}" ${x.incluir ? 'checked' : ''}></td>
     <td>${x.fotoUrl ? `<img class="imp-th${x.usoFoto === 'no' ? ' imp-th-no' : ''}" src="${esc(x.fotoUrl)}" alt=""><select class="imp-uso" aria-label="Foto para la tienda" data-change="i-uso" data-u="${esc(x.uid)}"><option value="usar" ${x.usoFoto === 'usar' ? 'selected' : ''}>Usar foto</option><option value="no" ${x.usoFoto === 'no' ? 'selected' : ''}>Sin foto</option><option value="recortar">✂️ Recortar…</option></select>${x.captura ? '<small class="muted">captura</small>' : ''}` : x.imagen_url ? `<img class="imp-th" src="${esc(x.imagen_url)}" alt="" loading="lazy">` : ''}</td>
     <td><input class="fi fi-s" maxlength="160" value="${esc(x.nombre || '')}" placeholder="Escribí el nombre" data-input="i-ed" data-u="${esc(x.uid)}" data-k="nombre">${x.revisar ? ' <span title="Leído de una foto: revisalo">🔎</span>' : ''}${x.variantes && x.variantes.length ? '<br><small class="muted">' + esc(x.variantes.join(', ')) + '</small>' : ''}<br><small class="muted">${esc(x.fuente || '')}${x.activo === false ? ' · estaba oculto' : ''}</small></td>
     <td><input class="fi fi-s" type="number" min="0" step="any" value="${costoArs}" placeholder="$" data-input="i-ed" data-u="${esc(x.uid)}" data-k="costo" style="max-width:110px">${x.inferido ? '<br><small class="muted">número sin $: revisalo</small>' : ''}</td>
-    ${I.destino === 'mis' ? `<td class="r">${x.costo_usd > 0 ? fmt(pv(x.costo_usd)) : '—'}</td>` : ''}<td>${estado}</td></tr>`;
+    ${I.destino === 'mis' ? `<td class="r">${x.costo_usd > 0 ? fmt(x.existente && !x.duda ? ventaDe(x.existente, x.costo_usd) : pv(x.costo_usd)) : '—'}</td>` : ''}<td>${estado}</td></tr>`;
 }
 function vistaRecorte() {
   const f = I.fotos.find(x => x.uid === I.recorte.uid); if (!f) return '';
@@ -139,15 +191,15 @@ export function vistaImportar() {
     ${I.destino !== 'mis' ? `<div class="fg"><label class="flabel">${I.destino === 'prov' ? 'Nombre del proveedor' : 'Nombre del competidor'}</label><input class="fi" maxlength="60" value="${esc(I.nombre)}" data-input="i-nombre" placeholder="${I.destino === 'prov' ? 'Ej: Distribuidora Sur' : 'Ej: Tienda de la esquina'}"></div><p class="hint">Solo se cargan los que ya existen en tu catálogo (se cruzan por código o nombre).</p>` : ''}`;
   const hay = ok.length > 0 && (I.destino === 'mis' || (I.nombre.trim().length >= 2 && upd.length > 0 && can(I.destino === 'prov' ? 'proveedores' : 'mercado')));
   const fuentes = [...I.tablas.map(t => t.archivo), ...new Set(I.fotos.map(f => f.grupo || f.archivo))];
-  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">📥 Cargar productos</div><div id="mm">${I.err ? `<div class="err-box">${esc(I.err)}</div>` : ''}${I.msg && !I.busy ? `<div class="ok-box">${esc(I.msg)}</div>` : ''}</div>
-    <label class="drop" id="drop" for="i-file">📎 <b>Subí uno o varios archivos</b> o arrastralos acá<br><small>Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
+  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">📥 Cargar o actualizar productos</div><div id="mm">${I.err ? `<div class="err-box">${esc(I.err)}</div>` : ''}${I.msg && !I.busy ? `<div class="ok-box">${esc(I.msg)}</div>` : ''}</div>${I.busy ? '' : vistaAviso()}
+    <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
     <input id="i-file" type="file" hidden multiple data-change="i-file" accept=".csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*">
     <details class="hint" style="margin:8px 0"><summary>¿Cómo traigo los productos de un canal o grupo de WhatsApp?</summary>
       <p><b>Grupo o chat:</b> en el celular abrí el grupo → ⋮ → Más → <b>Exportar chat</b> → <b>Incluir archivos</b> → guardalo y subí ese .zip acá. Cada foto se une con su texto (nombre y precio).</p>
       <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen.</p></details>
     <textarea class="fi" id="imp-t" rows="3" data-input="i-texto" placeholder="…o pegá el texto de la lista (uno por renglón): Perfume X 100ml $12.500">${esc(I.texto)}</textarea>
     ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div></div>` : ''}
-    ${vistaTablas()}${vistaOpcionesLectura()}${(I.items || I.texto || I.tablas.length || I.fotos.length) ? destino : ''}${vistaPublicar(nuevos.length)}${tabla}
+    ${vistaTablas()}${vistaOpcionesLectura()}${(I.items || I.texto || I.tablas.length || I.fotos.length) ? destino : ''}${vistaListaViva()}${vistaPublicar(nuevos.length)}${tabla}
     <button class="btn btn-p" style="margin-top:10px" data-act="i-ok" ${hay && !I.busy ? '' : 'disabled'}>${I.destino === 'mis' ? `Cargar ${ok.length} productos` : 'Cargar ' + upd.length + ' precios'}</button>
     <button class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
@@ -164,6 +216,7 @@ async function esCaptura(f) {
   try { const b = await createImageBitmap(f); const r = b.height / b.width; b.close && b.close(); return r >= 1.7; } catch (e) { return false; }
 }
 async function cargar(lista) {
+  AV.texto = ''; AV.resumen = '';
   const files = [...(lista || [])]; if (!files.length) return;
   I.busy = true; I.err = ''; refrescar();
   const errores = []; let n = 0;
@@ -272,6 +325,7 @@ on('i-ok', async () => {
   try {
     if (I.destino === 'mis') {
       const nuevos = ok.filter(x => !x.existente), upd = ok.filter(x => x.existente), u = I.pub;
+      const DF = diffLista(), ocultar = I.ocultarFaltan ? DF.faltan : [];
       await subirFotos(nuevos);
       const m = Number(u.margen) / 100, mOvr = Math.abs(m - Number(t.margen_1)) > 0.0001 ? m : null;
       const cont = CON_CONTENIDO.includes(u.unidad) && Number(u.contenido) >= 1 ? Math.floor(Number(u.contenido)) : null;
@@ -280,8 +334,11 @@ on('i-ok', async () => {
       progreso('Guardando productos…');
       if (filas.length) await api.insertarProductos(filas);
       for (let i = 0; i < upd.length; i += 6) await Promise.all(upd.slice(i, i + 6).map(x => { const c = { costo_usd: x.costo_usd }; if (x.stock != null) c.stock = x.stock; else if (x.agotado) c.stock = 0; if (x.imagen_url && !x.existente.imagen_url) c.imagen_url = x.imagen_url; return api.guardarProducto(x.existente.id, c); }));
+      for (let i = 0; i < ocultar.length; i += 6) await Promise.all(ocultar.slice(i, i + 6).map(p => api.guardarProducto(p.id, { activo: false })));
+      DF.ocultos = ocultar;
+      AV.texto = armarAviso(DF, m); AV.resumen = AV.texto ? `${DF.suben.length} subieron, ${DF.bajan.length} bajaron, ${DF.nuevos.length} nuevos${ocultar.length ? ', ' + ocultar.length + ' ocultos' : ''}.` : '';
       const sinFoto = nuevos.filter(x => x.errorFoto).length;
-      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}`;
+      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}`;
     } else {
       const items = ok.filter(x => x.existente);
       for (let i = 0; i < items.length; i += 1000) {

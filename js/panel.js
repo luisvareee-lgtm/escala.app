@@ -16,6 +16,7 @@ import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.j
 import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
+import { demoPendienteHtml, filasDemo, descartarDemo } from './demo.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
 let salirFn = () => { };
@@ -44,7 +45,7 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
+  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
@@ -66,12 +67,18 @@ function menuMas() {
     <button class="btn btn-s" style="margin-top:12px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
 on('p-menu', () => { P.modal = { tipo: 'mas' }; pintar(); });
+on('dm-descartar', () => { descartarDemo(); pintar(); });
+on('dm-cargar', async (d, b) => {
+  b.disabled = true;
+  try { const f = filasDemo(P.t); if (f.length) await api.insertarProductos(f); descartarDemo(); P.prods = await api.misProductos(); toast(f.length + ' productos cargados'); P.tab = 'productos'; pintar(); }
+  catch (e) { b.disabled = false; toast(e.message); }
+});
 on('p-ver-tienda', () => { window.open(urlTienda(), '_blank', 'noopener'); });
 
 /* ---------- productos ---------- */
 function productos() {
   const q = Q.pq.toLowerCase(), L = P.prods.filter(p => !q || p.nombre.toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Importar</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button></div>
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button></div>
   <input class="fi" id="pq" placeholder="Buscar por nombre, categoría o código…" data-input="p-q" value="${esc(Q.pq)}" aria-label="Buscar producto" style="margin-bottom:12px"><div class="muted" style="margin-bottom:8px;font-size:.8rem">${P.prods.length} productos</div>
   <div class="card">${L.slice(0, Q.lim).map(filaProd).join('') || '<p class="muted">Nada para mostrar. Importá tu lista o agregá un producto.</p>'}${L.length > Q.lim ? `<button class="btn btn-s btn-sm" data-act="p-mas">Ver más (${L.length - Q.lim})</button>` : ''}</div>`;
 }
@@ -85,7 +92,7 @@ function preciosDe(costo, ovr) {
 const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
 function filaProd(p) {
   const pr = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista';
-  const det = [p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
+  const det = [p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
   return `<div class="prow${p.activo ? '' : ' off'}" data-act="p-editar" data-id="${p.id}" role="button" tabindex="0" aria-label="Editar ${esc(p.nombre)}">
     <span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
     <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div></span>
@@ -119,6 +126,9 @@ function modal() {
     <div class="fg"><span class="flabel">Foto</span><div id="foto-box">${fotoHtml(foto)}</div></div>
     <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"></div></div>
     <div class="fg"><label class="flabel">Margen propio % para este producto (vacío = el general)</label><input class="fi" name="margen_propio" type="number" min="0" max="900" step="any" value="${p.margen_override != null ? Math.round(Number(p.margen_override) * 10000) / 100 : ''}" data-input="p-prev" placeholder="General: ${Math.round(Number(P.t.margen_1) * 100)}%"></div>
+    ${(P.t.modo_stock || 'stock') !== 'stock' ? `<div class="fg">${P.t.modo_stock === 'mixto' ? `<label class="flabel"><input type="checkbox" name="a_pedido" ${p.a_pedido ? 'checked' : ''}> Por encargo (no lo tengo en stock: lo compro cuando me lo piden)</label>` : '<div class="hint">Tu tienda trabaja por encargo: este producto se vende aunque no tengas stock.</div>'}
+      <label class="flabel" for="p-dem" style="margin-top:6px">Demora propia en días (vacío = ${Number(P.t.demora_encargo || 7)})</label><input class="fi" id="p-dem" name="demora_dias" type="number" min="1" max="120" value="${p.demora_dias || ''}"></div>` : ''}
+    ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel" for="p-pvp">Precio sugerido de venta al público $ (opcional)</label><input class="fi" id="p-pvp" name="pvp_sugerido" type="number" min="0" step="any" value="${p.pvp_sugerido != null ? Number(p.pvp_sugerido) : ''}" placeholder="Vacío = lo calcula la app"><div class="hint">Es a cuánto puede venderlo tu cliente revendedor. Se usa en “Tu ganancia” (Tienda → Reglas).</div></div>` : ''}
     <div class="flabel">Así lo ve tu cliente</div><div class="pprev" id="pprev">${prevHtml(p.costo_usd, p.margen_override)}</div>
     <div class="fg"><label class="flabel">Descripción</label><textarea class="fi" name="descripcion" rows="2" maxlength="2000">${esc(p.descripcion || '')}</textarea></div>
     <div class="fg"><label class="flabel"><input type="checkbox" name="activo" ${p.activo === false ? '' : 'checked'}> Visible en la tienda</label></div>
@@ -173,6 +183,9 @@ on('p-prod', async (d, f) => {
   const p0 = P.modal.p || {}, foto = P.modal.foto !== undefined ? P.modal.foto : (p0.imagen_url || null);
   const datos = { nombre: fd.get('nombre').trim(), categoria: fd.get('categoria').trim() || 'General', sku: fd.get('sku').trim() || null, marca: fd.get('marca').trim() || null, descripcion: fd.get('descripcion').trim() || null, costo_usd: Number(fd.get('costo_usd')), variantes: v, imagen_url: foto || null, emoji: (fd.get('emoji') || '📦').trim() || '📦', stock: st === '' ? null : Math.max(0, Math.floor(Number(st))), margen_override: mp === '' ? null : (p0.margen_override != null && Math.abs(Number(mp) - Math.round(Number(p0.margen_override) * 10000) / 100) < 0.005 ? Number(p0.margen_override) : Number(mp) / 100), activo: fd.get('activo') === 'on' };
   datos.unidad = fd.get('unidad') || 'unidad';
+  if ((P.t.modo_stock || 'stock') === 'mixto') datos.a_pedido = fd.get('a_pedido') === 'on';
+  if (fd.has('demora_dias')) datos.demora_dias = Number(fd.get('demora_dias')) >= 1 ? Math.min(120, Math.floor(Number(fd.get('demora_dias')))) : null;
+  if (fd.has('pvp_sugerido')) datos.pvp_sugerido = Number(fd.get('pvp_sugerido')) > 0 ? Math.round(Number(fd.get('pvp_sugerido')) * 100) / 100 : null;
   datos.contenido = ['pack', 'bulto', 'caja', 'display'].includes(datos.unidad) && Number(fd.get('contenido')) >= 1 ? Math.floor(Number(fd.get('contenido'))) : null;
   datos.precio_unico = fd.get('precio_unico') === 'on';
   try {
@@ -185,6 +198,7 @@ on('p-guardar', async (d, f) => {
   const fd = new FormData(f), b = $('#aj-go'); b.disabled = true;
   const m = n => Number(fd.get('m' + n)) / 100;
   const c = { whatsapp: String(fd.get('whatsapp')).replace(/\D/g, ''), modalidad: fd.get('modalidad'), cotizacion_usd: Number(fd.get('cotizacion_usd')), compra_minima: Number(fd.get('compra_minima') || 0), gastos_fijos: Number(fd.get('gastos_fijos') || 0), margen_piso: Number(fd.get('margen_piso') || 0) / 100, alias_cobro: fd.get('alias_cobro').trim() || null, margen_1: m(1), margen_3: m(3), margen_6: m(6), margen_12: m(12) };
+  c.modo_stock = fd.get('modo_stock') || 'stock'; c.demora_encargo = Math.max(1, Math.min(120, Math.floor(Number(fd.get('demora_encargo')) || 7)));
   if (can('pixel')) c.pixel_id = (fd.get('pixel_id') || '').trim() || null;
   if (can('webhook')) c.webhook_url = (fd.get('webhook_url') || '').trim() || null;
   try { P.t = await api.guardarTienda(P.t.id, c) || P.t; toast('Cambios guardados'); pintar(); }

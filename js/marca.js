@@ -9,9 +9,9 @@ export const MARCA = {
   // Enlace a una tienda de ejemplo para mostrar en la portada (ej: 'https://demo.tumarca.com.ar/'). Vacío = no se muestra.
   DEMO_URL: '',
   // WhatsApp de soporte con código de país, solo números (ej: 5491123456789). Vacío = no se muestra el botón.
-  SOPORTE_WSP: '5491153162392',
+  SOPORTE_WSP: '',
   // Email de contacto que aparece en términos y privacidad. Vacío = se muestra "por WhatsApp de soporte".
-  EMAIL_CONTACTO: 'contacto@elite-urbano.com',
+  EMAIL_CONTACTO: '',
   // Titular del servicio para los textos legales (nombre o razón social y CUIT). Completalo antes de cobrar.
   TITULAR: '[Nombre o razón social del titular]',
   CUIT: '[CUIT]',

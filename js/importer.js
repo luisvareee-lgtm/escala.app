@@ -244,16 +244,46 @@ export async function leerArchivo(f, progreso = () => { }) {
 }
 
 /* ---------- 4) Unir con lo que ya existe (actualizar precios de la lista del proveedor) ---------- */
-export function cruzar(nuevos, existentes) {
+// Coincidencia aproximada: mismo producto escrito distinto ("Perfume Asad 100ml EDP" ≈ "ASAD EDP 100 ML perfume").
+// Exige los mismos números (tamaños, modelos) y casi las mismas palabras; se marca "aprox" para que el comerciante lo confirme.
+const RELLENO = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'con', 'para', 'por', 'y', 'x', 'un', 'una', 'u', 'unid', 'unidad', 'unidades', 'original', 'nuevo', 'nueva', 'oferta', 'promo']);
+export function firma(nombre) {
+  const t = clave(nombre).replace(/(\d)\s*(ml|gr|g|kg|cm|mm|mts?|m|lts?|l|cc|oz|w|v|gb|mg)\b/g, '$1$2').split(' ').filter(w => w && !RELLENO.has(w));
+  return { pal: new Set(t.filter(w => !/\d/.test(w)).map(w => w.length > 4 ? w.replace(/(es|s)$/, '') : w)), num: new Set(t.filter(w => /\d/.test(w))) };
+}
+export function parecido(a, b) {
+  if (a.num.size !== b.num.size || [...a.num].some(n => !b.num.has(n))) return 0;
+  if (a.pal.size < 2 || b.pal.size < 2) return 0;
+  let c = 0; a.pal.forEach(w => { if (b.pal.has(w)) c++; });
+  return c / (a.pal.size + b.pal.size - c);
+}
+export function cruzar(nuevos, existentes, rechazados = new Set()) {
   const porSku = new Map(), porNombre = new Map();
   existentes.forEach(p => { if (p.sku) porSku.set(clave(p.sku), p); porNombre.set(clave(p.nombre), p); });
+  const firmas = existentes.map(p => ({ p, f: firma(p.nombre) })), indice = new Map();
+  firmas.forEach(x => x.f.pal.forEach(w => (indice.get(w) || indice.set(w, []).get(w)).push(x)));
+  const aprox = n => {
+    const f = firma(n.nombre), cands = new Set(); f.pal.forEach(w => (indice.get(w) || []).forEach(x => cands.add(x)));
+    let mejor = null, ms = 0; cands.forEach(x => { const sc = parecido(f, x.f); if (sc > ms) { ms = sc; mejor = x.p; } });
+    return ms >= 0.7 ? { p: mejor, igual: ms > 0.999 } : null;
+  };
   const vistos = new Set(), nombres = new Set();
-  return nuevos.filter(n => {
+  const out = nuevos.filter(n => {
     const kn = clave(n.nombre), k = kn + '|' + clave(n.sku || '');
     if (vistos.has(k) || (!n.sku && nombres.has(kn))) return false;
     vistos.add(k); nombres.add(kn); return true;
   })
-    .map(n => ({ ...n, existente: (n.sku && porSku.get(clave(n.sku))) || porNombre.get(clave(n.nombre)) || null }));
+    .map(n => {
+      const exacto = (n.sku && porSku.get(clave(n.sku))) || porNombre.get(clave(n.nombre)) || null;
+      if (exacto) return { ...n, existente: exacto };
+      const a = !rechazados.has(n.uid) && (n.nombre || '').trim() ? aprox(n) : null;
+      // aprox: mismas palabras en otro orden (se toma como el mismo) · duda: muy parecido (el comerciante decide)
+      return a ? { ...n, existente: a.p, aprox: true, duda: !a.igual } : { ...n, existente: null };
+    });
+  // un producto existente lo actualiza una sola fila: gana la coincidencia exacta; el resto queda como nuevo
+  const exactos = new Set(out.filter(x => x.existente && !x.aprox).map(x => x.existente.id)), usados = new Set();
+  out.forEach(x => { if (!x.existente || !x.aprox) return; const id = x.existente.id; if (exactos.has(id) || usados.has(id)) { x.existente = null; x.aprox = false; x.duda = false; } else usados.add(id); });
+  return out;
 }
 
 

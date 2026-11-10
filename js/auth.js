@@ -39,6 +39,11 @@ export function pantallaNuevaTienda(app) {
     <div class="fg"><label class="flabel" for="w">WhatsApp donde recibís pedidos</label><input class="fi" id="w" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" required></div>
     <div class="fg"><label class="flabel" for="r">Rubro (cargamos 4 productos de ejemplo)</label><select class="fi" id="r" name="rubro">${Object.entries(RUBROS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
     <div class="fg"><label class="flabel" for="mo">¿Cómo vendés?</label><select class="fi" id="mo" name="modalidad"><option value="hibrido">Híbrido (minorista + mayorista)</option><option value="mayorista">Solo mayorista</option><option value="minorista">Solo minorista</option></select></div>
+    <fieldset class="fg modo-st"><legend class="flabel">¿Cómo trabajás con la mercadería?</legend>
+      <label><input type="radio" name="modo_stock" value="stock" checked><span><b>Tengo stock</b><small>Vendo lo que tengo en el depósito.</small></span></label>
+      <label><input type="radio" name="modo_stock" value="encargo"><span><b>Por encargo</b><small>Junto los pedidos y después le compro al proveedor.</small></span></label>
+      <label><input type="radio" name="modo_stock" value="mixto"><span><b>Las dos</b><small>Algunos productos los tengo y otros los encargo.</small></span></label>
+      <div class="hint">Lo podés cambiar cuando quieras en Ajustes.</div></fieldset>
     <button class="btn btn-p" type="submit" id="go">Crear mi tienda</button></form>`);
 }
 
@@ -61,5 +66,7 @@ on('a-tienda', (d, f) => envio(f, 'Creando…', async fd => {
   const w = normWsp(fd.get('whatsapp'));
   if (w.length < 10) throw new Error('Revisá el WhatsApp: poné código de área y número (ej. 11 2345-6789).');
   await api.crearTienda({ slug: fd.get('slug').trim(), nombre: fd.get('nombre').trim(), rubro: fd.get('rubro'), whatsapp: w, modalidad: fd.get('modalidad'), plan: 'base' });
+  const modo = fd.get('modo_stock');
+  if (modo && modo !== 'stock') { try { const t = await api.miTienda(); if (t) await api.guardarTienda(t.id, { modo_stock: modo }); } catch (e) { } }   // si falla, queda "con stock" y se cambia en Ajustes
   irPanel();
 }));

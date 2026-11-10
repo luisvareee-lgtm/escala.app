@@ -70,7 +70,7 @@ export function pasosAuto(t) {
     : 'Tocá “+ Agregar” en lo que te guste. Podés comprar desde 1 unidad.' });
   P.push({ titulo: 'Revisá tu carrito', texto: `Ves el total y, si corresponde, cuánto ahorrás por cantidad.${may && min ? ` La compra mínima mayorista es de ${fmt(min)}.` : ''}` });
   P.push({ titulo: 'Elegí cómo recibirlo', texto: env.length ? `Opciones: ${env.map(e => e.nombre).join(', ')}.${Number(t.envio_gratis_desde) > 0 ? ` Envío gratis desde ${fmt(t.envio_gratis_desde)}.` : ''}` : 'Coordinamos la entrega o el retiro por WhatsApp.' });
-  P.push({ titulo: 'Confirmá y mandá el pedido por WhatsApp', texto: `Te llega el ticket con el detalle y el total. Podés pagar por transferencia, en efectivo${t.mp_activo ? ' o con Mercado Pago' : ' o con link de pago'}. Te confirmamos stock y el envío.` });
+  P.push({ titulo: 'Confirmá y mandá el pedido por WhatsApp', texto: `Te llega el ticket con el detalle y el total. Podés pagar por transferencia, en efectivo${t.mp_activo ? ' o con Mercado Pago' : ' o con link de pago'}.${t.modo_stock === 'encargo' ? ` Trabajamos por encargo: llega en ${+t.demora_encargo || 7} días desde que confirmamos el pedido.` : t.modo_stock === 'mixto' ? ' Los productos “por encargo” llegan en los días que indica cada uno.' : ' Te confirmamos stock y el envío.'}` });
   return P;
 }
 export const pasosDe = (d, t) => (d && Array.isArray(d.comprar) && d.comprar.length ? d.comprar : pasosAuto(t));

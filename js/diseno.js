@@ -9,9 +9,9 @@ import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comp
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
-const E = { lista: null, gratis: null, aviso: null, datos: null, msg: '', err: '' };
+const E = { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, msg: '', err: '' };
 const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null };
-export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null }); };
+export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null }); };
 const clon = x => JSON.parse(JSON.stringify(x));
 const lista = () => (E.lista = E.lista || clon(Array.isArray(P.t.envios) ? P.t.envios : []));
 const datos = () => (E.datos = E.datos || Object.assign({}, P.t.datos_checkout || { localidad: 'opcional' }));
@@ -46,6 +46,8 @@ function vistaEnvios() {
   <h3 style="margin-top:12px">📏 Reglas de compra</h3>
   <div class="fg"><label class="flabel" for="en-gr">Envío gratis desde $ (0 = nunca)</label><input class="fi" id="en-gr" type="number" min="0" value="${E.gratis != null ? E.gratis : Number(t.envio_gratis_desde || 0)}" data-input="en-gr"></div>
   <div class="fg"><label class="flabel" for="en-av">Mostrar “¡Últimas N!” cuando quedan (0 = no mostrar)${aviso('stock')}</label><input class="fi" id="en-av" type="number" min="0" max="1000" value="${E.aviso != null ? E.aviso : Number(t.aviso_stock || 0)}" data-input="en-av" ${can('stock') ? '' : 'disabled'}></div>
+  ${t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" data-change="en-rev" ${(E.rev != null ? E.rev : t.reventa_activa) ? 'checked' : ''}> 💰 Mostrar “Tu ganancia”: a cuánto puede revender cada producto y cuánto gana</label>
+    <div class="row2" style="align-items:end"><div class="fg"><label class="flabel" for="en-revm">Recargo sugerido para la reventa %</label><input class="fi" id="en-revm" type="number" min="5" max="500" value="${E.revM != null ? E.revM : Math.round(Number(t.reventa_margen || 0.6) * 100)}" data-input="en-revm"></div><p class="hint">Sobre tu precio x1. Si un producto tiene su “precio sugerido” cargado, se usa ese.</p></div></div>` : ''}
   <p class="hint">Compra mínima mayorista: <b>${Number(t.compra_minima) ? fmt(t.compra_minima) : 'sin mínimo'}</b> (se cambia en Ajustes). La tienda la muestra arriba y en el carrito con lo que falta.</p>
   <button class="btn btn-p" data-act="en-guardar" style="margin-top:8px">Guardar envíos, datos y reglas</button></div>
   <div class="cc"><h3>Cómo lo ve tu cliente</h3><div class="env-prev">${L.filter(x => x.activo !== false && x.nombre).map(x => `<div class="opt"><span class="opt-ico">${(TIPOS.find(y => y[0] === x.tipo) || ['', '🚚'])[1].split(' ')[0]}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${x.tipo === 'retiro' ? 'Sin cargo' : Number(x.costo) ? fmt(x.costo) : x.tipo === 'acordar' || x.tipo === 'correo' ? 'Costo a coordinar' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></div>`).join('') || '<p class="muted">Cargá un método para verlo acá.</p>'}</div>
@@ -99,14 +101,17 @@ on('en-act', (d, el) => { const x = lista()[+d.i]; if (x) { if (el.checked) dele
 on('en-set', (d, el) => { const x = lista()[+d.i]; if (!x) return; if (d.k === 'costo') x.costo = Math.max(0, Math.round(Number(el.value) || 0)); else x[d.k] = el.value; if (d.k === 'tipo') { if (x.tipo === 'retiro') x.costo = 0; P.repintar(); } });
 on('en-gr', (d, el) => { E.gratis = Math.max(0, Number(el.value) || 0); });
 on('en-av', (d, el) => { E.aviso = Math.max(0, Math.min(1000, Math.floor(Number(el.value) || 0))); });
+on('en-rev', (d, el) => { E.rev = el.checked; });
+on('en-revm', (d, el) => { E.revM = Math.max(5, Math.min(500, Number(el.value) || 60)); });
 on('dc-set', (d, el) => { datos()[d.k] = el.value; P.repintar(); });
 on('en-guardar', async () => {
   const L = lista().map(x => { const y = { id: x.id, nombre: String(x.nombre || '').trim(), tipo: x.tipo, costo: x.tipo === 'retiro' ? 0 : Math.max(0, Math.round(Number(x.costo) || 0)) }; if (x.detalle && x.detalle.trim()) y.detalle = x.detalle.trim(); if (x.activo === false) y.activo = false; return y; });
   const mal = L.find(x => x.nombre.length < 2); if (mal) { E.err = 'Cada método de envío necesita un nombre.'; E.msg = ''; return P.repintar(); }
   const dc = {}; Object.entries(datos()).forEach(([k, v]) => { if (DATOS.some(x => x[0] === k) && v !== 'no') dc[k] = v; });
   const c = { envios: L, envio_gratis_desde: E.gratis != null ? E.gratis : Number(P.t.envio_gratis_desde || 0), datos_checkout: dc };
+  if (P.t.modalidad !== 'minorista') { c.reventa_activa = E.rev != null ? E.rev : !!P.t.reventa_activa; c.reventa_margen = (E.revM != null ? E.revM : Math.round(Number(P.t.reventa_margen || 0.6) * 100)) / 100; }
   if (can('stock')) c.aviso_stock = E.aviso != null ? E.aviso : Number(P.t.aviso_stock || 0);
-  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
+  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
   catch (e) { E.err = e.message; E.msg = ''; }
   P.repintar();
 });

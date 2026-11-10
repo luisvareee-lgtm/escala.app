@@ -1,6 +1,7 @@
 // Portada: por qué elegir Escala, simuladores (precios por volumen y costo mensual), planes, preguntas y legales.
 import { esc, fmt, on, $ } from './util.js';
 import { MARCA, PLANES, REFERENCIA } from './marca.js';
+import { demoHtml } from './demo.js';
 
 const SIM = { costo: 10, dolar: 1200, m1: 50, m12: 20, ventas: 3000000 };
 const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mismo cálculo que la base de datos
@@ -9,11 +10,11 @@ const PORQUE = [
   ['💲', 'Tus costos reales, no un precio a ojo', 'Cargás el costo (en dólares o pesos) y tus márgenes: la app calcula el precio de cada escalón. Cambia el dólar y se actualiza todo el catálogo. Nunca vendés por debajo de tu margen mínimo.'],
   ['📦', 'Precios por volumen en todos los planes', 'x1 · x3 · x6 · x12 con el descuento a la vista y el aviso “sumá 2 más y ahorrás”. Por unidad, caja, bulto, kg o metro, o precio único.'],
   ['♾️', 'Sin límites y 0% por venta', 'Productos, pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: pagás un abono fijo y listo.'],
+  ['🔄', 'Lista viva: precios al día en un minuto', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
+  ['💰', 'Tu cliente ve cuánto gana', 'En tu lista mayorista cada producto muestra a cuánto revenderlo y la ganancia por unidad. Tu catálogo deja de ser una lista de precios: es una oportunidad de negocio.'],
   ['📥', 'Lee tus datos como vengan', 'Fotos del proveedor con el precio escrito, capturas de canales, el chat de WhatsApp exportado, Excel, PDF o el CSV de tu tienda actual. Revisás y publicás con tu margen.'],
-  ['🧠', 'Un asistente que te dice qué hacer', 'Quién te debe y hace cuánto (con el recordatorio armado), qué productos se te acaban antes de que llegue la compra y qué pedirle a cada proveedor.'],
-  ['📊', 'Números de verdad, en pesos y en dólares', 'Dashboard interactivo, ganancia neta con tus gastos, valor del stock y crecimiento real en dólares: sabés si vendiste más o si solo subió el precio.'],
-  ['🧾', 'Pedidos ordenados de punta a punta', 'Nuevo → confirmado → despachado → entregado, cobro aparte, seguimiento, remito para imprimir y el mensaje de WhatsApp listo en cada paso.'],
-  ['🎨', 'Tu tienda, con tu marca', 'Logo, colores, banners, barra de anuncios, “Cómo comprar”, preguntas frecuentes, envíos con costo y los datos que necesitás del cliente.']
+  ['🧠', 'Un asistente que cuida tu plata', 'Quién te debe y hace cuánto (con el recordatorio armado), qué se te acaba antes de que llegue la compra, y cuánto ganaste de verdad, en pesos y en dólares.'],
+  ['🧾', 'Pedidos y tienda con tu marca', 'Pedidos por etapas con remito y mensajes de WhatsApp listos, envíos con costo, banners, “Cómo comprar” y preguntas frecuentes. Todo con tu logo y tus colores.']
 ];
 const FAQ = [
   ['¿Necesito saber de computación?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
@@ -59,11 +60,12 @@ function simCosto() {
 export function inicio(app) {
   const N = esc(MARCA.NOMBRE);
   app.innerHTML = `<div class="lp">
-  <section class="lp-hero"><div class="tag">0% de comisión por venta · productos y pedidos ilimitados</div>
-    <h1>Vendé por menor y por mayor desde WhatsApp, con tus costos reales</h1>
-    <p>${N} arma tu tienda con precios por volumen calculados desde tu costo, lee las listas de tus proveedores y te dice a quién cobrarle y qué reponer. 7 días gratis con todo desbloqueado, sin tarjeta.</p>
-    <div class="lp-cta"><a class="btn btn-p" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
-    <ul class="lp-pills"><li>💲 Desde tu costo</li><li>📦 x1 · x3 · x6 · x12</li><li>♾️ Sin límites</li><li>💵 Pesos y dólares</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
+  <section class="lp-hero"><div class="tag">Para revendedores y mayoristas</div>
+    <h1>Subí la foto de la lista de tu proveedor. En un minuto tenés tu tienda con tus precios.</h1>
+    <p>${N} lee la lista, calcula tus precios por cantidad con tu ganancia y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
+    ${demoHtml()}
+    <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
+    <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📦 x1 · x3 · x6 · x12</li><li>💰 Tu cliente ve cuánto gana</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
 
   <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
 
