@@ -7,3 +7,12 @@ export const CONFIG = {
   MARCA: "Escala.app"
 };
 export const configurado = () => !!window.__SB_TEST__ || /^https:\/\/.+\.supabase\.co/.test(CONFIG.SUPABASE_URL) && CONFIG.SUPABASE_ANON_KEY.length > 40;
+window.CONFIG_MARCA = {
+      SOPORTE_WSP: '5491153162392',
+      EMAIL_CONTACTO: 'contacto@elite-urbano.com',
+      TITULAR: 'Tu nombre o razón social',
+      CUIT: '20-12345678-9',
+      DOMINIO: '',
+      DEMO_URL: '',
+      PLANES: { base: { link: '' }, pro: { link: '' }, api: { link: '' } }
+    };
