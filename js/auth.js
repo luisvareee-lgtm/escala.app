@@ -1,7 +1,9 @@
 // Registro, ingreso, recuperación y alta de la primera tienda.
 import { api } from './api.js';
 import { CONFIG } from './config.js';
-import { $, esc, on, toast, slugify, soloDigitos, normWsp } from './util.js';
+import { $, esc, on, toast, slugify, soloDigitos, normWsp, store } from './util.js';
+// si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
+const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
 const RUBROS = { cosmetica: 'Cosmética', indumentaria: 'Indumentaria', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
 export { RUBROS };
@@ -38,7 +40,7 @@ export function pantallaNuevaTienda(app) {
     <div class="fg"><label class="flabel" for="s">Tu enlace</label><input class="fi" id="s" name="slug" maxlength="30" minlength="3" required><div class="hint" id="sl">/t/<span id="slv">tu-negocio</span></div></div>
     <div class="fg"><label class="flabel" for="w">WhatsApp donde recibís pedidos</label><input class="fi" id="w" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" required></div>
     <div class="fg"><label class="flabel" for="r">Rubro (cargamos 4 productos de ejemplo)</label><select class="fi" id="r" name="rubro">${Object.entries(RUBROS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
-    <div class="fg"><label class="flabel" for="mo">¿Cómo vendés?</label><select class="fi" id="mo" name="modalidad"><option value="hibrido">Híbrido (minorista + mayorista)</option><option value="mayorista">Solo mayorista</option><option value="minorista">Solo minorista</option></select></div>
+    <div class="fg"><label class="flabel" for="mo">¿Cómo vendés?</label><select class="fi" id="mo" name="modalidad">${[['hibrido', 'Híbrido (minorista + mayorista)'], ['mayorista', 'Solo mayorista'], ['minorista', 'Solo minorista']].map(([v, t]) => `<option value="${v}" ${v === modoDemo() ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <fieldset class="fg modo-st"><legend class="flabel">¿Cómo trabajás con la mercadería?</legend>
       <label><input type="radio" name="modo_stock" value="stock" checked><span><b>Tengo stock</b><small>Vendo lo que tengo en el depósito.</small></span></label>
       <label><input type="radio" name="modo_stock" value="encargo"><span><b>Por encargo</b><small>Junto los pedidos y después le compro al proveedor.</small></span></label>

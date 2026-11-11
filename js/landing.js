@@ -66,9 +66,9 @@ function simCosto() {
 export function inicio(app) {
   const N = esc(MARCA.NOMBRE);
   app.innerHTML = `<div class="lp">
-  <section class="lp-hero"><div class="tag">Para revendedores y mayoristas</div>
-    <h1>Subí la foto de la lista de tu proveedor. En un minuto tenés tu tienda con tus precios.</h1>
-    <p>${N} lee la lista, calcula tus precios por cantidad con tu ganancia y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
+  <section class="lp-hero"><div class="tag">Para comercios, revendedores y mayoristas</div>
+    <h1>Subí la lista de tu proveedor, calculá tu margen y ¡en un minuto tenés tu tienda con tus precios!</h1>
+    <p>${N} lee la lista, calcula tus precios con tu ganancia (por unidad, por cantidad o las dos) y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
     ${demoHtml()}
     <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
     <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📦 x1 · x3 · x6 · x12</li><li>💰 Tu cliente ve cuánto gana</li><li>📸 Flyers para tus Estados</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
