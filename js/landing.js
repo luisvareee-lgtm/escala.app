@@ -13,6 +13,7 @@ const PORQUE = [
   ['🔄', 'Lista viva: precios al día en un minuto', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
   ['💰', 'Tu cliente ve cuánto gana', 'En tu lista mayorista cada producto muestra a cuánto revenderlo y la ganancia por unidad. Tu catálogo deja de ser una lista de precios: es una oportunidad de negocio.'],
   ['📥', 'Lee tus datos como vengan', 'Fotos del proveedor con el precio escrito, capturas de canales, el chat de WhatsApp exportado, Excel, PDF o el CSV de tu tienda actual. Revisás y publicás con tu margen.'],
+  ['📸', 'Flyers para tus Estados, en un toque', 'Elegís de 1 a 4 productos y sale la imagen vertical lista para WhatsApp e Instagram, con tu marca. Y tus revendedores arman la suya en marca blanca: con su precio y su contacto, sin tus datos.'],
   ['🧠', 'Un asistente que cuida tu plata', 'Quién te debe y hace cuánto (con el recordatorio armado), qué se te acaba antes de que llegue la compra, y cuánto ganaste de verdad, en pesos y en dólares.'],
   ['🧾', 'Pedidos y tienda con tu marca', 'Pedidos por etapas con remito y mensajes de WhatsApp listos, envíos con costo, banners, “Cómo comprar” y preguntas frecuentes. Todo con tu logo y tus colores.']
 ];
@@ -34,6 +35,7 @@ const VS = [
   ['Lista mayorista separada del público', `Con código de acceso, desde ${fmt(PLANES.find(p => p.id === 'pro').precio)}/mes`, `Recién en planes de ${fmt(REFERENCIA.plan)}/mes o más`, 'Mandando un PDF'],
   ['Precio calculado desde tu costo y el dólar', 'Sí: cambia el dólar y se recalcula todo', 'Cargás el precio final de cada producto', 'Rehacés la lista entera'],
   ['Cargar la lista del proveedor', 'Fotos, capturas, chat de WhatsApp, Excel, PDF o CSV', 'Una planilla con su formato', 'No aplica'],
+  ['Flyers para Estados e historias', 'En un toque: con tu marca, o en marca blanca para que tus revendedores publiquen con su precio', 'Los armás aparte, en una app de diseño', 'Con capturas de pantalla'],
   ['Saber quién te debe y qué reponer', 'Incluido', 'Según el plan o con apps aparte', 'De memoria'],
   ['Valor del abono', 'Fijo; si cambia, avisamos 30 días antes', 'Se ajusta cada trimestre', 'Gratis, pero te cuesta horas']
 ];
@@ -46,12 +48,16 @@ const GAR = [
 function simPrecios() {
   const { costo, dolar, m1, m12 } = SIM, m3 = m12 + (m1 - m12) * 0.6, m6 = m12 + (m1 - m12) * 0.3;
   const p = { 1: precio(costo, dolar, m1), 3: precio(costo, dolar, m3), 6: precio(costo, dolar, m6), 12: precio(costo, dolar, m12) }, c = costo * dolar;
+  const pct = v => Math.max(2, Math.min(100, Math.round(v / (p[1] || 1) * 100)));
   return `<div class="lp-tiers">${[1, 3, 6, 12].map(n => `<div><small>x${n}${n === 12 ? '+' : ''}</small><b>${fmt(p[n])}</b><i>ganás ${fmt(p[n] - c)} c/u</i></div>`).join('')}</div>
+    <div class="lp-bars" role="img" aria-label="Cuánto de cada precio es costo y cuánto es tu ganancia">${[1, 3, 6, 12].map(n => `<div class="lp-bar"><span>x${n}${n === 12 ? '+' : ''}</span><div class="lp-bar-t"><i class="c" style="width:${pct(Math.min(c, p[n]))}%"></i><i class="g" style="width:${Math.max(0, pct(p[n]) - pct(Math.min(c, p[n])))}%"></i></div><em>${p[n] > c ? '+' + Math.round((p[n] - c) / c * 100) + '%' : '0%'}</em></div>`).join('')}<p class="lp-bar-leg"><i class="c"></i> tu costo <i class="g"></i> tu ganancia</p></div>
     <p class="hint">Costo puesto en mano: ${fmt(c)} por unidad. Si mañana el dólar sube, cambiás un solo número y se recalcula todo tu catálogo.</p>`;
 }
 function simCosto() {
   const v = SIM.ventas, ref = REFERENCIA.plan + v * REFERENCIA.pctVenta / 100, pro = PLANES.find(p => p.id === 'pro').precio, ah = ref - pro;
-  return `<div class="lp-cmp"><div><small>Plataforma tradicional con listas mayoristas</small><b>${fmt(ref)}</b><i>${fmt(REFERENCIA.plan)} de abono + ${REFERENCIA.pctVenta}% de tus ventas</i></div>
+  const mx = Math.max(ref, pro, 1), w = v => Math.max(3, Math.round(v / mx * 100));
+  return `<div class="lp-bars lp-bars2" role="img" aria-label="Costo mensual comparado"><div class="lp-bar"><span>Tradicional</span><div class="lp-bar-t"><i class="r" style="width:${w(ref)}%"></i></div><em>${fmt(ref)}</em></div><div class="lp-bar"><span>${esc(MARCA.NOMBRE)}</span><div class="lp-bar-t"><i class="g" style="width:${w(pro)}%"></i></div><em>${fmt(pro)}</em></div></div>
+    <div class="lp-cmp"><div><small>Plataforma tradicional con listas mayoristas</small><b>${fmt(ref)}</b><i>${fmt(REFERENCIA.plan)} de abono + ${REFERENCIA.pctVenta}% de tus ventas</i></div>
     <div class="on"><small>Escala · Mayorista Pro</small><b>${fmt(pro)}</b><i>abono fijo · 0% por venta</i></div></div>
     <p class="lp-ahorro">${ah > 0 ? `Te ahorrás <b>${fmt(ah)} por mes</b> (${fmt(ah * 12)} por año).` : 'Mismo costo, con más herramientas.'}</p>
     <p class="hint">Referencia: precio público (pago mensual) del plan de una plataforma líder que incluye listas mayoristas, y su costo por transacción al cobrar con otros medios de pago, a ${esc(REFERENCIA.fecha)}. No incluye las comisiones del medio de pago, que se pagan en cualquier plataforma.</p>`;
@@ -65,7 +71,7 @@ export function inicio(app) {
     <p>${N} lee la lista, calcula tus precios por cantidad con tu ganancia y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
     ${demoHtml()}
     <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
-    <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📦 x1 · x3 · x6 · x12</li><li>💰 Tu cliente ve cuánto gana</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
+    <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📦 x1 · x3 · x6 · x12</li><li>💰 Tu cliente ve cuánto gana</li><li>📸 Flyers para tus Estados</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
 
   <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
 
@@ -85,7 +91,7 @@ export function inicio(app) {
     <div id="lp-sim2">${simCosto()}</div></section>
 
   <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento por mes, en pesos. Probá 7 días con todo desbloqueado.</p>
-    <div class="lp-planes">${PLANES.map(p => `<div class="lp-plan${p.destacado ? ' on' : ''}">${p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
+    <div class="lp-planes">${PLANES.map(p => `<div class="lp-plan${p.destacado ? ' on glow' : ''}">${p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
       <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul><a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">Empezar gratis</a></div>`).join('')}</div>
     <ul class="lp-gar">${GAR.map(([t, d]) => `<li><b>${t}</b>${d}</li>`).join('')}</ul></section>
 

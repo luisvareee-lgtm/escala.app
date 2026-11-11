@@ -49,7 +49,7 @@ function cobranzas() {
     ${D.tramos.map(t => `<div class="kpi cob-${t.cl || 'ok'}"><small>${t.n}</small><b>${fmt(t.total)}</b><i>${t.cant} ${t.cant === 1 ? 'pedido' : 'pedidos'}</i></div>`).join('')}</div>
   <div class="cc"><h3>Quién te debe</h3><p class="hint" style="margin-bottom:8px">Ordenado por el pedido más viejo. El botón abre WhatsApp con el mensaje armado (pedidos, total y tu alias) y anota la fecha del recordatorio.</p>
   ${D.clientes.map(c => { const rh = c.rec && new Date(c.rec).toDateString() === hoy; const cls = c.max > 30 ? 'bad' : c.max > 7 ? 'warn' : '';
-    return `<div class="cob-row"><div class="cob-inf"><b>${esc(c.nombre)}</b> <span class="tag ${cls}">${c.max === 0 ? 'hoy' : 'hace ' + c.max + (c.max === 1 ? ' día' : ' días')}</span>
+    return `<div class="cob-row"><div class="cob-inf"><b>${esc(c.nombre)}</b> <span class="sem sem-${cls === 'bad' ? 'r' : cls === 'warn' ? 'a' : 'v'}" title="Antigüedad de la deuda"><i aria-hidden="true"></i>${c.max === 0 ? 'hoy' : 'hace ' + c.max + (c.max === 1 ? ' día' : ' días')}</span>
       <div class="muted" style="font-size:.78rem">${c.pedidos.map(o => `<button class="linkb" data-act="p-pedido" data-id="${o.id}">#${o.numero}</button> ${fmt(o.total_ars)}`).join(' · ')}${c.rec ? ` · último recordatorio: ${rh ? 'hoy' : new Date(c.rec).toLocaleDateString('es-AR')}` : ''}</div></div>
       <div class="cob-acc"><b>${fmt(c.total)}</b><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" data-act="ia-recordar" data-w="${esc(c.wsp)}" href="${esc(waLink(normWsp(c.wsp), msgCobro(c)))}">${rh ? 'Recordar otra vez' : 'Recordar pago'}</a></div></div>`; }).join('')}</div>`;
 }

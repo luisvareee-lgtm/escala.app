@@ -3,6 +3,7 @@
 import { api } from './api.js';
 import { esc, fmt, on, toast, copiar, waLink, confirmar } from './util.js';
 import { P } from './state.js';
+import { recepcionCard } from './recepcion.js';
 
 const C = { soloConf: false, abierto: null };
 const ETAPAS_ABIERTAS = ['nuevo', 'confirmado', 'en_espera'];
@@ -50,7 +51,7 @@ export function vistaCompras() {
   const totalU = R.grupos.reduce((a, g) => a + g.unidades, 0), totalC = R.grupos.reduce((a, g) => a + g.total, 0);
   return `<div class="cc"><h3>🛒 Pedido al proveedor</h3><p class="hint" style="margin-bottom:8px">${intro} <button class="linkb" data-act="p-tab" data-k="ajustes">Cambiar cómo trabajo</button></p>
     <label class="chk"><input type="checkbox" data-change="cp-conf" ${C.soloConf ? 'checked' : ''}> Solo pedidos confirmados (sin los nuevos que todavía no revisaste)</label></div>
-  ${!R.ped.length ? '<div class="cc"><p class="ok-box">No hay pedidos abiertos para comprar. Los pedidos despachados, entregados, cancelados o ya comprados no entran.</p></div>' : `
+  ${recepcionCard()}${!R.ped.length ? '<div class="cc"><p class="ok-box">No hay pedidos abiertos para comprar. Los pedidos despachados, entregados, cancelados o ya comprados no entran.</p></div>' : `
   <div class="kpis"><div class="kpi"><small>Pedidos abiertos</small><b>${R.ped.length}</b><i>${R.ped.map(o => '#' + o.numero).slice(0, 8).join(' ')}${R.ped.length > 8 ? '…' : ''}</i></div>
     <div class="kpi"><small>Para comprar</small><b>${totalU} u.</b><i>${R.grupos.length} ${R.grupos.length === 1 ? 'proveedor' : 'proveedores'}</i></div>
     <div class="kpi"><small>Costo estimado</small><b>${fmt(totalC)}</b><i>con el costo del comparador o el tuyo</i></div></div>

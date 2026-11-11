@@ -20,7 +20,7 @@ const nuevoEstado = () => ({
 });
 const I = nuevoEstado();
 // Aviso para los clientes después de actualizar la lista (sobrevive al reinicio del importador)
-const AV = { texto: '', resumen: '' };
+const AV = { texto: '', resumen: '', nuevos: [], bajan: [] };
 export const resetImp = () => { I.fotos.forEach(f => f.url && URL.revokeObjectURL(f.url)); Object.assign(I, nuevoEstado()); };
 
 const cot = () => Number(P.t.cotizacion_usd) > 0 ? Number(P.t.cotizacion_usd) : 1;
@@ -119,10 +119,15 @@ function armarAviso(D, margenNuevos) {
 }
 const vistaAviso = () => AV.texto ? `<div class="lv lv-ok" id="lv-aviso"><b>📢 Avisales a tus clientes</b><p class="hint">${esc(AV.resumen)} Editá el mensaje si querés y compartilo en tus grupos, estados o lista de difusión.</p>
     <textarea class="fi" id="lv-txt" rows="9" data-input="lv-txt">${esc(AV.texto)}</textarea>
-    <div class="lv-acc"><a class="btn btn-wa btn-sm" id="lv-wa" target="_blank" rel="noopener" href="${esc(waLink('', AV.texto))}">Compartir por WhatsApp</a><button class="btn btn-s btn-sm" data-act="lv-copiar">📋 Copiar</button><button class="btn-link" data-act="lv-cerrar">Listo, ocultar</button></div></div>` : '';
+    <div class="lv-acc"><a class="btn btn-wa btn-sm" id="lv-wa" target="_blank" rel="noopener" href="${esc(waLink('', AV.texto))}">Compartir por WhatsApp</a><button class="btn btn-s btn-sm" data-act="lv-copiar">📋 Copiar</button><button class="btn-link" data-act="lv-cerrar">Listo, ocultar</button></div>
+    ${AV.nuevos.length || AV.bajan.length ? `<div class="lv-fly"><b>📸 Promocionalos con un flyer</b><div class="lv-acc">${AV.nuevos.length ? `<button class="btn btn-p btn-sm" data-act="lv-flyer" data-k="nuevos">✨ Flyer con los nuevos (${Math.min(4, AV.nuevos.length)})</button>` : ''}${AV.bajan.length ? `<button class="btn btn-s btn-sm" data-act="lv-flyer" data-k="bajan">⚡ Flyer con los que bajaron (${Math.min(4, AV.bajan.length)})</button>` : ''}</div></div>` : ''}</div>` : '';
 on('lv-txt', (d, el) => { AV.texto = el.value; const a = $('#lv-wa'); if (a) a.href = waLink('', AV.texto); });
 on('lv-copiar', () => copiar(AV.texto));
-on('lv-cerrar', () => { AV.texto = ''; AV.resumen = ''; P.repintar(); });
+on('lv-cerrar', () => { AV.texto = ''; AV.resumen = ''; AV.nuevos = []; AV.bajan = []; P.repintar(); });
+on('lv-flyer', d => {
+  const ids = d.k === 'bajan' ? AV.bajan : AV.nuevos.map(n => (P.prods.find(p => p.nombre === n) || {}).id).filter(Boolean);
+  if (P.flyerDe) P.flyerDe(ids.slice(0, 4), d.k === 'bajan' ? '⚡ Oferta' : '✨ Nuevo Ingreso');
+});
 on('i-faltan', (d, el) => { I.ocultarFaltan = el.checked; });
 on('i-mismo', d => { (I.ed[d.u] = I.ed[d.u] || {}).mismo = d.v === '1'; if (d.v === '1') I.ed[d.u].incluir = true; procesar(); P.repintar(); });
 
@@ -336,6 +341,7 @@ on('i-ok', async () => {
       for (let i = 0; i < upd.length; i += 6) await Promise.all(upd.slice(i, i + 6).map(x => { const c = { costo_usd: x.costo_usd }; if (x.stock != null) c.stock = x.stock; else if (x.agotado) c.stock = 0; if (x.imagen_url && !x.existente.imagen_url) c.imagen_url = x.imagen_url; return api.guardarProducto(x.existente.id, c); }));
       for (let i = 0; i < ocultar.length; i += 6) await Promise.all(ocultar.slice(i, i + 6).map(p => api.guardarProducto(p.id, { activo: false })));
       DF.ocultos = ocultar;
+      AV.nuevos = filas.filter(f => f.activo).map(f => f.nombre); AV.bajan = DF.bajan.map(x => x.existente.id);
       AV.texto = armarAviso(DF, m); AV.resumen = AV.texto ? `${DF.suben.length} subieron, ${DF.bajan.length} bajaron, ${DF.nuevos.length} nuevos${ocultar.length ? ', ' + ocultar.length + ' ocultos' : ''}.` : '';
       const sinFoto = nuevos.filter(x => x.errorFoto).length;
       I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}`;

@@ -80,6 +80,7 @@ export const api = {
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),
   estadoPedido: async (id, estado) => ok(await sb.from('orders').update({ estado }).eq('id', id).select().maybeSingle()),
+  recibirMercaderia: async lineas => ok(await sb.rpc('recibir_mercaderia', { p_lineas: lineas })),
   actualizarPedido: async (id, cambios) => ok(await sb.from('orders').update(cambios).eq('id', id).select().maybeSingle()),
   misGastos: () => todo(() => sb.from('gastos').select('*').order('fecha', { ascending: false }).order('id')),
   guardarGasto: async (id, d) => id ? ok(await sb.from('gastos').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('gastos').insert(d).select().maybeSingle()),

@@ -17,8 +17,12 @@ import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
 import { demoPendienteHtml, filasDemo, descartarDemo } from './demo.js';
+import { abrirFlyer } from './flyer.js';
+import { recepcionModal } from './recepcion.js';
+import { cierreCard } from './cierre.js';
+import { activarApp, instalarHtml } from './instalar.js';
 
-const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null };
+const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
 const urlTienda = () => urlTiendaDe(P.t.slug);
@@ -29,8 +33,9 @@ export async function mostrarPanel(app) {
   app.innerHTML = '<div class="page center" style="padding-top:80px"><span class="spin"></span></div>';
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
+  activarApp();
   Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
-  P.repintar = pintar; P.recargarPedidos = recargarPedidos;
+  P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; Q.fly = null;
   await cargar();
   if (Q.stop) Q.stop();
   Q.stop = api.escucharPedidos(P.t.id, async () => { toast('🔔 Pedido nuevo'); await recargarPedidos(); if (P.modal || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { Q.pendiente = true; return; } pintar(); });
@@ -45,7 +50,7 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + vistaEnviosDiseno(), ajustes: vistaAjustes }[P.tab]();
+  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaAjustes() + instalarHtml() }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
@@ -78,7 +83,8 @@ on('p-ver-tienda', () => { window.open(urlTienda(), '_blank', 'noopener'); });
 /* ---------- productos ---------- */
 function productos() {
   const q = Q.pq.toLowerCase(), L = P.prods.filter(p => !q || p.nombre.toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button></div>
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button><button class="btn btn-s btn-sm${Q.fly ? ' on' : ''}" data-act="pf-modo" id="pf-modo">📸 Crear flyer</button></div>
+  ${Q.fly ? `<div class="pf-bar" id="pf-bar"><span>${Q.fly.length ? `<b>${Q.fly.length}</b> ${Q.fly.length === 1 ? 'producto elegido' : 'productos elegidos'} (hasta 4)` : 'Tocá de 1 a 4 productos para tu flyer'}</span><button class="btn btn-p btn-sm" data-act="pf-crear" ${Q.fly.length ? '' : 'disabled'}>📸 Armar flyer</button><button class="btn btn-s btn-sm" data-act="pf-modo">Cancelar</button></div>` : ''}
   <input class="fi" id="pq" placeholder="Buscar por nombre, categoría o código…" data-input="p-q" value="${esc(Q.pq)}" aria-label="Buscar producto" style="margin-bottom:12px"><div class="muted" style="margin-bottom:8px;font-size:.8rem">${P.prods.length} productos</div>
   <div class="card">${L.slice(0, Q.lim).map(filaProd).join('') || '<p class="muted">Nada para mostrar. Importá tu lista o agregá un producto.</p>'}${L.length > Q.lim ? `<button class="btn btn-s btn-sm" data-act="p-mas">Ver más (${L.length - Q.lim})</button>` : ''}</div>`;
 }
@@ -93,11 +99,30 @@ const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], 
 function filaProd(p) {
   const pr = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista';
   const det = [p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
-  return `<div class="prow${p.activo ? '' : ' off'}" data-act="p-editar" data-id="${p.id}" role="button" tabindex="0" aria-label="Editar ${esc(p.nombre)}">
-    <span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
+  const sel = Q.fly && Q.fly.includes(p.id);
+  return `<div class="prow${p.activo ? '' : ' off'}${sel ? ' sel' : ''}" data-act="${Q.fly ? 'pf-sel' : 'p-editar'}" data-id="${p.id}" role="button" tabindex="0" aria-label="${Q.fly ? 'Elegir' : 'Editar'} ${esc(p.nombre)}"${Q.fly ? ` aria-pressed="${!!sel}"` : ''}>
+    ${Q.fly ? `<span class="pf-chk" aria-hidden="true">${sel ? '✓' : ''}</span>` : ''}<span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
     <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div></span>
     <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
 }
+/* ---------- flyers del comercio (con su marca) ---------- */
+// Los precios que se estampan dependen de cómo vende la tienda: mayorista/híbrida → escalas; minorista → un solo precio.
+function itemFlyer(p) {
+  const pr = preciosDe(p.costo_usd, p.margen_override), m = P.t.modalidad, may = m !== 'minorista';
+  return { nombre: p.nombre, img: p.imagen_url || '', emoji: p.emoji, precio: m === 'mayorista' ? pr[1] : pr.min,
+    escalas: may && !p.precio_unico ? { 1: pr[1], 3: pr[3], 6: pr[6], 12: pr[12] } : null, min: m === 'hibrido' ? pr.min : 0 };
+}
+const encargoP = p => P.t.modo_stock === 'encargo' || (P.t.modo_stock === 'mixto' && !!p.a_pedido);
+function flyerDe(ids, badge) {
+  const L = ids.map(id => P.prods.find(p => p.id === id)).filter(Boolean).slice(0, 4); if (!L.length) { toast('Elegí al menos un producto'); return; }
+  const t = P.t;
+  abrirFlyer({ modo: 'comercio', items: L.map(itemFlyer), badge: badge || (L.every(encargoP) ? '📦 Por Encargo' : '🔥 En Stock'),
+    marca: { nombre: t.nombre, logo: t.logo_url || '', color: t.color, url: urlTienda().replace(/^https?:\/\//, '').replace(/\/$/, ''), wsp: '+' + t.whatsapp } });
+}
+on('pf-modo', () => { Q.fly = Q.fly ? null : []; pintar(); });
+on('pf-sel', d => { if (!Q.fly) return; const i = Q.fly.indexOf(d.id); if (i >= 0) Q.fly.splice(i, 1); else if (Q.fly.length >= 4) { toast('Un flyer lleva hasta 4 productos'); return; } else Q.fly.push(d.id); pintar(); });
+on('pf-crear', () => { if (Q.fly && Q.fly.length) flyerDe(Q.fly); });
+
 function carritos() {
   if (!can('carritos')) return '<div class="locked"><b>🛒 Carritos abandonados</b><p style="margin:6px 0">Recontactá por WhatsApp a quienes dejaron productos sin comprar.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>';
   return `<div class="card">${P.carritos.map(c => { const it = (c.items || []).map(i => `${esc(i.q)}× ${esc(i.n)}`).join(', '); const msg = `Hola ${c.nombre}, vimos que dejaste productos en tu carrito en ${P.t.nombre}. ¿Querés que te ayudemos a cerrar el pedido?`;
@@ -135,6 +160,7 @@ function modal() {
     <button class="btn btn-p" type="submit">Guardar</button>${p.id ? '<button type="button" class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="p-borrar" data-id="' + p.id + '">Eliminar producto</button>' : ''}<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cancelar</button></form></div></div>`;
   }
   if (m.tipo === 'ped') return modalPedido(m);
+  if (m.tipo === 'rec') return recepcionModal();
   return '';
 }
 function prevHtml(costo, ovr) {

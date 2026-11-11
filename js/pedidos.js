@@ -1,17 +1,17 @@
 // Pedidos por etapas: nuevo → confirmado → (en espera) → despachado → entregado, con cobro aparte,
 // seguimiento, nota interna, remito para imprimir y mensajes de WhatsApp listos para cada etapa.
 import { api } from './api.js';
-import { $, esc, fmt, on, toast, normWsp, waLink, confirmar } from './util.js';
+import { $, esc, fmt, on, toast, normWsp, waLink, confirmar, store } from './util.js';
 import { P } from './state.js';
 import { imprimir } from './catalogo.js';
 
 export const ETAPA = {
-  nuevo: ['🆕', 'Nuevo', ''], confirmado: ['✅', 'Confirmado', 'ok'], en_espera: ['⏸️', 'En espera', 'warn'],
+  nuevo: ['🆕', 'Nuevo', ''], confirmado: ['✅', 'Confirmado', 'ok'], en_espera: ['⏸️', 'En espera', 'warn'], listo: ['🎁', 'Listo para entregar', 'ok'],
   despachado: ['🚚', 'Despachado', 'ok'], entregado: ['📦', 'Entregado', 'ok'], cancelado: ['⚪', 'Cancelado', 'bad']
 };
 const CAMINO = ['nuevo', 'confirmado', 'despachado', 'entregado'];
-const FILTROS = [['todos', 'Todos'], ['nuevo', 'Nuevos'], ['por_cobrar', 'Por cobrar'], ['confirmado', 'Confirmados'], ['en_espera', 'En espera'], ['despachado', 'Despachados'], ['entregado', 'Entregados'], ['cancelado', 'Cancelados']];
-const F = { filtro: 'todos', q: '', lim: 100 };
+const FILTROS = [['todos', 'Todos'], ['nuevo', 'Nuevos'], ['por_cobrar', 'Por cobrar'], ['confirmado', 'Confirmados'], ['en_espera', 'En espera'], ['listo', 'Listos'], ['despachado', 'Despachados'], ['entregado', 'Entregados'], ['cancelado', 'Cancelados']];
+const F = { filtro: 'todos', q: '', lim: 100, vista: store.get('ped:vista', 'lista') === 'tablero' ? 'tablero' : 'lista' };
 export const resetPed = () => Object.assign(F, { filtro: 'todos', q: '', lim: 100 });
 
 const etapaDe = o => o.etapa || (o.estado === 'cancelado' ? 'cancelado' : 'nuevo');
@@ -22,14 +22,38 @@ const badgeCobro = o => o.estado === 'cobrado' ? '<span class="tag ok">💵 Cobr
 const fecha = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 const hora = d => new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
+// ---- semáforo de urgencia: cuánto lleva esperando un pedido abierto frente a lo prometido ----
+const DIA = 864e5, ABIERTAS = ['nuevo', 'confirmado', 'en_espera', 'listo'];
+export function urgencia(o) {
+  const e = etapaDe(o); if (!ABIERTAS.includes(e) || o.estado === 'cancelado') return null;
+  const d = Math.floor((Date.now() - new Date(o.created_at)) / DIA), t = P.t, modo = t.modo_stock || 'stock';
+  let plazo = 0;   // días prometidos (solo si el pedido es por encargo)
+  if (modo === 'encargo') plazo = Number(t.demora_encargo) || 7;
+  else if (modo === 'mixto') { const pp = new Map(P.prods.map(p => [p.id, p])); P.items.forEach(i => { if (i.order_id !== o.id) return; const p = pp.get(i.product_id); if (p && p.a_pedido) plazo = Math.max(plazo, Number(p.demora_dias) || Number(t.demora_encargo) || 7); }); }
+  if (e === 'listo') { const h = (o.historial || []).filter(x => x.etapa === 'listo').pop(), dl = h ? Math.floor((Date.now() - new Date(h.at)) / DIA) : 0; return { n: dl >= 5 ? 'r' : dl >= 2 ? 'a' : 'v', d: dl, txt: dl === 0 ? 'listo hoy' : `listo hace ${dl} d`, tip: 'Días desde que llegó la mercadería sin entregar' }; }
+  if (plazo) return { n: d > plazo ? 'r' : d >= plazo * 0.6 ? 'a' : 'v', d, txt: `día ${d} de ${plazo}`, tip: d > plazo ? `Pasaron los ${plazo} días que le prometiste` : `Prometiste ${plazo} días` };
+  return { n: d >= 5 ? 'r' : d >= 2 ? 'a' : 'v', d, txt: d === 0 ? 'hoy' : `hace ${d} d`, tip: 'Días desde que entró el pedido sin despachar' };
+}
+const semHtml = o => { const u = urgencia(o); return u ? `<span class="sem sem-${u.n}" title="${esc(u.tip)}"><i aria-hidden="true"></i>${u.txt}</span>` : ''; };
+const esperando = () => P.pedidos.filter(o => o.estado !== 'cancelado' && ['nuevo', 'confirmado', 'en_espera'].includes(etapaDe(o)) && (etapaDe(o) === 'en_espera' || o.comprado_at));
+function tablero(L) {
+  const cols = ['nuevo', 'confirmado', 'en_espera', 'listo', 'despachado'].filter(k => k !== 'en_espera' || L.some(o => etapaDe(o) === k) || (P.t.modo_stock || 'stock') !== 'stock');
+  return `<div class="kb" role="list">${cols.map(k => { const os = L.filter(o => etapaDe(o) === k); return `<section class="kb-col" role="listitem" aria-label="${ETAPA[k][1]}"><h4>${ETAPA[k][0]} ${ETAPA[k][1]} <b>${os.length}</b></h4>${os.slice(0, 40).map(o => `<button class="kb-card" data-act="p-pedido" data-id="${o.id}"><span class="kb-n">#${o.numero} · ${esc(o.cliente_nombre)}</span><span class="kb-m">${fmt(o.total_ars)} ${badgeCobro(o)}</span>${semHtml(o)}</button>`).join('') || '<p class="muted">—</p>'}${os.length > 40 ? `<p class="muted">y ${os.length - 40} más (usá la lista)</p>` : ''}</section>`; }).join('')}</div>`;
+}
+on('pd-vista', d => { F.vista = d.v === 'tablero' ? 'tablero' : 'lista'; store.set('ped:vista', F.vista); P.repintar(); });
+
 export function vistaPedidos() {
   const q = F.q.trim().toLowerCase();
   const L = P.pedidos.filter(o => pasa(o, F.filtro) && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', '') || (o.seguimiento || '').toLowerCase().includes(q) || (o.cliente_dni || '').includes(q.replace(/\D/g, '') || '§')));
   const n = k => P.pedidos.filter(o => pasa(o, k)).length;
   const rv = new Map(P.revs.map(r => [r.id, r.nombre]));
-  return `<div class="ped-filtros" role="tablist" aria-label="Filtrar pedidos">${FILTROS.map(([k, t]) => { const c = n(k); return (k === 'todos' || c) ? `<button class="chipf ${F.filtro === k ? 'on' : ''}" data-act="pd-filtro" data-k="${k}">${t}${k !== 'todos' ? ` <b>${c}</b>` : ''}</button>` : ''; }).join('')}</div>
+  const esp = esperando().length, tab = F.vista === 'tablero';
+  const cab = `${esp ? `<div class="rec-aviso"><span>📦 Tenés <b>${esp} ${esp === 1 ? 'pedido esperando' : 'pedidos esperando'}</b> mercadería.</span><button class="btn btn-p btn-sm" data-act="rc-abrir">📦 Llegó mercadería</button></div>` : ''}
+  <div class="ped-vista" role="group" aria-label="Cómo ver los pedidos"><button class="chipf ${tab ? '' : 'on'}" data-act="pd-vista" data-v="lista" aria-pressed="${!tab}">☰ Lista</button><button class="chipf ${tab ? 'on' : ''}" data-act="pd-vista" data-v="tablero" aria-pressed="${tab}">▦ Tablero</button></div>`;
+  if (tab) return cab + `<input class="fi" id="oq" placeholder="Buscar por cliente, N° de pedido o seguimiento…" data-input="pd-q" value="${esc(F.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">` + tablero(P.pedidos.filter(o => pasa(o, 'todos') && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', ''))));
+  return cab + `<div class="ped-filtros" role="tablist" aria-label="Filtrar pedidos">${FILTROS.map(([k, t]) => { const c = n(k); return (k === 'todos' || c) ? `<button class="chipf ${F.filtro === k ? 'on' : ''}" data-act="pd-filtro" data-k="${k}">${t}${k !== 'todos' ? ` <b>${c}</b>` : ''}</button>` : ''; }).join('')}</div>
   <input class="fi" id="oq" placeholder="Buscar por cliente, N° de pedido o seguimiento…" data-input="pd-q" value="${esc(F.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">
-  <div class="card">${L.slice(0, F.lim).map(o => `<div class="srow" style="cursor:pointer" data-act="p-pedido" data-id="${o.id}" role="button" tabindex="0"><span>#${o.numero} · ${esc(o.cliente_nombre)}${o.sub_revendedor_id ? ` <span class="tag">${esc(rv.get(o.sub_revendedor_id) || 'revendedor')}</span>` : ''}<br><span class="ped-tags">${badgeEtapa(o)} ${badgeCobro(o)}${o.envio_nombre ? ` <small class="muted">· ${esc(o.envio_nombre)}</small>` : ''}</span><small class="muted"> · ${fecha(o.created_at)}${o.nota ? ' · 📝' : ''}</small></span><span class="v">${fmt(o.total_ars)}</span></div>`).join('') || '<p class="muted">Sin pedidos para mostrar.</p>'}${L.length > F.lim ? `<button class="btn btn-s btn-sm" data-act="pd-mas">Ver más (${L.length - F.lim})</button>` : ''}</div>`;
+  <div class="card">${L.slice(0, F.lim).map(o => `<div class="srow" style="cursor:pointer" data-act="p-pedido" data-id="${o.id}" role="button" tabindex="0"><span>#${o.numero} · ${esc(o.cliente_nombre)}${o.sub_revendedor_id ? ` <span class="tag">${esc(rv.get(o.sub_revendedor_id) || 'revendedor')}</span>` : ''}<br><span class="ped-tags">${badgeEtapa(o)} ${badgeCobro(o)}${o.proxima_tanda && ABIERTAS.includes(etapaDe(o)) ? ' <span class="tag warn">Próxima tanda</span>' : ''} ${semHtml(o)}${o.envio_nombre ? ` <small class="muted">· ${esc(o.envio_nombre)}</small>` : ''}</span><small class="muted"> · ${fecha(o.created_at)}${o.nota ? ' · 📝' : ''}</small></span><span class="v">${fmt(o.total_ars)}</span></div>`).join('') || '<p class="muted">Sin pedidos para mostrar.</p>'}${L.length > F.lim ? `<button class="btn btn-s btn-sm" data-act="pd-mas">Ver más (${L.length - F.lim})</button>` : ''}</div>`;
 }
 
 // ---- mensajes de WhatsApp por etapa ----
@@ -39,6 +63,8 @@ function mensaje(o, k) {
   return ({
     confirmado: `¡Hola ${n}! Confirmamos tu pedido ${num} por ${fmt(o.total_ars)}.${cobro} Te avisamos cuando salga.`,
     en_espera: `Hola ${n}, tu pedido ${num} quedó en espera${o.nota ? '' : ' unos días'}. Te avisamos apenas esté listo. ¡Gracias por la paciencia!`,
+    listo: `¡Hola ${n}! 📦 Llegó tu pedido ${num}: ya lo tenemos listo.${o.estado === 'pendiente' ? ` El total es ${fmt(o.total_ars)}.${t.alias_cobro && o.medio_pago === 'transferencia' ? ' Podés transferir a: ' + t.alias_cobro + '.' : ''}` : ''}${o.envio_nombre ? ` Entrega: ${o.envio_nombre}.` : ''} ¿Coordinamos?`,
+    parcial: `¡Hola ${n}! Te cuento que ya llegó una parte de tu pedido ${num}. Apenas esté completo te aviso para coordinar la entrega.`,
     despachado: `¡Hola ${n}! Tu pedido ${num} ya salió${o.envio_nombre ? ' por ' + o.envio_nombre : ''}.${o.seguimiento ? ' Seguimiento: ' + o.seguimiento + '.' : ''}`,
     entregado: `¡Hola ${n}! ¿Te llegó bien el pedido ${num}? Gracias por tu compra en ${t.nombre} 🙌`,
     cobro: `Hola ${n}, para cerrar tu pedido ${num} el total es ${fmt(o.total_ars)}.${t.alias_cobro ? ' Alias: ' + t.alias_cobro + '.' : ''} Avisanos cuando lo envíes.`,
@@ -46,22 +72,23 @@ function mensaje(o, k) {
     nuevo: `Hola ${n}, te escribimos por tu pedido ${num}.`
   })[k];
 }
+export const mensajePedido = mensaje;
 const wa = (o, k, txt, cls = 'btn-wa') => `<a class="btn ${cls}" target="_blank" rel="noopener" href="${esc(waLink(normWsp(o.cliente_whatsapp), mensaje(o, k)))}">${txt}</a>`;
 
 export function modalPedido(m) {
   const o = m.o, it = m.items || [], rv = P.revs.find(r => r.id === o.sub_revendedor_id), e = etapaDe(o), canc = e === 'cancelado';
   const sub = it.reduce((s, i) => s + Number(i.subtotal), 0), env = Number(o.envio_costo || 0);
-  const idx = CAMINO.indexOf(e === 'en_espera' ? 'confirmado' : e);
-  const pasos = CAMINO.map((k, i) => `<li class="${canc ? '' : i < idx ? 'hecho' : i === idx ? (e === 'en_espera' ? 'espera' : 'actual') : ''}"><span>${ETAPA[k][0]}</span>${i === idx && e === 'en_espera' ? 'En espera' : ETAPA[k][1]}</li>`).join('');
-  const sig = canc || e === 'entregado' ? [] : e === 'nuevo' ? ['confirmado', 'en_espera'] : e === 'confirmado' ? ['despachado', 'en_espera'] : e === 'en_espera' ? ['confirmado', 'despachado'] : ['entregado'];
+  const idx = CAMINO.indexOf(e === 'en_espera' || e === 'listo' ? 'confirmado' : e);
+  const pasos = CAMINO.map((k, i) => `<li class="${canc ? '' : i < idx ? 'hecho' : i === idx ? (e === 'en_espera' ? 'espera' : 'actual') : ''}"><span>${i === idx && e === 'listo' ? ETAPA.listo[0] : ETAPA[k][0]}</span>${i === idx && e === 'en_espera' ? 'En espera' : i === idx && e === 'listo' ? 'Listo' : ETAPA[k][1]}</li>`).join('');
+  const sig = canc || e === 'entregado' ? [] : e === 'nuevo' ? ['confirmado', 'en_espera'] : e === 'confirmado' ? ['despachado', 'en_espera'] : e === 'en_espera' ? ['listo', 'confirmado', 'despachado'] : e === 'listo' ? ['despachado', 'entregado'] : ['entregado'];
   const hist = (o.historial || []).map(h => `<li>${ETAPA[h.etapa] ? ETAPA[h.etapa][0] + ' ' + ETAPA[h.etapa][1] : esc(h.etapa)} <small class="muted">${hora(h.at)}</small></li>`).join('');
-  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Pedido ${o.numero}"><div class="view-title">Pedido #${o.numero} ${badgeEtapa(o)} ${badgeCobro(o)}</div><div id="mm"></div>
+  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Pedido ${o.numero}"><div class="view-title">Pedido #${o.numero} ${badgeEtapa(o)} ${badgeCobro(o)}${o.proxima_tanda ? ' <span class="tag warn">Próxima tanda</span>' : ''}</div>${semHtml(o) ? `<p style="margin:-4px 0 6px">${semHtml(o)}</p>` : ''}<div id="mm"></div>
   <ol class="ped-pasos${canc ? ' canc' : ''}">${pasos}</ol>
   <p><b>${esc(o.cliente_nombre)}</b> · <span class="muted">+${esc(o.cliente_whatsapp)}${o.cliente_dni ? ' · DNI/CUIT ' + esc(o.cliente_dni) : ''}</span><br><span class="muted">${esc(o.modalidad_precio)} · pago: ${esc(o.medio_pago)} · ${hora(o.created_at)}</span>
   ${o.envio_nombre ? `<br>🚚 ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}` : ''}${ubic(o) ? `<br>📍 ${esc(ubic(o))}` : ''}
   ${o.nota_cliente ? `<br>💬 <i>${esc(o.nota_cliente)}</i>` : ''}
   ${rv ? `<br><span class="tag">Vendió: ${esc(rv.nombre)} · comisión ${fmt(o.comision_ars)}</span>` : ''}</p>
-  <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</span><span class="v">${fmt(i.subtotal)}</span></div>`).join('')}
+  <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}${i.recibido_at ? ' <span class="tag ok">llegó</span>' : ''}</span><span class="v">${fmt(i.subtotal)}</span></div>`).join('')}
   ${env || o.envio_nombre ? `<div class="srow"><span class="muted">Productos</span><span class="v">${fmt(sub)}</span></div><div class="srow"><span class="muted">Envío${o.envio_nombre ? ' · ' + esc(o.envio_nombre) : ''}</span><span class="v">${env ? fmt(env) : 'Gratis'}</span></div>` : ''}
   <div class="srow tot"><span>Total</span><span class="v">${fmt(o.total_ars)}</span></div></div>
   ${sig.length ? `<div class="flabel" style="margin-top:6px">Pasar a</div><div class="ped-acc">${sig.map(k => `<button class="btn ${k === 'en_espera' ? 'btn-s' : 'btn-p'} btn-sm" data-act="pd-etapa" data-id="${o.id}" data-e="${k}">${ETAPA[k][0]} ${ETAPA[k][1]}</button>`).join('')}</div>` : ''}
@@ -72,7 +99,7 @@ export function modalPedido(m) {
     <div class="fg"><label class="flabel" for="pd-nota">Nota interna (no la ve el cliente)</label><textarea class="fi" id="pd-nota" name="nota" rows="2" maxlength="500" placeholder="Ej: entrega después de las 18 h" ${canc ? 'disabled' : ''}>${esc(o.nota || '')}</textarea></div>
     ${canc ? '' : '<button class="btn btn-s btn-sm" type="submit">Guardar seguimiento y nota</button>'}
   </form>
-  <details class="ped-wa"><summary>💬 Mensajes de WhatsApp listos</summary><div class="ped-acc">${wa(o, 'nuevo', 'Escribir', 'btn-s btn-sm')}${o.estado === 'pendiente' ? wa(o, 'cobro', 'Pedir el pago', 'btn-s btn-sm') : ''}${['confirmado', 'en_espera', 'despachado', 'entregado', 'cancelado'].filter(k => k === e || (!canc && k !== 'cancelado')).map(k => wa(o, k, ETAPA[k][0] + ' ' + ETAPA[k][1], 'btn-s btn-sm')).join('')}</div></details>
+  <details class="ped-wa"><summary>💬 Mensajes de WhatsApp listos</summary><div class="ped-acc">${wa(o, 'nuevo', 'Escribir', 'btn-s btn-sm')}${o.estado === 'pendiente' ? wa(o, 'cobro', 'Pedir el pago', 'btn-s btn-sm') : ''}${['confirmado', 'en_espera', 'listo', 'despachado', 'entregado', 'cancelado'].filter(k => k === e || (!canc && k !== 'cancelado')).map(k => wa(o, k, ETAPA[k][0] + ' ' + ETAPA[k][1], 'btn-s btn-sm')).join('')}</div></details>
   ${hist ? `<details class="ped-wa"><summary>🕓 Historial</summary><ul class="ped-hist">${hist}</ul></details>` : ''}
   <button class="btn btn-s" style="margin-top:8px" data-act="pd-remito">🖨️ Imprimir remito</button>
   ${canc ? '' : `<button class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="pd-etapa" data-id="${o.id}" data-e="cancelado">Cancelar pedido${o.estado === 'cobrado' ? ' (devuelve stock)' : ''}</button>`}

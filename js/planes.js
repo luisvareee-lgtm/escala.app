@@ -4,20 +4,23 @@ import { P, PLAN_NOMBRE, planEf } from './state.js';
 import { MARCA, PLANES, urlTiendaDe } from './marca.js';
 
 const diasPrueba = t => t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-const pedir = p => {
-  if (p.link) return p.link;
+const porWsp = p => {
   if (!MARCA.SOPORTE_WSP) return '';
   const t = P.t;
   return waLink(MARCA.SOPORTE_WSP, `Hola, quiero activar el plan ${p.nombre} (${fmt(p.precio)}/mes) en ${MARCA.NOMBRE}.\nTienda: ${t.nombre}\nEnlace: ${urlTiendaDe(t.slug)}`);
 };
+const SUSC = { activa: ['ok', '✓ Suscripción activa: se renueva sola cada mes.'], pausada: ['warn', '⏸ Tu suscripción está en pausa. Reactivala desde Mercado Pago o escribinos.'], cancelada: ['warn', 'Tu suscripción fue cancelada. Para seguir con tu plan, suscribite de nuevo o escribinos.'] };
 
 export function planesHtml(m) {
-  const t = P.t, d = diasPrueba(t), act = t.plan;
+  const t = P.t, d = diasPrueba(t), act = t.plan, su = SUSC[t.suscripcion_estado], hayAuto = PLANES.some(p => p.auto);
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho planes" role="dialog" aria-modal="true" aria-label="Planes"><div class="view-title">Elegí tu plan</div>
     <p class="hint" style="margin-bottom:10px">${d > 0 ? `Estás en la prueba gratis: te quedan <b>${d} ${d === 1 ? 'día' : 'días'}</b> con todo desbloqueado. ` : ''}Productos y pedidos ilimitados y 0% de comisión por venta en todos los planes. Sin permanencia: cambiás o te vas cuando quieras.</p>
-    <div class="lp-planes">${PLANES.map(p => { const href = pedir(p), es = d <= 0 && act === p.id; return `<div class="lp-plan${p.destacado || m.plan === p.id ? ' on' : ''}">${es ? '<span class="tag ok">Tu plan actual</span>' : p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
-      <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${es ? '' : href ? `<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" target="_blank" rel="noopener" href="${esc(href)}">Quiero este plan</a>` : '<p class="hint">Escribinos para activarlo.</p>'}</div>`; }).join('')}</div>
-    <p class="hint" style="margin-top:10px">Al pedirlo te confirmamos el medio de pago y lo activamos en el día. Tus productos, pedidos y configuración quedan como están.</p>
+    ${su ? `<p class="plan-susc ${su[0]}" id="plan-susc">${su[1]}</p>` : ''}
+    <div class="lp-planes">${PLANES.map(p => { const wsp = porWsp(p), es = d <= 0 && act === p.id; return `<div class="lp-plan${p.destacado || m.plan === p.id ? ' on' : ''}${p.destacado ? ' glow' : ''}">${es ? '<span class="tag ok">Tu plan actual</span>' : p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
+      <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${es && t.suscripcion_estado === 'activa' ? '' : p.auto
+        ? `<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" target="_blank" rel="noopener" data-plan="${p.id}" href="${esc(p.link)}">💳 Suscribirme</a>${wsp ? `<a class="plan-alt" target="_blank" rel="noopener" href="${esc(wsp)}">o pedilo por WhatsApp</a>` : ''}`
+        : es ? '' : wsp ? `<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" target="_blank" rel="noopener" data-plan="${p.id}" href="${esc(wsp)}">Quiero este plan</a>` : '<p class="hint">Escribinos para activarlo.</p>'}</div>`; }).join('')}</div>
+    <p class="hint" style="margin-top:10px">${hayAuto ? 'Al suscribirte pagás con Mercado Pago y el plan se activa solo en unos minutos. <b>Usá el mismo email con el que entrás a tu panel</b>, así lo reconocemos; si usás otro, avisanos y lo activamos a mano. ' : 'Al pedirlo te confirmamos el medio de pago y lo activamos en el día. '}Tus productos, pedidos y configuración quedan como están.</p>
     <button class="btn btn-s" style="margin-top:10px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
 on('p-planes', d => { P.modal = { tipo: 'planes', plan: d.p || '' }; P.repintar(); });
