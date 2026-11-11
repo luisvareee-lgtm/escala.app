@@ -769,3 +769,14 @@ details.card > summary { cursor: pointer; }
 @media (prefers-reduced-motion:reduce){.dm-doc i,.dm-laser,.dm-ba.vivo .dm-card{animation:none}.lp-bar-t i,.esc-track i{transition:none}}
 .mx-row input.fi.mx-q{flex:0 0 60px;width:60px;min-width:0}.mx-row .mx-n{min-width:48px}
 .flabel small{text-transform:none;letter-spacing:0;font-weight:600}
+/* demo de portada: formatos, forma de vender y corrección a mano */
+.dm-formatos{font-size:.76rem;color:var(--t2);margin:8px 0 0;line-height:1.5}.dm-formatos b{color:var(--t1)}
+.dm-modo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 2px;font-size:.82rem;font-weight:700}.dm-modo span{margin-right:4px}.dm-modo .pill{padding:6px 12px}
+.dm-card{position:relative}.dm-card>b{padding-right:28px}
+.dm-edit{position:absolute;top:6px;right:6px;border:0;background:var(--bg3);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:.8rem}
+.dm-edit:hover{background:var(--acs)}
+.dm-ed{border-color:var(--ac);background:var(--acs)}.dm-ed label{display:grid;gap:3px;font-size:.72rem;font-weight:700;color:var(--t2)}
+.dm-t1{grid-template-columns:1fr}.dm-t1 span{font-size:1rem}
+.dm-pie{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}.dm-mano{width:auto;margin:0}
+.dm-salidas{margin-top:10px;border:1px solid var(--bd);border-radius:12px;padding:12px;font-size:.86rem;display:grid;gap:8px}.dm-salidas .btn{width:auto;margin:0}
+.warn-box{background:rgba(224,138,0,.12);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent);border-radius:10px;padding:8px 12px;font-size:.82rem;margin:8px 0}
