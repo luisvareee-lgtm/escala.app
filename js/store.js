@@ -8,6 +8,8 @@ import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firm
 
 const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [] };
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
+// medios de pago que la tienda tiene prendidos (panel: Tienda → Envíos y entregas → Medios de pago); si la base es vieja, los tres
+const pagos = () => { const a = S.tienda && Array.isArray(S.tienda.pagos_activos) && S.tienda.pagos_activos.length ? S.tienda.pagos_activos : null; return Object.keys(PAGO).filter(k => !a || a.includes(k)); };
 const PAGO = { transferencia: ['🏦', 'Transferencia bancaria', 'Te pasamos alias / CBU en el ticket'], efectivo: ['💵', 'Efectivo / contra entrega', 'Lo coordinamos por WhatsApp'], link: ['📲', 'Link de pago (tarjeta / Mercado Pago)', 'Te lo enviamos por WhatsApp'] };
 
 /* ---------- modo y precios (la base de datos ya calculó los precios; acá solo se elige cuál mostrar) ---------- */
@@ -275,13 +277,14 @@ function pantallaCarrito() {
 }
 function pantallaCheckout() {
   if (!S.cart.length || pausado()) { S.vista = 'cart'; return pantallaCarrito(); }
+  if (!pagos().includes(S.pay)) S.pay = pagos()[0];   // si el comercio apagó el que estaba elegido
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cart">← Volver al carrito</button><div class="view-title">📋 Tus datos</div><div id="co-err"></div>
     <form data-submit="st-pedir" id="co-form">
       <div class="fg"><label class="flabel" for="co-nom">Nombre completo</label><input class="fi" id="co-nom" name="nombre" data-input="st-contacto" maxlength="80" required></div>
       <div class="fg"><label class="flabel" for="co-wsp">Tu WhatsApp</label><input class="fi" id="co-wsp" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" data-input="st-contacto" required></div>
       ${camposExtra()}
       ${envioUi()}
-      <div class="fg"><label class="flabel">Medio de pago</label>${Object.keys(PAGO).map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
+      <div class="fg"><label class="flabel">Medio de pago</label>${pagos().map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
       ${tandaUi()}${encargoUi()}${notaUi()}
       ${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;

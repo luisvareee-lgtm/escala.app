@@ -10,12 +10,16 @@ import { asisSwitch } from './asistente.js';
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
-const E = { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, msg: '', err: '' };
+const E = { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' };
 const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null };
-export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null }); };
+export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null }); };
 const clon = x => JSON.parse(JSON.stringify(x));
 const lista = () => (E.lista = E.lista || clon(Array.isArray(P.t.envios) ? P.t.envios : []));
 const datos = () => (E.datos = E.datos || Object.assign({}, P.t.datos_checkout || { localidad: 'opcional' }));
+// medios de pago (solo si la base ya tiene la columna; si no, la sección no aparece y la tienda ofrece los tres)
+const PAGOS = [['transferencia', '🏦', 'Transferencia bancaria', 'El ticket muestra tu alias / CBU (se carga en Ajustes).'], ['efectivo', '💵', 'Efectivo / contra entrega', 'Lo coordinan por WhatsApp.'], ['link', '💳', 'Link de pago / Mercado Pago', 'Si conectaste Mercado Pago, el cliente paga online al confirmar; si no, le mandás el link por WhatsApp.']];
+const hayPagos = () => Array.isArray(P.t.pagos_activos);
+const pagos = () => (E.pagos = E.pagos || PAGOS.map(p => p[0]).filter(k => !hayPagos() || !P.t.pagos_activos.length || P.t.pagos_activos.includes(k)));
 // borrador del diseño; convierte el formato viejo (un anuncio y un banner) al nuevo (listas)
 const dis = () => {
   if (D.d) return D.d;
@@ -26,7 +30,7 @@ const dis = () => {
 };
 const box = (m, e) => (e ? `<div class="err-box">${esc(e)}</div>` : '') + (m ? `<div class="ok-box">${esc(m)}</div>` : '');
 const idNuevo = n => (n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 14) || 'envio') + '-' + Math.random().toString(36).slice(2, 5);
-const tiendaVista = () => Object.assign({}, P.t, { envios: lista() });
+const tiendaVista = () => Object.assign({}, P.t, { envios: lista() }, hayPagos() ? { pagos_activos: pagos() } : {});
 
 export function vistaEnviosDiseno() { return vistaEnvios() + vistaDiseno(); }
 
@@ -41,6 +45,9 @@ function vistaEnvios() {
     <div class="fg"><label class="flabel" for="en-d${i}">Detalle (zona, demora)</label><input class="fi" id="en-d${i}" maxlength="120" value="${esc(x.detalle || '')}" data-input="en-set" data-i="${i}" data-k="detalle" placeholder="Ej: a todo el país · 3 a 6 días"></div></div>
     <div style="display:flex;gap:10px;align-items:center;justify-content:space-between"><label class="flabel" style="margin:0"><input type="checkbox" data-change="en-act" data-i="${i}" ${x.activo === false ? '' : 'checked'}> Disponible</label><button class="btn btn-s btn-sm" data-act="en-del" data-i="${i}" aria-label="Quitar ${esc(x.nombre)}">Quitar</button></div></div>`).join('') || '<p class="muted" style="margin-bottom:8px">Sin métodos de envío cargados.</p>'}
   ${L.length < 12 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px"><button class="btn btn-s btn-sm" data-act="en-add" data-t="retiro">+ Retiro</button><button class="btn btn-s btn-sm" data-act="en-add" data-t="moto">+ Moto</button><button class="btn btn-s btn-sm" data-act="en-add" data-t="correo">+ Correo / transporte</button><button class="btn btn-s btn-sm" data-act="en-add" data-t="acordar">+ A coordinar</button><button class="btn btn-s btn-sm" data-act="en-add" data-t="envio">+ Otro</button></div>` : ''}
+  ${hayPagos() ? `<h3 style="margin-top:6px">💳 Medios de pago</h3>
+  <p class="hint" style="margin-bottom:2px">Tildá los que aceptás. Tu cliente elige uno al confirmar; tiene que quedar al menos uno.</p>
+  <div class="pg-list">${PAGOS.map(([k, i, n, d]) => `<label class="chk"><input type="checkbox" data-change="en-pago" data-k="${k}" ${pagos().includes(k) ? 'checked' : ''}><span><b>${i} ${n}</b><br><small class="muted">${d}</small></span></label>`).join('')}</div>` : ''}
   <h3 style="margin-top:6px">🧾 Datos que le pedís al cliente</h3>
   <p class="hint" style="margin-bottom:6px">Nombre y WhatsApp se piden siempre; la dirección, cuando elige un envío (no retiro).</p>
   <div class="dc-grid">${DATOS.map(([k, n]) => `<label class="flabel" for="dc-${k}">${n}</label><select class="fi" id="dc-${k}" data-change="dc-set" data-k="${k}">${[['no', 'No pedir'], ['opcional', 'Opcional'], ['obligatorio', 'Obligatorio']].map(([v, l]) => `<option value="${v}" ${(dc[k] || 'no') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`).join('')}</div>
@@ -50,8 +57,9 @@ function vistaEnvios() {
   ${t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" data-change="en-rev" ${(E.rev != null ? E.rev : t.reventa_activa) ? 'checked' : ''}> 💰 Mostrar “Tu ganancia”: a cuánto puede revender cada producto y cuánto gana</label>
     <div class="row2" style="align-items:end"><div class="fg"><label class="flabel" for="en-revm">Recargo sugerido para la reventa %</label><input class="fi" id="en-revm" type="number" min="5" max="500" value="${E.revM != null ? E.revM : Math.round(Number(t.reventa_margen || 0.6) * 100)}" data-input="en-revm"></div><p class="hint">Sobre tu precio x1. Si un producto tiene su “precio sugerido” cargado, se usa ese.</p></div></div>` : ''}
   <p class="hint">Compra mínima mayorista: <b>${Number(t.compra_minima) ? fmt(t.compra_minima) : 'sin mínimo'}</b> (se cambia en Ajustes). La tienda la muestra arriba y en el carrito con lo que falta.</p>
-  <button class="btn btn-p" data-act="en-guardar" style="margin-top:8px">Guardar envíos, datos y reglas</button></div>
+  <button class="btn btn-p" data-act="en-guardar" style="margin-top:8px">Guardar envíos, pagos, datos y reglas</button></div>
   <div class="cc"><h3>Cómo lo ve tu cliente</h3><div class="env-prev">${L.filter(x => x.activo !== false && x.nombre).map(x => `<div class="opt"><span class="opt-ico">${(TIPOS.find(y => y[0] === x.tipo) || ['', '🚚'])[1].split(' ')[0]}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${x.tipo === 'retiro' ? 'Sin cargo' : Number(x.costo) ? fmt(x.costo) : x.tipo === 'acordar' || x.tipo === 'correo' ? 'Costo a coordinar' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></div>`).join('') || '<p class="muted">Cargá un método para verlo acá.</p>'}</div>
+  ${hayPagos() ? `<div class="flabel" style="margin-top:12px">Medio de pago</div><div class="env-prev">${PAGOS.filter(p => pagos().includes(p[0])).map(([k, i, n]) => `<div class="opt"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div></span><span class="radio"></span></div>`).join('')}</div>` : ''}
   <div class="hint" style="margin-top:8px">Además del nombre y el WhatsApp, le vamos a pedir: ${DATOS.filter(([k]) => (dc[k] || 'no') !== 'no').map(([k, n]) => n + (dc[k] === 'obligatorio' ? ' *' : '')).join(', ') || 'nada más'}.</div></div></div>`;
 }
 
@@ -105,6 +113,11 @@ on('en-av', (d, el) => { E.aviso = Math.max(0, Math.min(1000, Math.floor(Number(
 on('en-rev', (d, el) => { E.rev = el.checked; });
 on('en-revm', (d, el) => { E.revM = Math.max(5, Math.min(500, Number(el.value) || 60)); });
 on('dc-set', (d, el) => { datos()[d.k] = el.value; P.repintar(); });
+on('en-pago', (d, el) => {
+  const s = new Set(pagos()); if (el.checked) s.add(d.k); else s.delete(d.k);
+  if (!s.size) { el.checked = true; toast('Dejá al menos un medio de pago'); return; }
+  E.pagos = PAGOS.map(p => p[0]).filter(k => s.has(k)); P.repintar();
+});
 on('en-guardar', async () => {
   const L = lista().map(x => { const y = { id: x.id, nombre: String(x.nombre || '').trim(), tipo: x.tipo, costo: x.tipo === 'retiro' ? 0 : Math.max(0, Math.round(Number(x.costo) || 0)) }; if (x.detalle && x.detalle.trim()) y.detalle = x.detalle.trim(); if (x.activo === false) y.activo = false; return y; });
   const mal = L.find(x => x.nombre.length < 2); if (mal) { E.err = 'Cada método de envío necesita un nombre.'; E.msg = ''; return P.repintar(); }
@@ -112,7 +125,8 @@ on('en-guardar', async () => {
   const c = { envios: L, envio_gratis_desde: E.gratis != null ? E.gratis : Number(P.t.envio_gratis_desde || 0), datos_checkout: dc };
   if (P.t.modalidad !== 'minorista') { c.reventa_activa = E.rev != null ? E.rev : !!P.t.reventa_activa; c.reventa_margen = (E.revM != null ? E.revM : Math.round(Number(P.t.reventa_margen || 0.6) * 100)) / 100; }
   if (can('stock')) c.aviso_stock = E.aviso != null ? E.aviso : Number(P.t.aviso_stock || 0);
-  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
+  if (hayPagos()) c.pagos_activos = pagos();
+  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
   catch (e) { E.err = e.message; E.msg = ''; }
   P.repintar();
 });

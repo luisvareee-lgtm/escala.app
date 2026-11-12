@@ -61,6 +61,13 @@ export function popupHtml(d) {
 // huella del popup: si el comercio lo cambia, se vuelve a mostrar una vez
 export const firmaPopup = d => { const p = d && d.popup; if (!p) return ''; const s = [p.titulo, p.texto, p.cupon].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); };
 
+// medios de pago prendidos, en palabras: "por transferencia, en efectivo o con Mercado Pago"
+const PAGOS_TODOS = ['transferencia', 'efectivo', 'link'];
+const pagosDe = t => { const a = Array.isArray(t.pagos_activos) && t.pagos_activos.length ? t.pagos_activos : PAGOS_TODOS; return PAGOS_TODOS.filter(k => a.includes(k)); };
+const unir = (L, y) => L.length < 2 ? (L[0] || '') : L.slice(0, -1).join(', ') + ' ' + y + ' ' + L[L.length - 1];
+const pagosFrase = t => unir(pagosDe(t).map(k => ({ transferencia: 'por transferencia', efectivo: 'en efectivo', link: t.mp_activo ? 'con Mercado Pago' : 'con link de pago' })[k]), 'o');
+const pagosLista = t => unir(pagosDe(t).map(k => ({ transferencia: 'Transferencia', efectivo: 'Efectivo', link: t.mp_activo ? 'Mercado Pago' : 'Link de pago' })[k]), 'y');
+
 // ---- "Cómo comprar": si el comercio no escribió sus pasos, se arman solos con su configuración real ----
 export function pasosAuto(t) {
   const may = t.modalidad !== 'minorista', env = (t.envios || []).filter(e => e && e.activo !== false && e.nombre), min = Number(t.compra_minima) || 0;
@@ -70,7 +77,7 @@ export function pasosAuto(t) {
     : 'Tocá “+ Agregar” en lo que te guste. Podés comprar desde 1 unidad.' });
   P.push({ titulo: 'Revisá tu carrito', texto: `Ves el total y, si corresponde, cuánto ahorrás por cantidad.${may && min ? ` La compra mínima mayorista es de ${fmt(min)}.` : ''}` });
   P.push({ titulo: 'Elegí cómo recibirlo', texto: env.length ? `Opciones: ${env.map(e => e.nombre).join(', ')}.${Number(t.envio_gratis_desde) > 0 ? ` Envío gratis desde ${fmt(t.envio_gratis_desde)}.` : ''}` : 'Coordinamos la entrega o el retiro por WhatsApp.' });
-  P.push({ titulo: 'Confirmá y mandá el pedido por WhatsApp', texto: `Te llega el ticket con el detalle y el total. Podés pagar por transferencia, en efectivo${t.mp_activo ? ' o con Mercado Pago' : ' o con link de pago'}.${t.modo_stock === 'encargo' ? ` Trabajamos por encargo: llega en ${+t.demora_encargo || 7} días desde que confirmamos el pedido.` : t.modo_stock === 'mixto' ? ' Los productos “por encargo” llegan en los días que indica cada uno.' : ' Te confirmamos stock y el envío.'}` });
+  P.push({ titulo: 'Confirmá y mandá el pedido por WhatsApp', texto: `Te llega el ticket con el detalle y el total. Podés pagar ${pagosFrase(t)}.${t.modo_stock === 'encargo' ? ` Trabajamos por encargo: llega en ${+t.demora_encargo || 7} días desde que confirmamos el pedido.` : t.modo_stock === 'mixto' ? ' Los productos “por encargo” llegan en los días que indica cada uno.' : ' Te confirmamos stock y el envío.'}` });
   return P;
 }
 export const pasosDe = (d, t) => (d && Array.isArray(d.comprar) && d.comprar.length ? d.comprar : pasosAuto(t));
@@ -99,7 +106,7 @@ export function faqSugeridas(t) {
   if (may) L.push({ p: '¿Hay compra mínima?', r: min ? `Sí, la compra mínima mayorista es de ${fmt(min)}.` : 'No, podés comprar desde 1 unidad.' });
   L.push({ p: '¿Puedo combinar productos?', r: 'Sí, armá tu pedido con los productos que quieras.' });
   L.push({ p: '¿Hacen envíos?', r: env.length ? `Sí: ${env.map(e => e.nombre + (Number(e.costo) ? ' (' + fmt(e.costo) + ')' : '')).join(', ')}.${Number(t.envio_gratis_desde) > 0 ? ` Gratis desde ${fmt(t.envio_gratis_desde)}.` : ''}` : 'Sí, coordinamos el envío o el retiro por WhatsApp.' });
-  L.push({ p: '¿Qué medios de pago aceptan?', r: `Transferencia, efectivo${t.mp_activo ? ' y Mercado Pago' : ' y link de pago'}.` });
+  L.push({ p: '¿Qué medios de pago aceptan?', r: `${pagosLista(t)}.` });
   L.push({ p: '¿Cuánto tarda en llegar?', r: 'Despachamos dentro de las 48 h hábiles de confirmado el pago. (Editá este tiempo según tu negocio.)' });
   L.push({ p: '¿Hacen factura?', r: 'Consultanos por WhatsApp al hacer el pedido. (Editá esta respuesta según tu condición fiscal.)' });
   return L;

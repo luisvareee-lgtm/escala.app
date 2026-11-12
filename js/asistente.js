@@ -45,6 +45,7 @@ const AYUDA = {
   'en-c': { t: 'Costo del envío', d: 'Se suma solo al total del pedido; el comprador no lo puede cambiar. En correo o “a coordinar” podés dejar 0 y cotizarlo aparte.', ej: '1500' },
   'en-d': { t: 'Detalle', d: 'Lo que el cliente ve debajo del nombre: zonas, días, horarios o demora.', ej: 'Lunes a viernes de 10 a 18 · a todo el país en 3 a 6 días' },
   'dc-': { t: 'Datos que le pedís al cliente', d: 'Además de nombre y WhatsApp. <b>Obligatorio:</b> no puede confirmar sin completarlo. <b>Opcional:</b> puede dejarlo vacío. <b>No pedir:</b> no aparece.', ej: 'DNI y código postal obligatorios si despachás por correo.' },
+  'en-pago': { t: 'Medios de pago', d: 'Los que tildes son los que tu cliente puede elegir al confirmar el pedido. Apagá los que no aceptás para que nadie elija uno que no te sirve. Tiene que quedar al menos uno.', ej: 'Si solo cobrás por transferencia, dejá tildada solo “Transferencia bancaria”.' },
   'en-gr': { t: 'Envío gratis desde', d: 'A partir de este total, el envío no se cobra (el retiro siempre es sin cargo). Sirve para que sumen productos. 0 = nunca.', ej: '60000' },
   'en-av': { t: '¡Últimas unidades!', d: 'Cuando el stock de un producto baja a este número, la tarjeta muestra “¡Últimas N!”. Genera urgencia sin mentir. 0 = no mostrar.', ej: '3' },
   'en-rev': { t: 'Mostrar “Tu ganancia”', d: 'En la lista mayorista, cada producto le muestra a tu revendedor a cuánto lo puede vender y cuánto gana. Ayuda a que se anime a llevar más.' },
@@ -61,7 +62,8 @@ function claveDe(el) {
 }
 function ayudaDe(el, zona) { const k = claveDe(el); return k ? AYUDA[zona + ':' + k] || AYUDA[k] || null : null; }
 // dónde va el recuadro: debajo de la fila (para no romper las grillas de 2 columnas) o del campo
-const anclaDe = el => el.closest('.row2, .dc-grid') || el.closest('.fg') || el;
+// (nunca adentro de un <label>: en las listas de casillas va debajo de la lista entera)
+const anclaDe = el => el.closest('.row2, .dc-grid, .pg-list') || el.closest('.fg') || el.closest('label') || el;
 
 let caja = null;
 export function quitarAsistente() { if (caja) { caja.remove(); caja = null; } }
