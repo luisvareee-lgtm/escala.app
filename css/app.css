@@ -780,3 +780,18 @@ details.card > summary { cursor: pointer; }
 .dm-pie{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}.dm-mano{width:auto;margin:0}
 .dm-salidas{margin-top:10px;border:1px solid var(--bd);border-radius:12px;padding:12px;font-size:.86rem;display:grid;gap:8px}.dm-salidas .btn{width:auto;margin:0}
 .warn-box{background:rgba(224,138,0,.12);border:1px solid color-mix(in srgb,var(--amber) 50%,transparent);border-radius:10px;padding:8px 12px;font-size:.82rem;margin:8px 0}
+
+/* Asistente de campos (alta, Ajustes, Envíos): recuadro que explica el campo que se está completando */
+.asis-sw{display:flex;align-items:center;gap:8px;margin:2px 0 12px;font-size:.8rem;font-weight:600;color:var(--t2);cursor:pointer;user-select:none}
+.asis-sw input{width:16px;height:16px;accent-color:var(--ac)}
+.asis{margin:-6px 0 14px;padding:10px 12px;border:1px solid var(--ac);border-left-width:4px;border-radius:var(--rs);background:var(--acs);color:var(--t1);font-size:.82rem;line-height:1.45;animation:asis-in .18s ease-out}
+.asis-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px}
+.asis-h b{color:var(--ac);font-size:.84rem}
+.asis-x{flex:none;background:none;border:0;padding:2px 0;color:var(--t3);font:inherit;font-size:.72rem;text-decoration:underline;cursor:pointer}
+.asis-x:hover{color:var(--t1)}
+.asis p{margin:0;color:var(--t2)}
+.asis p b{color:var(--t1)}
+.asis .asis-ej{margin-top:6px;color:var(--t1)}
+.asis .asis-ej span{font-weight:700;color:var(--ac)}
+@keyframes asis-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.asis{animation:none}}
