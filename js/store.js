@@ -299,7 +299,8 @@ function envioUi() {
   if (!envioSel()) S.env = L.length === 1 ? L[0].id : null;
   const T = totales(), e = envioSel();
   return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.total); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${(x.tipo === 'acordar' || x.tipo === 'correo') && !c && !(+S.tienda.envio_gratis_desde > 0 && totales().total >= +S.tienda.envio_gratis_desde) ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
-    ${e && e.tipo !== 'retiro' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección de entrega</label><input class="fi" id="co-dir" name="direccion" maxlength="160" required minlength="5" placeholder="Calle, número, piso / referencia"></div>` : ''}`;
+    ${e && e.tipo === 'acordar' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección o zona <small class="muted">(opcional)</small></label><input class="fi" id="co-dir" name="direccion" maxlength="160" placeholder="Para coordinar la entrega (barrio, calle…)"></div>`
+      : e && e.tipo !== 'retiro' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección de entrega</label><input class="fi" id="co-dir" name="direccion" maxlength="160" required minlength="5" placeholder="Calle, número, piso / referencia"></div>` : ''}`;
 }
 function resumenCo() {
   const T = totales(), e = envioSel(), c = costoEnvio(e, T.total);
@@ -308,14 +309,19 @@ function resumenCo() {
 }
 function ticket(r, cliente) {
   const ubic = [cliente.localidad, cliente.provincia, cliente.cp ? 'CP ' + cliente.cp : ''].filter(Boolean).join(' · ');
-  let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}Modalidad: ${r.modo === 'mayorista' ? 'Mayorista' : 'Minorista'}\n\nDetalle:\n`;
+  let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}${S.tienda.modalidad === 'minorista' ? '' : 'Modalidad: ' + (r.modo === 'mayorista' ? 'Mayorista' : 'Minorista') + '\n'}\nDetalle:\n`;
   r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(i.subtotal)}\n`; });
-  if (r.envio) t += `\nEntrega: ${r.envio}${cliente.direccion ? ' · ' + cliente.direccion : ''}\nProductos: ${fmt(r.subtotal)} · Envío: ${+r.envio_costo ? fmt(r.envio_costo) : 'sin cargo'}\n`;
+  if (r.envio) {
+    const e = envioSel(), gratis = +S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde;
+    const env = +r.envio_costo ? fmt(r.envio_costo) : e && e.tipo === 'retiro' ? 'sin cargo' : e && (e.tipo === 'acordar' || e.tipo === 'correo') && !gratis ? 'a coordinar' : 'gratis';
+    t += `\nEntrega: ${r.envio}${cliente.direccion ? ' · ' + cliente.direccion : ''}\nProductos: ${fmt(r.subtotal)} · Envío: ${env}\n`;
+  }
   t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
-  if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || '(lo coordinamos por acá)'}\n`;
+  if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || 'pasámelo por acá'}\n`;
   if (cliente.nota) t += `Aclaraciones: ${cliente.nota}\n`;
   { const enc = lineas().filter(l => l.p.a_pedido); if (enc.length) t += `Por encargo: llega en hasta ${Math.max(...enc.map(l => +l.p.demora_dias || 0))} días\n`; }
   if (r.proxima_tanda) t += `Entra en la próxima tanda de pedidos\n`;
+  { const e = envioSel(); if (r.envio && !+r.envio_costo && e && (e.tipo === 'acordar' || e.tipo === 'correo') && !(+S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde)) return t + `*TOTAL: ${fmt(r.total)}* (sin el envío)`; }
   return t + `*TOTAL: ${fmt(r.total)}*`;
 }
 function pantallaOk() {
@@ -384,7 +390,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.det) { S
 const CAMPOS = ['nombre', 'whatsapp', 'localidad', 'direccion', 'dni', 'provincia', 'cp', 'nota'];
 function repintarCo() { const v = CAMPOS.map(n => { const e = document.querySelector(`#co-form [name=${n}]`); return e ? e.value : ''; }); pintar(); CAMPOS.forEach((n, i) => { const e = document.querySelector(`#co-form [name=${n}]`); if (e && v[i]) e.value = v[i]; }); }
 on('st-pay', d => { S.pay = d.p; repintarCo(); });
-on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && !e.value) e.focus(); });
+on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && e.required && !e.value) e.focus(); });
 
 on('may-abrir', async () => { if (S.tienda.requiere_codigo) { S.pedirCodigo = true; pintar(); const i = document.querySelector('#gremio-box input'); if (i) i.focus(); } else await activarMay(null); });
 on('may-codigo', async (d, f) => { await activarMay(new FormData(f).get('codigo')); });
