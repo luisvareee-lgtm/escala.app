@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir } from './catalogo.js';
 import { abrirFlyer } from './flyer.js';
+import { tiraCierreHtml } from './cuenta.js';
 import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml } from './bloques.js';
 
 const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [] };
@@ -110,21 +111,16 @@ export function faltaTxt(ms) {
   const s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
   return d > 0 ? `${d2(d)}d ${d2(h)}h ${d2(m)}m` : `${d2(h)}h ${d2(m)}m ${d2(s % 60)}s`;
 }
+// la tira con el reloj (días · horas · min · seg, corre cada segundo) vive en cuenta.js
 function cierreHtml() {
   const c = cierre(); if (!c) return '';
-  if (!c.cerrado) return `<div class="st-cierre" id="st-cierre" role="timer" aria-live="off">⏳ Esta ronda de pedidos cierra en <b id="cierre-t">${faltaTxt(c.at - Date.now())}</b></div>`;
-  return c.pausa ? `<div class="st-cierre cerrado" id="st-cierre" role="status">🔒 Los pedidos de esta ronda ya cerraron.${c.texto ? ' ' + esc(c.texto) : ' Volvé a entrar en unos días.'}</div>`
-    : `<div class="st-cierre tanda" id="st-cierre" role="status">📦 La ronda cerró: lo que pidas ahora entra en la próxima tanda.${c.texto ? ' ' + esc(c.texto) : ''}</div>`;
+  return tiraCierreHtml({ at: c.at, estado: !c.cerrado ? 'abierto' : c.pausa ? 'pausa' : 'tanda', texto: c.texto });
 }
-let relojCierre = null;
-function iniciarReloj() {
-  clearInterval(relojCierre); const c = cierre(); if (!c || c.cerrado) return;
-  relojCierre = setInterval(() => {
-    const el = document.getElementById('cierre-t'); if (!el) { clearInterval(relojCierre); return; }
-    if (Date.now() >= c.at) { clearInterval(relojCierre); if (S.vista === 'co') repintarCo(); else pintar(); return; }
-    el.textContent = faltaTxt(c.at - Date.now());
-  }, 1000);
-}
+// al llegar a cero: se cambia la tira y se repinta (en pausa el carrito ya no deja continuar)
+document.addEventListener('cuenta-fin', e => {
+  if (!S.tienda || !e.target.closest('#st-cierre')) return;
+  if (S.vista === 'co') { const t = document.getElementById('st-cierre'); if (t) t.outerHTML = cierreHtml(); repintarCo(); } else pintar();
+});
 
 /* ---------- flyers para revender (marca blanca): solo en la lista mayorista ---------- */
 const flyOn = () => vista() === 'may';
@@ -183,7 +179,6 @@ function pintar() {
       <button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">🛒${T.n ? `<span id="cart-n">${T.n}</span>` : ''}</button></div>
     ${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); }
-  iniciarReloj();
 }
 function pintarPopup() {
   const d = S.tienda.diseno, k = 'pop:' + S.slug, f = firmaPopup(d), r = $('#pop-root');
