@@ -224,6 +224,7 @@ on('p-guardar', async (d, f) => {
   const fd = new FormData(f), b = $('#aj-go'); b.disabled = true;
   const m = n => Number(fd.get('m' + n)) / 100;
   const c = { whatsapp: String(fd.get('whatsapp')).replace(/\D/g, ''), modalidad: fd.get('modalidad'), cotizacion_usd: Number(fd.get('cotizacion_usd')), compra_minima: Number(fd.get('compra_minima') || 0), gastos_fijos: Number(fd.get('gastos_fijos') || 0), margen_piso: Number(fd.get('margen_piso') || 0) / 100, alias_cobro: fd.get('alias_cobro').trim() || null, margen_1: m(1), margen_3: m(3), margen_6: m(6), margen_12: m(12) };
+  if (fd.has('escala_grupo')) c.escala_grupo = ['categoria', 'carrito'].includes(fd.get('escala_grupo')) ? fd.get('escala_grupo') : 'producto';
   c.modo_stock = fd.get('modo_stock') || 'stock'; c.demora_encargo = Math.max(1, Math.min(120, Math.floor(Number(fd.get('demora_encargo')) || 7)));
   if (can('pixel')) c.pixel_id = (fd.get('pixel_id') || '').trim() || null;
   if (can('webhook')) c.webhook_url = (fd.get('webhook_url') || '').trim() || null;

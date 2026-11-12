@@ -6,6 +6,7 @@ import { $, esc, fmt, on, toast } from './util.js';
 import { P, can, aviso } from './state.js';
 import { redimensionar } from './img.js';
 import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe } from './bloques.js';
+import { asisSwitch } from './asistente.js';
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
@@ -31,7 +32,7 @@ export function vistaEnviosDiseno() { return vistaEnvios() + vistaDiseno(); }
 
 function vistaEnvios() {
   const L = lista(), t = P.t, dc = datos();
-  return `<div class="grid2"><div class="cc" id="envios"><h3>🚚 Envíos y entregas</h3>${box(E.msg, E.err)}
+  return `<div class="grid2"><div class="cc" id="envios" data-asistente="envios"><h3>🚚 Envíos y entregas</h3>${asisSwitch()}${box(E.msg, E.err)}
   <p class="hint" style="margin-bottom:8px">Tu cliente elige uno al confirmar el pedido. El costo lo suma el sistema (no lo puede cambiar el comprador). Si no cargás ninguno, se coordina por WhatsApp.</p>
   ${L.map((x, i) => `<div class="env-row${x.activo === false ? ' off' : ''}">
     <div class="row2"><div class="fg"><label class="flabel" for="en-n${i}">Nombre</label><input class="fi" id="en-n${i}" maxlength="60" value="${esc(x.nombre)}" data-input="en-set" data-i="${i}" data-k="nombre" placeholder="Ej: Vía Cargo a sucursal"></div>

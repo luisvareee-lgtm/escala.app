@@ -26,12 +26,19 @@ const porUnidad = p => { const u = unidadTxt(p.unidad, p.contenido); return u ? 
 const unidad = (p, q) => { const t = tramos(p); if (!t) return +p.precio_1; return q >= 12 ? t[12] : q >= 6 ? t[6] : q >= 3 ? t[3] : t[1]; };
 const qtyDe = id => S.cart.filter(l => l.id === id).reduce((a, l) => a + l.qty, 0);
 const prod = id => S.prods.find(p => p.id === id);
+// Escalas acumulables (mismo criterio que el servidor): se cuentan por producto, sumando la misma categoría o todo el carrito.
+// Los productos con precio único no suman ni restan.
+const grupoModo = () => (S.tienda.escala_grupo === 'categoria' || S.tienda.escala_grupo === 'carrito' ? S.tienda.escala_grupo : 'producto');
+const grupoDe = p => { const m = grupoModo(); return m === 'categoria' ? 'c:' + (p.categoria || '') : m === 'carrito' ? '*' : 'p:' + p.id; };
+const qtyEsc = p => { if (!p) return 0; if (p.precio_unico) return qtyDe(p.id); const k = grupoDe(p); return S.cart.reduce((a, l) => { const o = prod(l.id); return o && !o.precio_unico && grupoDe(o) === k ? a + l.qty : a; }, 0); };
+// " de Cuidado facial" / " (cualquier producto)" / "" para los mensajes
+const grupoTxt = p => { const m = grupoModo(); return m === 'categoria' ? ' de ' + esc(p.categoria || 'la categoría') : m === 'carrito' ? ' (cualquier producto)' : ''; };
 // "Tu ganancia": lo que gana el cliente que revende (solo en lista mayorista y si la tienda lo activó)
 const ganOn = () => !!S.tienda.reventa_activa && vista() === 'may';
 const pvpDe = p => +p.pvp_sugerido > 0 ? +p.pvp_sugerido : Math.ceil(unidad(p, 1) * (1 + (+S.tienda.reventa_margen || 0.6)) / 10) * 10;
-function ganHtml(p, q) {
+function ganHtml(p) {
   if (!ganOn()) return '';
-  const u = unidad(p, Math.max(1, q)), pv = pvpDe(p), g = pv - u; if (!(g > 0)) return '';
+  const u = unidad(p, Math.max(1, qtyEsc(p))), pv = pvpDe(p), g = pv - u; if (!(g > 0)) return '';
   return `<div class="gan"><span>🏷️ Vendelo a <b>${fmt(pv)}</b></span><span class="gan-g">💰 Ganás <b>${fmt(g)}</b> c/u · ${Math.round(g / u * 100)}%</span></div>`;
 }
 function ganCarrito() {
@@ -40,7 +47,7 @@ function ganCarrito() {
   return `<div class="gan gan-tot"><div class="srow"><span>Vendiendo todo al precio sugerido</span><span class="v">${fmt(fac)}</span></div><div class="srow tot"><span>💰 Tu ganancia estimada</span><span class="v">+${fmt(g)} · ${Math.round(g / inv * 100)}%</span></div></div>`;
 }
 function lineas() {
-  return S.cart.map((l, i) => { const p = prod(l.id); if (!p) return null; const q = qtyDe(l.id); const pu = unidad(p, q); return { i, p, vr: l.vr, qty: l.qty, pu, sub: pu * l.qty, base: +p.precio_1 * l.qty }; }).filter(Boolean);
+  return S.cart.map((l, i) => { const p = prod(l.id); if (!p) return null; const q = qtyEsc(p); const pu = unidad(p, q); return { i, p, vr: l.vr, qty: l.qty, pu, sub: pu * l.qty, base: +p.precio_1 * l.qty }; }).filter(Boolean);
 }
 function totales() { const L = lineas(); return { n: L.reduce((a, l) => a + l.qty, 0), total: L.reduce((a, l) => a + l.sub, 0), ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0) }; }
 const envios = () => Array.isArray(S.tienda.envios) ? S.tienda.envios : [];
@@ -53,35 +60,46 @@ function pista() {
   if (vista() !== 'may' || !S.tienda.escalas_activas) return null;
   let mejor = null; const visto = {};
   S.cart.forEach(l => {
-    if (visto[l.id]) return; visto[l.id] = 1; const p = prod(l.id); const t = p && tramos(p); if (!t) return;
-    const q = qtyDe(l.id), nx = [3, 6, 12].find(x => x > q); if (!nx) return;
-    const pc = unidad(p, q), pn = t[nx]; if (pn >= pc) return;
-    const falta = nx - q, ahorro = (q + falta) * (pc - pn);
-    if (!mejor || falta < mejor.falta) mejor = { falta, nombre: p.nombre, ahorro, q, nx };
+    const p = prod(l.id); const t = p && tramos(p); if (!t || t.unico) return;
+    const k = grupoDe(p); if (visto[k]) return; visto[k] = 1;
+    const q = qtyEsc(p), nx = [3, 6, 12].find(x => x > q); if (!nx) return;
+    // lo que baja todo lo que ya está en el grupo + las unidades que faltan (tomando este producto de referencia)
+    let ahorro = 0;
+    S.cart.forEach(m => { const o = prod(m.id), to = o && tramos(o); if (to && !to.unico && grupoDe(o) === k) ahorro += Math.max(0, unidad(o, q) - to[nx]) * m.qty; });
+    if (!(ahorro > 0)) return;
+    const falta = nx - q; ahorro += falta * Math.max(0, unidad(p, q) - t[nx]);
+    const m = grupoModo(), de = m === 'categoria' ? 'de ' + (p.categoria || p.nombre) : m === 'carrito' ? 'de cualquier producto' : 'de ' + p.nombre;
+    if (!mejor || falta < mejor.falta) mejor = { falta, nombre: p.nombre, de, ahorro, q, nx };
   });
   return mejor;
 }
 const guardarCarrito = () => store.set('cart:' + S.slug, S.cart);
 
 /* ---------- barra de escalas: cuánto falta para el próximo precio y cuánto se ahorra ---------- */
-function escala(p, q) {
+// q = unidades que cuentan para la escala (las del producto o, si la tienda lo eligió, las de su categoría o todo el carrito)
+function escala(p) {
   const t = tramos(p); if (!t || t.unico || !S.tienda.escalas_activas || !(t[12] < t[1])) return null;
-  const nx = [3, 6, 12].find(x => x > q) || null, pu = unidad(p, Math.max(1, q));
+  const q = qtyEsc(p), nx = [3, 6, 12].find(x => x > q) || null, pu = unidad(p, Math.max(1, q));
   const pos = q >= 12 ? 100 : q >= 6 ? 66.6 + (q - 6) / 6 * 33.4 : q >= 3 ? 33.3 + (q - 3) / 3 * 33.3 : q / 3 * 33.3;
-  return { t, q, nx, falta: nx ? nx - q : 0, pu, pn: nx ? t[nx] : pu, ahorro: q * (t[1] - pu), nivel: q >= 12 ? 3 : q >= 6 ? 2 : q >= 3 ? 1 : 0, pos: Math.round(pos) };
+  // ahorro de todo lo que suma en el grupo frente al precio x1
+  const k = grupoDe(p); let ahorro = 0;
+  S.cart.forEach(l => { const o = prod(l.id), to = o && tramos(o); if (to && !to.unico && grupoDe(o) === k) ahorro += Math.max(0, to[1] - unidad(o, q)) * l.qty; });
+  return { t, q, nx, falta: nx ? nx - q : 0, pu, pn: nx ? t[nx] : pu, ahorro, nivel: q >= 12 ? 3 : q >= 6 ? 2 : q >= 3 ? 1 : 0, pos: Math.round(pos) };
 }
-function escalaHtml(p, q, compacta) {
-  const e = escala(p, q); if (!e || (compacta && !q)) return '';
-  const u = e.falta === 1 ? '1 unidad' : e.falta + ' unidades';
-  const msg = !e.nx ? `🎉 ¡Mejor precio desbloqueado! Ahorrás <b>${fmt(e.ahorro)}</b>`
-    : !q ? `Llevando ${e.nx} pagás <b>${fmt(e.pn)}</b> c/u`
-    : `Te ${e.falta === 1 ? 'falta' : 'faltan'} <b>${u}</b> para el precio x${e.nx}${e.nx === 12 ? '+' : ''} (${fmt(e.pn)} c/u)${e.ahorro > 0 ? ` · ya ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`;
+function escalaHtml(p, compacta) {
+  const e = escala(p); if (!e || (compacta && !e.q)) return '';
+  const q = e.q, u = e.falta === 1 ? '1 unidad' : e.falta + ' unidades', gr = grupoTxt(p), m = grupoModo();
+  const msg = !e.nx ? `🎉 ¡Mejor precio desbloqueado${m === 'producto' ? '' : gr}!${e.ahorro > 0 ? ` Ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`
+    : !q ? `Llevando ${e.nx} pagás <b>${fmt(e.pn)}</b> c/u${m === 'categoria' ? ` <small>(podés combinar productos${gr})</small>` : m === 'carrito' ? ' <small>(podés combinar cualquier producto)</small>' : ''}`
+    : `Te ${e.falta === 1 ? 'falta' : 'faltan'} <b>${u}</b>${gr} para el precio x${e.nx}${e.nx === 12 ? '+' : ''} (${fmt(e.pn)} c/u)${e.ahorro > 0 ? ` · ya ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`;
   return `<div class="esc-bar lvl${e.nivel}" data-falta="${e.falta}" role="status"><div class="esc-msg">${msg}</div><div class="esc-track" aria-hidden="true"><i style="width:${e.pos}%"></i>${[3, 6, 12].map((n, i) => `<span class="${q >= n ? 'ok' : ''}" style="left:${[33.3, 66.6, 100][i]}%">x${n}</span>`).join('')}</div></div>`;
 }
+// aclaración en la ficha cuando las escalas se suman entre productos
+const escNota = p => { const t = tramos(p), m = grupoModo(); if (!t || t.unico || m === 'producto') return ''; return `<div class="flat-note">x3 · x6 · x12 ${m === 'categoria' ? 'sumando todos los productos' + grupoTxt(p) : 'sumando todo lo que lleves en el carrito'}</div>`; };
 // "Tu ganancia estimada de reventa" para lo que lleva de un producto
-function ganQty(p, q) {
-  if (!ganOn() || !q) return '';
-  const g = (pvpDe(p) - unidad(p, q)) * q; return g > 0 ? `<div class="gan-badge">💰 Tu ganancia estimada de reventa: <b>+${fmt(g)}</b></div>` : '';
+function ganQty(p) {
+  const q = qtyDe(p.id); if (!ganOn() || !q) return '';
+  const g = (pvpDe(p) - unidad(p, qtyEsc(p))) * q; return g > 0 ? `<div class="gan-badge">💰 Tu ganancia estimada de reventa: <b>+${fmt(g)}</b></div>` : '';
 }
 
 /* ---------- cierre de pedidos (lo configura el comercio; el servidor es el que manda) ---------- */
@@ -185,7 +203,7 @@ function banner() {
   const aviso = S.avisoPago ? `<div class="ok-box" role="status" style="margin:12px 16px">${esc(S.avisoPago)}</div>` : '';
   const t = S.tienda, m = vista();
   let chips = m === 'min' ? '<span class="chip">🛍️ Comprás desde 1 unidad · sin mínimo</span>'
-    : `<span class="chip">📦 ${t.escalas_activas ? 'Precios por volumen x1 · x3 · x6 · x12' : 'Lista mayorista'}${minimo() ? ' · mínimo ' + fmt(minimo()) : ''}</span>`;
+    : `<span class="chip">📦 ${t.escalas_activas ? 'Precios por volumen x1 · x3 · x6 · x12' + (grupoModo() === 'categoria' ? ' · sumando la misma categoría' : grupoModo() === 'carrito' ? ' · sumando todo el carrito' : '') : 'Lista mayorista'}${minimo() ? ' · mínimo ' + fmt(minimo()) : ''}</span>`;
   if (t.modalidad === 'hibrido') chips += S.may ? '<button class="chip" data-act="may-salir">✓ Lista mayorista activa · Salir</button>' : '<button class="chip" data-act="may-abrir">💼 Acceso Mayorista</button>';
   const caja = S.pedirCodigo && !S.may ? `<form data-submit="may-codigo" id="gremio-box"><input class="fi" name="codigo" placeholder="Código de revendedor" autocomplete="off" aria-label="Código de revendedor" required><button class="btn btn-p btn-sm" type="submit">Activar</button></form><div class="ferr" id="may-err" hidden></div>` : '';
   if (t.modo_stock === 'encargo') chips += `<span class="chip">📦 Por encargo · llega en ${+t.demora_encargo || 7} días</span>`;
@@ -207,8 +225,8 @@ function pintarGrid() {
   if (!lista.length) { g.innerHTML = '<div style="grid-column:1/-1" class="empty"><div class="ico">🔍</div><p>No encontramos productos.</p></div>'; $('#mas').innerHTML = ''; return; }
   const verCat = S.cat === 'Todas' && cats.length > 2;   // la etiqueta de categoría solo suma si hay varias
   g.innerHTML = lista.slice(0, S.limite).map(p => {
-    const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [];
-    const hl = n => qty > 0 && ((n === 12 && qty >= 12) || (n === 6 && qty >= 6 && qty < 12) || (n === 3 && qty >= 3 && qty < 6) || (n === 1 && qty < 3)) ? 'hl' : '';
+    const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = S.sel[p.id] || 0, vars = p.variantes || [];
+    const hl = n => qe > 0 && ((n === 12 && qe >= 12) || (n === 6 && qe >= 6 && qe < 12) || (n === 3 && qe >= 3 && qe < 6) || (n === 1 && qe < 3)) ? 'hl' : '';
     const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
     const precio = m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${porUnidad(p)}${usd(+p.precio_1)}</div>`
       : t.unico ? `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista único</div>${usd(t[1])}</div>`
@@ -219,7 +237,7 @@ function pintarGrid() {
       ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span><button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
       : `<button class="qadd" data-act="st-add" data-id="${p.id}">+ Agregar</button>`;
     return `<div class="pcard${qty ? ' in-cart' : ''}"><div class="pimg${p.imagen_url ? ' con-img' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;${p.imagen_url ? cssImg(p.imagen_url) : 'background:linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.a_pedido && S.tienda.modo_stock === 'mixto' ? `<span class="badge badge-enc">Por encargo · llega en ${+p.demora_dias} días</span>` : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
-      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${escalaHtml(p, qty, true)}${ganHtml(p, qty)}<div class="pqty">${ctrl}</div>${flyOn() ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
+      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${escalaHtml(p, true)}${ganHtml(p)}<div class="pqty">${ctrl}</div>${flyOn() ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
   }).join('');
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
 }
@@ -228,7 +246,7 @@ function pintarBarra() {
   cb.hidden = T.n === 0; if (!T.n) return;
   const h = pista(), mc = minimo();
   cb.setAttribute('data-act', 'st-ir'); cb.dataset.v = 'cart';
-  cb.innerHTML = `<div class="cb-main"><div class="cb-t">${T.n} u. · ${fmt(T.total)}</div><div class="cb-h">${h ? `Sumá ${h.falta} u. más y ahorrá ${fmt(h.ahorro)}` : (mc && T.total < mc ? `Faltan ${fmt(mc - T.total)} para el mínimo` : 'Listo para finalizar')}</div></div><div class="cb-go">Ver carrito →</div>`;
+  cb.innerHTML = `<div class="cb-main"><div class="cb-t">${T.n} u. · ${fmt(T.total)}</div><div class="cb-h">${h ? `Sumá ${h.falta} u. más${grupoModo() === 'producto' ? '' : ' ' + esc(h.de)} y ahorrá ${fmt(h.ahorro)}` : (mc && T.total < mc ? `Faltan ${fmt(mc - T.total)} para el mínimo` : 'Listo para finalizar')}</div></div><div class="cb-go">Ver carrito →</div>`;
 }
 function pintarFlybar() {
   const fb = $('#flybar'); if (!fb) return;
@@ -245,7 +263,7 @@ on('fly-uno', d => { S.det = null; pintarDet(); crearFlyer([d.id]); });
 on('fly-limpiar', () => { S.fly = []; pintarGrid(); pintarFlybar(); });
 function bloquesProgreso(T) {
   let h = ''; const th = pista(), mc = minimo();
-  if (th) { const base = { 3: 0, 6: 3, 12: 6 }[th.nx], pct = Math.min(100, Math.round((th.q - base) / (th.nx - base) * 100)); h += `<div class="prog"><div class="prog-t">Sumá <span>${th.falta} u. más</span> de ${esc(th.nombre)} y ahorrá <span>${fmt(th.ahorro)}</span></div><div class="bar"><i style="width:${pct}%"></i></div></div>`; }
+  if (th) { const base = { 3: 0, 6: 3, 12: 6 }[th.nx], pct = Math.min(100, Math.round((th.q - base) / (th.nx - base) * 100)); h += `<div class="prog"><div class="prog-t">Sumá <span>${th.falta} u. más</span> ${esc(th.de)} y ahorrá <span>${fmt(th.ahorro)}</span></div><div class="bar"><i style="width:${pct}%"></i></div></div>`; }
   if (mc) { const ok = T.total >= mc; h += `<div class="prog ${ok ? '' : 'warn'}"><div class="prog-t">${ok ? '✓ Superaste el mínimo de compra (' + fmt(mc) + ')' : 'Compra mínima ' + fmt(mc) + ' · te faltan <span>' + fmt(mc - T.total) + '</span>'}</div><div class="bar"><i style="width:${Math.min(100, Math.round(T.total / mc * 100))}%"></i></div></div>`; }
   return h;
 }
@@ -253,7 +271,8 @@ function pantallaCarrito() {
   const L = lineas();
   if (!L.length) return '<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="empty"><div class="ico">🛒</div><p>Todavía no agregaste productos.</p></div></div>';
   const T = totales(), mc = minimo(), bloq = mc && T.total < mc, pau = pausado(), visto = {};
-  const extra = l => { if (visto[l.p.id]) return ''; visto[l.p.id] = 1; const q = qtyDe(l.p.id); return escalaHtml(l.p, q, true) + ganQty(l.p, q); };
+  // barra de escala una vez por grupo (producto, categoría o carrito) y ganancia una vez por producto
+  const extra = l => { const k = grupoDe(l.p), bar = visto[k] ? '' : escalaHtml(l.p, true); visto[k] = 1; if (visto['g' + l.p.id]) return bar; visto['g' + l.p.id] = 1; return bar + ganQty(l.p); };
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
     ${L.map(l => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>`).join('')}
     <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
@@ -356,16 +375,16 @@ function refrescar() { const T = totales(); const f = $('#cart-fab'); if (f) f.i
 function pintarDet() {
   const r = $('#pdet-root'); if (!r) return;
   const p = S.det && prod(S.det); if (!p) { r.innerHTML = ''; return; }
-  const t = tramos(p), qty = qtyDe(p.id), vi = S.sel[p.id] || 0, vars = p.variantes || [], matriz = vars.length > 1 && !p.agotado;
-  const precios = t && S.tienda.escalas_activas && !t.unico ? `${porUnidad(p)}<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>${porUnidad(p)}${t && t.unico ? '<div class="flat-note">precio mayorista único: el mismo para cualquier cantidad</div>' : ''}`;
+  const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = S.sel[p.id] || 0, vars = p.variantes || [], matriz = vars.length > 1 && !p.agotado;
+  const precios = t && S.tienda.escalas_activas && !t.unico ? `${porUnidad(p)}<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>${escNota(p)}` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>${porUnidad(p)}${t && t.unico ? '<div class="flat-note">precio mayorista único: el mismo para cualquier cantidad</div>' : ''}`;
   r.innerHTML = `<div class="modal-bg" data-act="st-det-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(p.nombre)}">
     <div class="pdet-img${p.imagen_url ? ' con-img' : ' noimg'}"${p.imagen_url ? ` style="${cssImg(p.imagen_url)}"` : ''}>${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">` : esc(p.emoji)}</div>
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
     ${p.descripcion ? `<div class="pdet-desc">${esc(p.descripcion)}</div>` : ''}
     ${precios}${p.a_pedido ? `<div class="enc-note">📦 Por encargo: llega en ${+p.demora_dias} días desde que confirmás el pedido.</div>` : ''}
-    ${matriz ? `<div class="flabel" style="margin-top:10px">Elegí cuántas de cada una${tramos(p) && !tramos(p).unico ? ' <small class="muted">(todas suman para el precio por cantidad)</small>' : ''}</div><div class="mx" id="mx">${vars.map((v, i) => { const n = qtyVar(p.id, v); return `<div class="mx-row${n ? ' on' : ''}"><span class="mx-n">${esc(v)}</span><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="-1" aria-label="Quitar uno de ${esc(v)}" ${n ? '' : 'disabled'}>−</button><input class="fi mx-q" inputmode="numeric" data-change="st-vset" data-id="${p.id}" data-i="${i}" value="${n}" aria-label="Cantidad de ${esc(v)}"><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="1" aria-label="Agregar uno de ${esc(v)}">+</button></div>`; }).join('')}</div><div class="mx-tot">${qty ? `<b>${qty} u.</b> en total · ${fmt(unidad(p, qty))} c/u · <b>${fmt(unidad(p, qty) * qty)}</b>` : 'Todavía no sumaste ninguna.'}</div>`
+    ${matriz ? `<div class="flabel" style="margin-top:10px">Elegí cuántas de cada una${tramos(p) && !tramos(p).unico ? ' <small class="muted">(todas suman para el precio por cantidad)</small>' : ''}</div><div class="mx" id="mx">${vars.map((v, i) => { const n = qtyVar(p.id, v); return `<div class="mx-row${n ? ' on' : ''}"><span class="mx-n">${esc(v)}</span><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="-1" aria-label="Quitar uno de ${esc(v)}" ${n ? '' : 'disabled'}>−</button><input class="fi mx-q" inputmode="numeric" data-change="st-vset" data-id="${p.id}" data-i="${i}" value="${n}" aria-label="Cantidad de ${esc(v)}"><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="1" aria-label="Agregar uno de ${esc(v)}">+</button></div>`; }).join('')}</div><div class="mx-tot">${qty ? `<b>${qty} u.</b> en total · ${fmt(unidad(p, qe))} c/u · <b>${fmt(unidad(p, qe) * qty)}</b>` : 'Todavía no sumaste ninguna.'}</div>`
       : vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}
-    ${escalaHtml(p, qty)}${ganQty(p, qty) || ganHtml(p, qty)}
+    ${escalaHtml(p)}${ganQty(p) || ganHtml(p)}
     ${p.agotado ? '<button class="btn btn-s" disabled>Sin stock</button>' : matriz ? '' : `<div style="display:flex;gap:8px;align-items:center">${qty ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>` : ''}<button class="btn btn-p" style="flex:1" data-act="st-add" data-id="${p.id}">${qty ? '+ Agregar otro' : '+ Agregar al carrito'}</button></div>`}
     ${flyOn() ? `<button class="btn btn-s" style="margin-top:8px" data-act="fly-uno" data-id="${p.id}">📸 Crear Flyer para Vender</button>` : ''}
     ${qty ? `<button class="btn btn-s" style="margin-top:8px" data-act="st-ir" data-v="cart">Ver carrito (${totales().n} u.)</button>` : ''}

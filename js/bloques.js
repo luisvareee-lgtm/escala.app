@@ -66,7 +66,7 @@ export function pasosAuto(t) {
   const may = t.modalidad !== 'minorista', env = (t.envios || []).filter(e => e && e.activo !== false && e.nombre), min = Number(t.compra_minima) || 0;
   const P = [];
   P.push({ titulo: 'Elegí tus productos', texto: may
-    ? `Tocá “+ Agregar”. Podés combinar distintos productos. El precio baja según cuántas unidades llevás de cada producto: x1, x3, x6 y x12 o más (las variantes del mismo producto suman juntas).${t.modalidad === 'hibrido' ? ' Si sos revendedor, tocá “Acceso Mayorista”' + (t.requiere_codigo ? ' e ingresá tu código' : '') + ' para ver la lista por cantidad.' : ''}`
+    ? `Tocá “+ Agregar”. Podés combinar distintos productos. El precio baja según cuántas unidades llevás${t.escala_grupo === 'categoria' ? ', sumando los productos de la misma categoría' : t.escala_grupo === 'carrito' ? ', sumando todo lo que hay en el carrito' : ' de cada producto'}: x1, x3, x6 y x12 o más${t.escala_grupo === 'categoria' || t.escala_grupo === 'carrito' ? '' : ' (las variantes del mismo producto suman juntas)'}.${t.modalidad === 'hibrido' ? ' Si sos revendedor, tocá “Acceso Mayorista”' + (t.requiere_codigo ? ' e ingresá tu código' : '') + ' para ver la lista por cantidad.' : ''}`
     : 'Tocá “+ Agregar” en lo que te guste. Podés comprar desde 1 unidad.' });
   P.push({ titulo: 'Revisá tu carrito', texto: `Ves el total y, si corresponde, cuánto ahorrás por cantidad.${may && min ? ` La compra mínima mayorista es de ${fmt(min)}.` : ''}` });
   P.push({ titulo: 'Elegí cómo recibirlo', texto: env.length ? `Opciones: ${env.map(e => e.nombre).join(', ')}.${Number(t.envio_gratis_desde) > 0 ? ` Envío gratis desde ${fmt(t.envio_gratis_desde)}.` : ''}` : 'Coordinamos la entrega o el retiro por WhatsApp.' });
@@ -95,7 +95,7 @@ export function faqHtml(d) {
 export function faqSugeridas(t) {
   const may = t.modalidad !== 'minorista', env = (t.envios || []).filter(e => e && e.activo !== false && e.nombre), min = Number(t.compra_minima) || 0;
   const L = [];
-  if (may) L.push({ p: '¿Cómo funcionan los precios por cantidad?', r: 'Cada producto tiene precio x1, x3, x6 y x12 o más. Se calcula por producto sumando sus variantes, y el carrito te muestra cuánto te falta para el siguiente escalón.' });
+  if (may) L.push({ p: '¿Cómo funcionan los precios por cantidad?', r: `Cada producto tiene precio x1, x3, x6 y x12 o más. ${t.escala_grupo === 'categoria' ? 'Las unidades se suman entre productos de la misma categoría' : t.escala_grupo === 'carrito' ? 'Las unidades se suman entre todos los productos del carrito' : 'Se calcula por producto sumando sus variantes'}, y el carrito te muestra cuánto te falta para el siguiente escalón.` });
   if (may) L.push({ p: '¿Hay compra mínima?', r: min ? `Sí, la compra mínima mayorista es de ${fmt(min)}.` : 'No, podés comprar desde 1 unidad.' });
   L.push({ p: '¿Puedo combinar productos?', r: 'Sí, armá tu pedido con los productos que quieras.' });
   L.push({ p: '¿Hacen envíos?', r: env.length ? `Sí: ${env.map(e => e.nombre + (Number(e.costo) ? ' (' + fmt(e.costo) + ')' : '')).join(', ')}.${Number(t.envio_gratis_desde) > 0 ? ` Gratis desde ${fmt(t.envio_gratis_desde)}.` : ''}` : 'Sí, coordinamos el envío o el retiro por WhatsApp.' });

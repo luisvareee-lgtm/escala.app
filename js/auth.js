@@ -2,6 +2,7 @@
 import { api } from './api.js';
 import { CONFIG } from './config.js';
 import { $, esc, on, toast, slugify, soloDigitos, normWsp, store } from './util.js';
+import { asisSwitch } from './asistente.js';
 // si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
 const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
@@ -35,7 +36,7 @@ export function pantallaNuevaClave(app) {
   app.innerHTML = caja('Elegí una contraseña nueva', `<div id="m"></div><form data-submit="a-clave"><div class="fg"><label class="flabel" for="p">Nueva contraseña</label><input class="fi" id="p" name="password" type="password" minlength="8" required></div><button class="btn btn-p" type="submit" id="go">Guardar</button></form>`);
 }
 export function pantallaNuevaTienda(app) {
-  app.innerHTML = caja('Armemos tu tienda', `<div id="m"></div><form data-submit="a-tienda">
+  app.innerHTML = caja('Armemos tu tienda', `<div id="m"></div><form data-submit="a-tienda" data-asistente="alta">${asisSwitch()}
     <div class="fg"><label class="flabel" for="n">Nombre del negocio</label><input class="fi" id="n" name="nombre" maxlength="60" data-input="a-slug" required></div>
     <div class="fg"><label class="flabel" for="s">Tu enlace</label><input class="fi" id="s" name="slug" maxlength="30" minlength="3" required><div class="hint" id="sl">/t/<span id="slv">tu-negocio</span></div></div>
     <div class="fg"><label class="flabel" for="w">WhatsApp donde recibís pedidos</label><input class="fi" id="w" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" required></div>
