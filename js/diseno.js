@@ -5,14 +5,14 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P, can, aviso } from './state.js';
 import { redimensionar } from './img.js';
-import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe } from './bloques.js';
+import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catTilesHtml, fotoCategoria } from './bloques.js';
 import { asisSwitch } from './asistente.js';
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
 const E = { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' };
-const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null };
-export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null }); };
+const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {} };
+export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {} }); };
 const clon = x => JSON.parse(JSON.stringify(x));
 const lista = () => (E.lista = E.lista || clon(Array.isArray(P.t.envios) ? P.t.envios : []));
 const datos = () => (E.datos = E.datos || Object.assign({}, P.t.datos_checkout || { localidad: 'opcional' }));
@@ -20,11 +20,15 @@ const datos = () => (E.datos = E.datos || Object.assign({}, P.t.datos_checkout |
 const PAGOS = [['transferencia', '🏦', 'Transferencia bancaria', 'El ticket muestra tu alias / CBU (se carga en Ajustes).'], ['efectivo', '💵', 'Efectivo / contra entrega', 'Lo coordinan por WhatsApp.'], ['link', '💳', 'Link de pago / Mercado Pago', 'Si conectaste Mercado Pago, el cliente paga online al confirmar; si no, le mandás el link por WhatsApp.']];
 const hayPagos = () => Array.isArray(P.t.pagos_activos);
 const pagos = () => (E.pagos = E.pagos || PAGOS.map(p => p[0]).filter(k => !hayPagos() || !P.t.pagos_activos.length || P.t.pagos_activos.includes(k)));
+const nuevaVitrina = v => { const x = Object.assign({ activo: true, titulo: '', modo: 'auto', ids: [], categoria: '', pos: 'arriba' }, v || {}); if (!Array.isArray(x.ids)) x.ids = []; return x; };
 // borrador del diseño; convierte el formato viejo (un anuncio y un banner) al nuevo (listas)
 const dis = () => {
   if (D.d) return D.d;
   const o = Object.assign({ beneficios: [], testimonios: [], popup: { activo: false }, secciones: {}, faq: [] }, clon(P.t.diseno || {}));
   o.anuncios = anunciosDe(o); o.banners = bannersDe(o).map(b => Object.assign({}, b)); delete o.anuncio; delete o.banner;
+  // carruseles: el formato viejo (uno solo, "vitrina") pasa a la lista nueva
+  o.vitrinas = (Array.isArray(o.vitrinas) ? o.vitrinas : o.vitrina ? [o.vitrina] : []).slice(0, 4).map(nuevaVitrina); delete o.vitrina;
+  o.catfoto = Object.assign({ activo: false, titulo: '', fotos: {} }, o.catfoto || {}); if (!o.catfoto.fotos || typeof o.catfoto.fotos !== 'object') o.catfoto.fotos = {};
   o.propios = Array.isArray(o.comprar) && o.comprar.length > 0; if (!o.propios) o.comprar = [];
   return (D.d = o);
 };
@@ -63,12 +67,65 @@ function vistaEnvios() {
   <div class="hint" style="margin-top:8px">Además del nombre y el WhatsApp, le vamos a pedir: ${DATOS.filter(([k]) => (dc[k] || 'no') !== 'no').map(([k, n]) => n + (dc[k] === 'obligatorio' ? ' *' : '')).join(', ') || 'nada más'}.</div></div></div>`;
 }
 
+// ---- carruseles de productos y "Comprá por categoría": vista previa (pasan solos si hay efectos) y editores ----
+const MODOS_VT = [['auto', 'Automático'], ['elegidos', 'Los que elijo'], ['categoria', 'Una categoría'], ['nuevos', 'Nuevos ingresos'], ['vendidos', 'Más vendidos'], ['ofertas', 'En oferta']];
+const AYUDA_VT = { auto: 'Hasta 12 productos con foto, en distinto orden en cada visita.', nuevos: 'Los 12 últimos productos que cargaste.', vendidos: 'Los 12 que más se vendieron en los últimos 60 días. Si todavía no hay ventas, muestra una selección automática.', ofertas: 'Los productos que tienen una oferta vigente. Cuando no hay ninguna, el carrusel no aparece.' };
+const sfx = i => (i ? '-' + i : '');
+const prodsAct = () => (P.prods || []).filter(p => p.activo !== false);
+function vtPrev(d, pos) {
+  const mov = efectosOn(d) && !menosMovimiento();
+  return vitrinasCfg(d).filter(c => c.pos === pos).map(cfg => {
+    const srv = cfg.modo === 'nuevos' ? prodsAct().slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).map(p => p.id) : null;
+    const L = vitrinaProds(cfg, prodsAct(), () => 0.5, srv).slice(0, 8);
+    const cards = (L.length ? L : [1, 2, 3, 4].map(i => ({ nombre: 'Producto ' + i, emoji: '🛍️' })))
+      .map(p => `<div class="dz-vt-c"><i>${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="">` : esc(p.emoji || '🛍️')}</i><span>${esc(p.nombre)}</span></div>`).join('');
+    return `<div class="dz-vt${mov ? ' mov' : ''}"><b class="dz-vt-t">${esc(cfg.titulo)}</b><div class="dz-vt-w"><div class="dz-vt-r">${cards}${mov ? cards : ''}</div></div></div>`;
+  }).join('');
+}
+function cfPrev(d) {
+  const c = d.catfoto; if (!c || !c.activo || (d.secciones || {}).categorias === false) return '';
+  const cats = [...new Set(prodsAct().map(p => p.categoria))].sort(); if (cats.length < 2) return '';
+  return `<div class="dz-cf-prev">${catTilesHtml({ titulo: String(c.titulo || '').trim() || 'Comprá por categoría', fotos: c.fotos }, cats, prodsAct(), 'Todas').replace(/data-act="[^"]*"/g, '')}</div>`;
+}
+function vtRes(i) {
+  const v = dis().vitrinas[i], q = (D.vtq[i] || '').toLowerCase().trim(); if (!v) return '';
+  const L = prodsAct().filter(p => !v.ids.includes(p.id) && (!q || [p.nombre, p.marca, p.sku, p.categoria].join(' ').toLowerCase().includes(q))).slice(0, 8);
+  return L.map(p => `<button type="button" data-act="dz-vt-poner" data-i="${i}" data-id="${p.id}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="">` : `<span>${esc(p.emoji || '🛍️')}</span>`}<span>${esc(p.nombre)}</span></button>`).join('') || '<span class="muted" style="font-size:.8rem">No hay productos con ese nombre.</span>';
+}
+function vtUno(v, i, cats) {
+  const prods = P.prods || [], elegidos = v.ids.map(id => prods.find(p => p.id === id)).filter(Boolean);
+  const cuerpo = v.modo === 'categoria' ? `<div class="fg"><label class="flabel" for="dz-vtc${sfx(i)}">Categoría</label><select class="fi" id="dz-vtc${sfx(i)}" data-change="dz-vt" data-i="${i}" data-k="categoria"><option value="">Elegí una…</option>${cats.map(c => `<option ${c === v.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>`
+    : v.modo === 'elegidos' ? `<div class="flabel">Elegidos (${elegidos.length} de 12)</div><div class="dz-vt-sel">${elegidos.map(p => `<span class="dz-vt-chip"><span>${esc(p.nombre)}</span><button type="button" data-act="dz-vt-quitar" data-i="${i}" data-id="${p.id}" aria-label="Quitar ${esc(p.nombre)}">✕</button></span>`).join('') || '<span class="muted" style="font-size:.8rem">Todavía ninguno: buscalos abajo.</span>'}</div>
+       ${elegidos.length < 12 ? `<input class="fi" id="dz-vtq${sfx(i)}" data-input="dz-vt-q" data-i="${i}" placeholder="Buscar producto para agregar…" value="${esc(D.vtq[i] || '')}" aria-label="Buscar producto para el carrusel ${i + 1}" autocomplete="off"><div class="dz-vt-res" id="dz-vt-res${sfx(i)}">${vtRes(i)}</div>` : ''}`
+    : `<p class="hint">${AYUDA_VT[v.modo] || AYUDA_VT.auto}</p>`;
+  return `<div class="dz-vt-ed${v.activo ? '' : ' off'}" id="dz-vt${sfx(i)}"><div class="dz-vt-hd"><b>Carrusel ${i + 1}</b><label class="dz-sw"><input type="checkbox" data-change="dz-vt-on" data-i="${i}" ${v.activo ? 'checked' : ''}> mostrar</label><button type="button" class="btn btn-s btn-sm" data-act="dz-vt-del" data-i="${i}" aria-label="Quitar el carrusel ${i + 1}">✕</button></div>
+    <div class="fg"><label class="flabel" for="dz-vtt${sfx(i)}">Título</label><input class="fi" id="dz-vtt${sfx(i)}" maxlength="40" value="${esc(v.titulo || '')}" data-input="dz-vt" data-i="${i}" data-k="titulo" placeholder="${esc(vitrinasCfg({ vitrinas: [Object.assign({}, v, { activo: true, titulo: '' })] })[0].titulo)}"></div>
+    <div class="flabel">Qué productos muestra</div><div class="seg seg-wrap" role="group" aria-label="Qué productos muestra el carrusel ${i + 1}" style="margin-bottom:8px">${MODOS_VT.map(([k, n]) => `<button type="button" class="${v.modo === k ? 'on' : ''}" data-act="dz-vt-modo" data-i="${i}" data-v="${k}">${n}</button>`).join('')}</div>
+    ${cuerpo}
+    <div class="flabel" style="margin-top:6px">Dónde va</div><div class="seg" role="group" aria-label="Dónde va el carrusel ${i + 1}"><button type="button" class="${v.pos !== 'abajo' ? 'on' : ''}" data-act="dz-vt-pos" data-i="${i}" data-v="arriba">Arriba del catálogo</button><button type="button" class="${v.pos === 'abajo' ? 'on' : ''}" data-act="dz-vt-pos" data-i="${i}" data-v="abajo">Abajo del catálogo</button></div></div>`;
+}
+function vtEditor(d) {
+  const prods = P.prods || [], cats = [...new Set(prods.map(p => p.categoria))].sort(), cf = d.catfoto;
+  const conFoto = c => prods.filter(p => p.categoria === c && p.imagen_url && p.activo !== false);
+  return `<fieldset class="dz-fs" id="dz-vts"><legend>🎠 Carruseles de productos (hasta 4)</legend>
+    <p class="hint" style="margin-bottom:8px">Filas de productos que se deslizan con el dedo o con las flechas y pasan solas si los efectos están activos. Tocando uno se abre su ficha, y se agrega al carrito sin salir.</p>
+    ${d.vitrinas.map((v, i) => vtUno(v, i, cats)).join('')}
+    ${d.vitrinas.length < 4 ? '<button type="button" class="btn btn-s btn-sm" data-act="dz-vt-add">+ Carrusel</button>' : ''}</fieldset>
+  <fieldset class="dz-fs" id="dz-cf"><legend>🗂️ Comprá por categoría, con fotos <label class="dz-sw"><input type="checkbox" data-change="dz-cf-on" ${cf.activo ? 'checked' : ''}> mostrar</label></legend>
+    <p class="hint">Tarjetas con una foto por categoría, en lugar de los botones de texto. La foto sale sola de un producto de esa categoría; con “Otra foto” elegís cuál.</p>
+    ${cf.activo ? `<div class="fg"><label class="flabel" for="dz-cft">Título</label><input class="fi" id="dz-cft" maxlength="40" value="${esc(cf.titulo || '')}" data-input="dz-cf-t" placeholder="Comprá por categoría"></div>
+    <div class="dz-cf-list">${cats.map(c => { const img = fotoCategoria(c, prods, cf.fotos), n = prods.filter(p => p.categoria === c).length;
+      return `<div class="dz-cf-it"><span class="dz-cf-im">${img ? `<img src="${esc(img)}" alt="">` : '🏷️'}</span><span class="dz-cf-n">${esc(c)}<small>${n} ${n === 1 ? 'producto' : 'productos'}${img ? '' : ' · sin fotos'}</small></span>${conFoto(c).length > 1 ? `<button type="button" class="btn btn-s btn-sm" data-act="dz-cf-otra" data-c="${esc(c)}">↻ Otra foto</button>` : ''}</div>`; }).join('') || '<p class="muted">Cargá productos para ver tus categorías.</p>'}</div>` : ''}</fieldset>
+  <fieldset class="dz-fs"><legend>✨ Efectos de movimiento <label class="dz-sw"><input type="checkbox" data-change="dz-fx" ${d.efectos !== false ? 'checked' : ''}> activos</label></legend>
+    <p class="hint">Animaciones suaves que le dan vida a la tienda: los productos aparecen al bajar, la foto se acerca al pasar el mouse, el carrito salta al agregar, las fotos de los banners se mueven despacio y los carruseles pasan solos. Si alguien tiene activado “reducir movimiento” en su celular, no se mueve nada.</p></fieldset>`;
+}
+
 const lst = (arr, max, fila, add, l) => `${arr.map(fila).join('')}${arr.length < max ? `<button class="btn btn-s btn-sm" data-act="dz-add" data-l="${l}">${add}</button>` : ''}`;
 function vistaDiseno() {
   const d = dis(), p = d.popup || {}, sec = d.secciones || {}, tv = tiendaVista();
   const vista = Object.assign({}, d, { comprar: d.propios ? d.comprar : undefined });
-  const prev = `<div class="dz-prev ${D.disp}"><div class="dz-frame" style="--ac:${esc(P.t.color)};--on-ac:#fff">${anuncioHtml(vista)}<div class="dz-hdr">${P.t.logo_url ? `<img src="${esc(P.t.logo_url)}" alt="">` : ''}<b>${esc(P.t.nombre)}</b><span>🛒</span></div>${heroHtml(vista)}<div class="dz-ban"><b>${esc(P.t.nombre)}</b><small>${esc(P.t.eslogan || '')}</small></div>${beneficiosHtml(vista)}${comprarCardHtml(vista)}
-    <div class="dz-grid">${[1, 2, 3, 4].map(i => `<div><i></i><span>Producto ${i}</span><b>$ ${(9800 + i * 1700).toLocaleString('es-AR')}</b></div>`).join('')}</div>${testimoniosHtml(vista)}${faqHtml(vista)}</div>
+  const prev = `<div class="dz-prev ${D.disp}"><div class="dz-frame" style="--ac:${esc(P.t.color)};--on-ac:#fff">${anuncioHtml(vista)}<div class="dz-hdr">${P.t.logo_url ? `<img src="${esc(P.t.logo_url)}" alt="">` : ''}<b>${esc(P.t.nombre)}</b><span>🛒</span></div>${heroHtml(vista)}<div class="dz-ban"><b>${esc(P.t.nombre)}</b><small>${esc(P.t.eslogan || '')}</small></div>${beneficiosHtml(vista)}${comprarCardHtml(vista)}${vtPrev(vista, 'arriba')}${cfPrev(vista)}
+    <div class="dz-grid">${[1, 2, 3, 4].map(i => `<div><i></i><span>Producto ${i}</span><b>$ ${(9800 + i * 1700).toLocaleString('es-AR')}</b></div>`).join('')}</div>${vtPrev(vista, 'abajo')}${testimoniosHtml(vista)}${faqHtml(vista)}</div>
     ${p.activo ? `<div class="dz-pop">${popupHtml(vista).replace(/data-act="[^"]*"/g, '')}</div>` : ''}</div>`;
   const sw = (k, txt) => `<label class="dz-sw"><input type="checkbox" data-change="dz-sec" data-k="${k}" ${sec[k] === false ? '' : 'checked'}> ${txt || 'mostrar'}</label>`;
   return `<div class="grid2 dz"><div class="cc"><h3>🖌️ Diseño de la tienda</h3>${box(D.msg, D.err)}
@@ -81,6 +138,7 @@ function vistaDiseno() {
       <div class="dz-li"><input class="fi" maxlength="30" value="${esc(b.boton || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="boton" aria-label="Botón" placeholder="Botón (opcional)">
       <label class="filebtn">🖼️ ${b.imagen ? 'Cambiar' : 'Imagen'}<input type="file" accept="image/*" data-change="dz-img" data-i="${i}"></label>${b.imagen ? `<button class="btn btn-s btn-sm" data-act="dz-noimg" data-i="${i}">Sin imagen</button>` : ''}${D.subiendo === i ? '<span class="spin"></span>' : ''}<button class="btn btn-s btn-sm" data-act="dz-del" data-l="banners" data-i="${i}" aria-label="Quitar banner">✕</button></div></div></div>`, '+ Banner', 'banners')}
     <p class="hint">Imagen ancha (por ejemplo 1600 × 600). La achicamos sola para que cargue rápido.</p></fieldset>
+  ${vtEditor(d)}
   <fieldset class="dz-fs"><legend>Beneficios (hasta 4) ${sw('beneficios')}</legend>
     ${lst(d.beneficios, 4, (x, i) => `<div class="dz-li"><input class="fi dz-ico" maxlength="4" value="${esc(x.icono || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="icono" aria-label="Ícono" placeholder="🚚"><input class="fi" maxlength="60" value="${esc(x.texto || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="texto" aria-label="Beneficio ${i + 1}" placeholder="Ej: Envíos a todo el país"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="beneficios" data-i="${i}" aria-label="Quitar">✕</button></div>`, '+ Beneficio', 'beneficios')}</fieldset>
   <fieldset class="dz-fs"><legend>📖 Cómo comprar ${sw('comprar')}</legend>
@@ -145,6 +203,27 @@ on('dz-del', d => { (dis()[d.l] || []).splice(+d.i, 1); P.repintar(); });
 on('dz-sec', (d, el) => { const s = dis().secciones = dis().secciones || {}; if (el.checked) delete s[d.k]; else s[d.k] = false; repPrev(); });
 on('dz-pop', (d, el) => { const p = dis().popup = dis().popup || {}; p.activo = el.checked; repPrev(); });
 on('dz-disp', d => { D.disp = d.k; P.repintar(); });
+const vt = d => dis().vitrinas[+d.i];
+on('dz-vt-add', () => { const L = dis().vitrinas; if (L.length < 4) L.push(nuevaVitrina({ modo: L.length ? 'nuevos' : 'auto' })); P.repintar(); });
+on('dz-vt-del', d => { dis().vitrinas.splice(+d.i, 1); D.vtq = {}; P.repintar(); });
+on('dz-vt-on', (d, el) => { const v = vt(d); if (v) { v.activo = el.checked; P.repintar(); } });
+on('dz-vt', (d, el) => { const v = vt(d); if (v) { v[d.k] = el.value; repPrev(); } });
+on('dz-vt-modo', d => { const v = vt(d); if (v) { v.modo = d.v; P.repintar(); } });
+on('dz-vt-pos', d => { const v = vt(d); if (v) { v.pos = d.v; P.repintar(); } });
+on('dz-vt-q', (d, el) => { D.vtq[+d.i] = el.value; const r = $('#dz-vt-res' + sfx(+d.i)); if (r) r.innerHTML = vtRes(+d.i); });
+on('dz-vt-poner', d => {
+  const v = vt(d); if (!v) return; if (v.ids.length < 12 && !v.ids.includes(d.id)) v.ids.push(d.id); v.activo = true; P.repintar();
+  try { if (matchMedia('(hover:hover)').matches) { const q = $('#dz-vtq' + sfx(+d.i)); if (q) q.focus(); } } catch (e) { }   // en la compu se sigue buscando sin volver a hacer clic
+});
+on('dz-vt-quitar', d => { const v = vt(d); if (v) { v.ids = v.ids.filter(x => x !== d.id); P.repintar(); } });
+on('dz-cf-on', (d, el) => { dis().catfoto.activo = el.checked; P.repintar(); });
+on('dz-cf-t', (d, el) => { dis().catfoto.titulo = el.value; repPrev(); });
+on('dz-cf-otra', d => {
+  const cf = dis().catfoto, L = (P.prods || []).filter(p => p.categoria === d.c && p.imagen_url && p.activo !== false); if (L.length < 2) return;
+  const act = fotoCategoria(d.c, P.prods || [], cf.fotos), i = L.findIndex(p => p.imagen_url === act);
+  cf.fotos[d.c] = L[(i + 1) % L.length].id; P.repintar();
+});
+on('dz-fx', (d, el) => { dis().efectos = el.checked; repPrev(); });
 on('dz-propios', d => { const o = dis(); o.propios = d.v === '1'; if (o.propios && !o.comprar.length) o.comprar = pasosAuto(tiendaVista()).map(x => ({ ...x })); P.repintar(); });
 on('dz-faq-sug', () => { dis().faq = faqSugeridas(tiendaVista()); P.repintar(); });
 on('dz-noimg', d => { const b = dis().banners[+d.i]; if (b) delete b.imagen; P.repintar(); });
@@ -164,12 +243,27 @@ function limpio() {
   const fq = (d.faq || []).filter(x => s(x.p) && s(x.r)).map(x => ({ p: s(x.p), r: s(x.r) })); if (fq.length) o.faq = fq;
   const p = d.popup || {}, po = { activo: !!p.activo }; ['titulo', 'texto', 'cupon'].forEach(k => { if (s(p[k])) po[k] = s(p[k]); }); if (po.activo || Object.keys(po).length > 1) o.popup = po;
   const sec = {}; Object.entries(d.secciones || {}).forEach(([k, v]) => { if (v === false) sec[k] = false; }); if (Object.keys(sec).length) o.secciones = sec;
+  const vts = (d.vitrinas || []).slice(0, 4).map(v => {
+    const vi = { activo: !!v.activo, modo: MODOS_VT.some(m => m[0] === v.modo) ? v.modo : 'auto' };
+    if (s(v.titulo)) vi.titulo = s(v.titulo).slice(0, 40);
+    if (vi.modo === 'elegidos' && (v.ids || []).length) vi.ids = v.ids.slice(0, 12);
+    if (vi.modo === 'categoria' && s(v.categoria)) vi.categoria = s(v.categoria).slice(0, 60);
+    if (v.pos === 'abajo') vi.pos = 'abajo';
+    return vi;
+  });
+  if (vts.length) o.vitrinas = vts;
+  const cf = d.catfoto || {}, cats = new Set((P.prods || []).map(p => p.categoria)), fotos = {};
+  Object.entries(cf.fotos || {}).forEach(([k, v]) => { if (cats.has(k) && typeof v === 'string') fotos[k.slice(0, 60)] = v; });
+  if (cf.activo || s(cf.titulo) || Object.keys(fotos).length) { o.catfoto = { activo: !!cf.activo }; if (s(cf.titulo)) o.catfoto.titulo = s(cf.titulo).slice(0, 40); if (Object.keys(fotos).length) o.catfoto.fotos = fotos; }
+  if (d.efectos === false) o.efectos = false;
   return o;
 }
 on('dz-guardar', async () => {
   const o = limpio();
   if (o.popup && o.popup.activo && !(o.popup.titulo || o.popup.texto || o.popup.cupon)) { D.err = 'La ventana de bienvenida necesita un título, un texto o un código.'; D.msg = ''; return P.repintar(); }
+  const malVt = (o.vitrinas || []).findIndex(v => v.activo && ((v.modo === 'elegidos' && (v.ids || []).length < 2) || (v.modo === 'categoria' && !v.categoria)));
+  if (malVt >= 0) { const v = o.vitrinas[malVt]; D.err = v.modo === 'elegidos' ? `Para el carrusel ${malVt + 1} elegí al menos 2 productos (o usá “Automático”).` : `Elegí la categoría del carrusel ${malVt + 1}.`; D.msg = ''; return P.repintar(); }
   try { P.t = await api.guardarTienda(P.t.id, { diseno: o }) || P.t; D.d = null; D.err = ''; D.msg = '¡Diseño guardado! Ya lo ven tus clientes.'; toast('Diseño guardado'); }
-  catch (e) { D.err = e.message; D.msg = ''; }
+  catch (e) { D.err = /Revisá el diseño/.test(e.message) && (o.vitrinas || o.catfoto || o.efectos === false) ? 'Para guardar carruseles, categorías con foto o efectos falta actualizar la base: corré la migración v2.16 en Supabase.' : e.message; D.msg = ''; }
   P.repintar();
 });

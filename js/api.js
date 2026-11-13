@@ -47,6 +47,9 @@ export const api = {
   // ---- público (comprador)
   tienda: async slug => ok(await sb.from('v_tiendas_publicas').select('*').eq('slug', slug).maybeSingle()),
   productos: slug => todo(() => sb.from('v_productos_publicos').select('*').eq('tienda', slug).order('categoria').order('nombre').order('id')),
+  // carruseles "nuevos" / "más vendidos" (solo el orden) y medición de visitas / al carrito
+  vitrinaIds: async (slug, modo) => (ok(await sb.rpc('vitrina_ids', { p_slug: slug, p_modo: modo })) || []).map(r => r.producto || r),
+  actividad: async (slug, vistas, carrito) => { const { error } = await sb.rpc('registrar_actividad', { p_slug: slug, p_vistas: vistas, p_carrito: carrito }); if (error) throw new Error(error.message); },
   listaMayorista: async (slug, codigo) => {
     const filas = ok(await sb.rpc('catalogo_mayorista', { p_slug: slug, p_codigo: codigo || null })) || [];
     if (filas.length === 1 && !filas[0].producto_id) throw new Error('Código de revendedor incorrecto.');   // el servidor marca el error sin excepción
@@ -77,6 +80,10 @@ export const api = {
     : ok(await sb.from('products').insert(d).select().maybeSingle()),
   insertarProductos: async filas => { for (let i = 0; i < filas.length; i += 500) ok(await sb.from('products').insert(filas.slice(i, i + 500))); },
   borrarProducto: async id => ok(await sb.from('products').delete().eq('id', id)),
+  // edición y borrado masivo (todo junto en la base: o se aplica a todos o a ninguno)
+  editarMasivo: async (ids, cambios) => ok(await sb.rpc('editar_productos_masivo', { p_ids: ids, p_cambios: cambios })),
+  borrarMasivo: async ids => ok(await sb.rpc('borrar_productos', { p_ids: ids })),
+  statsVistas: async dias => ok(await sb.rpc('estadisticas_vistas', { p_dias: dias })) || [],
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),
   estadoPedido: async (id, estado) => ok(await sb.from('orders').update({ estado }).eq('id', id).select().maybeSingle()),

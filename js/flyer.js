@@ -92,6 +92,18 @@ function etiquetaPrecio(ctx, T, s, cx, y, px, pre) {
   if (pre) txt(ctx, pre, cx - w / 2 - (T.precioBg ? px * 0.32 : 0), y - px * (T.precioBg ? 1.08 : 0.98), { px: Math.round(px * 0.3), peso: 700, color: T.sub });
   txt(ctx, s, cx, y, { px, peso: 900, color: T.precio, al: 'center' });
 }
+// ofertas: el "-15%" sobre la foto y el precio de antes tachado
+function sticker(ctx, pct, x, y, r) {
+  if (!(pct > 0)) return;
+  ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = '#e11d48'; ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 18; ctx.fill(); ctx.restore();
+  txt(ctx, '-' + pct + '%', x, y + r * 0.2, { px: Math.round(r * 0.6), peso: 900, color: '#fff', al: 'center', max: r * 1.7 });
+  txt(ctx, 'OFERTA', x, y + r * 0.58, { px: Math.round(r * 0.24), peso: 800, color: 'rgba(255,255,255,.92)', al: 'center', mudo: true });
+}
+function tachar(ctx, T, s, cx, y, px) {
+  const w = txt(ctx, s, cx, y, { px, peso: 700, color: T.sub, al: 'center' });
+  ctx.save(); ctx.fillStyle = T.sub; ctx.fillRect(cx - w / 2 - 4, y - px * 0.34, w + 8, Math.max(3, Math.round(px * 0.08))); ctx.restore();
+}
+const antesDe = it => (F.precios === 'unico' || F.precios === 'minorista') && Number(it.antes) > num(it.precio) ? fmt(it.antes) : '';
 function tablaEscalas(ctx, T, e, x, y, w, h) {
   const g = Math.round(w * 0.022), cw = (w - g * 3) / 4;
   [1, 3, 6, 12].forEach((n, i) => {
@@ -124,23 +136,23 @@ export async function dibujar(canvas) {
   if (its.length === 1) {
     const it = its[0], lado = W - M * 2, esc_ = conEscalas(it);
     const fh = esc_ ? 800 : 880;
-    foto(ctx, ims[0], it, M, y, lado, fh, 54, T); y += fh + 84;
+    foto(ctx, ims[0], it, M, y, lado, fh, 54, T); sticker(ctx, it.pct, M + lado - 110, y + 110, 92); y += fh + 84;
     y += parrafo(ctx, it.nombre, M, y, { px: 70, peso: 800, color: T.fg, max: lado, n: 2 });
     if (esc_) { txt(ctx, 'Precio por cantidad', M, y + 28, { px: 36, peso: 600, color: T.sub }); tablaEscalas(ctx, T, it.escalas, M, y + 56, lado, 190); }
-    else { const pr = precioDe(it); etiquetaPrecio(ctx, T, pr.p, W / 2, Math.min(y + 190, fin - 60), 168, pr.pre); if (pr.nota) txt(ctx, pr.nota, W / 2, Math.min(y + 262, fin), { px: 40, peso: 600, color: T.sub, al: 'center' }); }
+    else { const pr = precioDe(it), an = antesDe(it), yp = Math.min(y + (an ? 250 : 190), fin - 40); if (an) tachar(ctx, T, 'Antes ' + an, W / 2, yp - 186, 56); etiquetaPrecio(ctx, T, pr.p, W / 2, yp, 168, pr.pre); if (pr.nota) txt(ctx, pr.nota, W / 2, Math.min(yp + 72, fin), { px: 40, peso: 600, color: T.sub, al: 'center' }); }
   } else {
-    const cols = 2, filas = Math.ceil(its.length / 2), gap = 40, cw = (W - M * 2 - gap) / cols, alto = (fin - y - gap * (filas - 1)) / filas;
+    const cols = 2, filas = Math.ceil(its.length / 2), gap = 40, cw = (W - M * 2 - gap) / cols, alto = (fin - y - gap * (filas - 1)) / filas, conAntes = its.some(antesDe);   // con "Antes $…" la foto se achica un poco para que entre
     its.forEach((it, i) => {
       const f = Math.floor(i / 2), sola = i === its.length - 1 && its.length % 2 === 1;
       const x = sola ? (W - cw) / 2 : M + (i % 2) * (cw + gap), cy = y + f * (alto + gap), esc_ = conEscalas(it);
-      const texto = esc_ ? 250 : 220, fh = Math.min(alto - texto, filas === 1 ? 640 : cw), top = cy + (filas === 1 ? (alto - fh - texto) / 2 : 0);
-      foto(ctx, ims[i], it, x, top, cw, fh, 40, T);
+      const texto = esc_ ? 250 : conAntes ? 280 : 220, fh = Math.min(alto - texto, filas === 1 ? 640 : cw), top = cy + (filas === 1 ? (alto - fh - texto) / 2 : 0);
+      foto(ctx, ims[i], it, x, top, cw, fh, 40, T); sticker(ctx, it.pct, x + cw - 66, top + 66, 54);
       let ty = top + fh + 54;
       parrafo(ctx, it.nombre, x + cw / 2, ty, { px: 38, peso: 700, color: T.fg, max: cw - 8, n: 2, al: 'center' }); ty += 38 * 1.16 * 2;   // siempre dos renglones: los precios quedan alineados
       if (esc_) {
         const e = it.escalas, fila = (a, b, yy) => { txt(ctx, `x${a} ${fmt(e[a])}`, x + cw * 0.25, yy, { px: 32, peso: 800, color: T.tileFg, al: 'center', max: cw / 2 - 10 }); txt(ctx, `x${b}${b === 12 ? '+' : ''} ${fmt(e[b])}`, x + cw * 0.75, yy, { px: 32, peso: 800, color: b === 12 ? (T.precioBg ? T.ac : T.precio) : T.tileFg, al: 'center', max: cw / 2 - 10 }); };
         fila(1, 3, ty + 26); fila(6, 12, ty + 72);
-      } else { const pr = precioDe(it); etiquetaPrecio(ctx, T, (pr.pre ? pr.pre + ' ' : '') + pr.p, x + cw / 2, ty + 62, pr.pre ? 58 : 72, ''); }
+      } else { const pr = precioDe(it), an = antesDe(it); etiquetaPrecio(ctx, T, (pr.pre ? pr.pre + ' ' : '') + pr.p, x + cw / 2, ty + 62, pr.pre ? 58 : 72, ''); if (an) tachar(ctx, T, 'Antes ' + an, x + cw / 2, ty + 112, 30); }
     });
   }
 

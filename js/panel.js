@@ -21,6 +21,7 @@ import { abrirFlyer } from './flyer.js';
 import { recepcionModal } from './recepcion.js';
 import { cierreCard } from './cierre.js';
 import { activarApp, instalarHtml } from './instalar.js';
+import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiarSel } from './productos.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
@@ -34,8 +35,9 @@ export async function mostrarPanel(app) {
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
   activarApp();
-  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
+  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; Q.fly = null;
+  setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
   await cargar();
   if (Q.stop) Q.stop();
   Q.stop = api.escucharPedidos(P.t.id, async () => { toast('🔔 Pedido nuevo'); await recargarPedidos(); if (P.modal || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { Q.pendiente = true; return; } pintar(); });
@@ -82,11 +84,9 @@ on('p-ver-tienda', () => { window.open(urlTienda(), '_blank', 'noopener'); });
 
 /* ---------- productos ---------- */
 function productos() {
-  const q = Q.pq.toLowerCase(), L = P.prods.filter(p => !q || p.nombre.toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
   return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button><button class="btn btn-s btn-sm${Q.fly ? ' on' : ''}" data-act="pf-modo" id="pf-modo">📸 Crear flyer</button></div>
   ${Q.fly ? `<div class="pf-bar" id="pf-bar"><span>${Q.fly.length ? `<b>${Q.fly.length}</b> ${Q.fly.length === 1 ? 'producto elegido' : 'productos elegidos'} (hasta 4)` : 'Tocá de 1 a 4 productos para tu flyer'}</span><button class="btn btn-p btn-sm" data-act="pf-crear" ${Q.fly.length ? '' : 'disabled'}>📸 Armar flyer</button><button class="btn btn-s btn-sm" data-act="pf-modo">Cancelar</button></div>` : ''}
-  <input class="fi" id="pq" placeholder="Buscar por nombre, categoría o código…" data-input="p-q" value="${esc(Q.pq)}" aria-label="Buscar producto" style="margin-bottom:12px"><div class="muted" style="margin-bottom:8px;font-size:.8rem">${P.prods.length} productos</div>
-  <div class="card">${L.slice(0, Q.lim).map(filaProd).join('') || '<p class="muted">Nada para mostrar. Importá tu lista o agregá un producto.</p>'}${L.length > Q.lim ? `<button class="btn btn-s btn-sm" data-act="p-mas">Ver más (${L.length - Q.lim})</button>` : ''}</div>`;
+  ${vistaProductos(!!Q.fly)}`;
 }
 const usd = n => 'USD ' + (Math.round(Number(n) * 100) / 100).toLocaleString('es-AR', { maximumFractionDigits: 2 });
 // Precios que ve el comprador (mismo cálculo que el servidor; el pedido siempre lo recalcula la base).
@@ -95,28 +95,38 @@ function preciosDe(costo, ovr) {
   const m1 = ovr == null || ovr === '' ? Number(t.margen_1) : Number(ovr);
   return { min: precioArs(c, t.cotizacion_usd, m1), 1: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_1) + sh)), 3: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_3) + sh)), 6: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_6) + sh)), 12: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_12) + sh)) };
 }
+// mismo cálculo que la base: primero el descuento del combo y después la oferta vigente (redondeado a $10)
+const conDesc = (x, pct) => !(Number(pct) > 0) || x == null ? x : Math.ceil(x * (1 - Math.min(90, Number(pct)) / 100) / 10) * 10;
+const ofertaVig = p => Number(p.oferta_pct) > 0 && (!p.oferta_desde || new Date(p.oferta_desde) <= new Date()) && (!p.oferta_hasta || new Date(p.oferta_hasta) > new Date()) ? Number(p.oferta_pct) : 0;
+const precioFinal = (p, x) => conDesc(conDesc(x, p.combo_desc), ofertaVig(p));
+const hayV216 = () => (P.prods || []).some(p => 'oferta_pct' in p);
+const diaLocal = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('sv'); };
+const finDia = v => v ? new Date(v + 'T23:59:59').toISOString() : null, inicioDia = v => v ? new Date(v + 'T00:00:00').toISOString() : null;
 const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
-function filaProd(p) {
-  const pr = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista';
-  const det = [p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
+function filaProd(p, extra) {
+  const pr0 = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista', pr = {};
+  Object.keys(pr0).forEach(k => { pr[k] = precioFinal(p, pr0[k]); });
+  const of = Number(p.oferta_pct) > 0 ? (ofertaVig(p) ? `🏷️ -${Math.round(p.oferta_pct)}% hasta ${new Date(p.oferta_hasta).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : p.oferta_desde && new Date(p.oferta_desde) > new Date() ? `🏷️ -${Math.round(p.oferta_pct)}% desde ${new Date(p.oferta_desde).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : '') : '';
+  const det = [Array.isArray(p.combo) && p.combo.length ? `🧩 combo de ${p.combo.reduce((a, c) => a + (+c.cant || 0), 0)} u.` : '', of, p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
   const sel = Q.fly && Q.fly.includes(p.id);
   return `<div class="prow${p.activo ? '' : ' off'}${sel ? ' sel' : ''}" data-act="${Q.fly ? 'pf-sel' : 'p-editar'}" data-id="${p.id}" role="button" tabindex="0" aria-label="${Q.fly ? 'Elegir' : 'Editar'} ${esc(p.nombre)}"${Q.fly ? ` aria-pressed="${!!sel}"` : ''}>
     ${Q.fly ? `<span class="pf-chk" aria-hidden="true">${sel ? '✓' : ''}</span>` : ''}<span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
-    <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div></span>
+    <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div>${extra || ''}</span>
     <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
 }
 /* ---------- flyers del comercio (con su marca) ---------- */
 // Los precios que se estampan dependen de cómo vende la tienda: mayorista/híbrida → escalas; minorista → un solo precio.
 function itemFlyer(p) {
-  const pr = preciosDe(p.costo_usd, p.margen_override), m = P.t.modalidad, may = m !== 'minorista';
-  return { nombre: p.nombre, img: p.imagen_url || '', emoji: p.emoji, precio: m === 'mayorista' ? pr[1] : pr.min,
+  const b = preciosDe(p.costo_usd, p.margen_override), m = P.t.modalidad, may = m !== 'minorista', pr = {}; Object.keys(b).forEach(k => { pr[k] = precioFinal(p, b[k]); });
+  const base = m === 'mayorista' ? b[1] : b.min, precio = m === 'mayorista' ? pr[1] : pr.min;
+  return { nombre: p.nombre, img: p.imagen_url || '', emoji: p.emoji, precio, antes: precio < base ? base : 0, pct: Math.round(ofertaVig(p) || 0),
     escalas: may && !p.precio_unico ? { 1: pr[1], 3: pr[3], 6: pr[6], 12: pr[12] } : null, min: m === 'hibrido' ? pr.min : 0 };
 }
 const encargoP = p => P.t.modo_stock === 'encargo' || (P.t.modo_stock === 'mixto' && !!p.a_pedido);
 function flyerDe(ids, badge) {
   const L = ids.map(id => P.prods.find(p => p.id === id)).filter(Boolean).slice(0, 4); if (!L.length) { toast('Elegí al menos un producto'); return; }
   const t = P.t;
-  abrirFlyer({ modo: 'comercio', items: L.map(itemFlyer), badge: badge || (L.every(encargoP) ? '📦 Por Encargo' : '🔥 En Stock'),
+  abrirFlyer({ modo: 'comercio', items: L.map(itemFlyer), badge: badge || (L.every(p => ofertaVig(p)) ? '⚡ Oferta' : L.every(encargoP) ? '📦 Por Encargo' : '🔥 En Stock'),
     marca: { nombre: t.nombre, logo: t.logo_url || '', color: t.color, url: urlTienda().replace(/^https?:\/\//, '').replace(/\/$/, ''), wsp: '+' + t.whatsapp } });
 }
 on('pf-modo', () => { Q.fly = Q.fly ? null : []; pintar(); });
@@ -139,26 +149,35 @@ function modal() {
   if (m.tipo === 'cat') return vistaCatalogo();
   if (m.tipo === 'prod') {
     const p = m.p || {}, foto = m.foto !== undefined ? m.foto : p.imagen_url;
+    if (!m.combo) m.combo = Array.isArray(p.combo) ? p.combo.map(c => ({ id: c.id, cant: +c.cant || 1 })) : [];
     return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true"><div class="view-title">${p.id ? 'Editar producto' : 'Nuevo producto'}</div><div id="mm"></div>
     <form data-submit="p-prod">
     <div class="fg"><label class="flabel">Nombre</label><input class="fi" name="nombre" value="${esc(p.nombre || '')}" maxlength="160" required></div>
     <div class="row2"><div class="fg"><label class="flabel">Categoría</label><input class="fi" name="categoria" value="${esc(p.categoria || 'General')}" maxlength="60" required></div><div class="fg"><label class="flabel">Código / SKU</label><input class="fi" name="sku" value="${esc(p.sku || '')}" maxlength="60"></div></div>
-    <div class="row2"><div class="fg"><label class="flabel">Costo en USD</label><input class="fi" name="costo_usd" type="number" step="any" min="0" value="${p.costo_usd != null ? Number(p.costo_usd) : ''}" data-input="p-prev" required></div><div class="fg"><label class="flabel">Marca</label><input class="fi" name="marca" value="${esc(p.marca || '')}" maxlength="60"></div></div>
+    <div class="row2"><div class="fg"><label class="flabel">Costo en USD</label><input class="fi" name="costo_usd" type="number" step="any" min="0" value="${p.costo_usd != null ? Number(p.costo_usd) : ''}" data-input="p-prev" required${(m.combo || []).length ? ' readonly title="En un combo, el costo es la suma de lo que trae"' : ''}></div><div class="fg"><label class="flabel">Marca</label><input class="fi" name="marca" value="${esc(p.marca || '')}" maxlength="60"></div></div>
     <div class="row2"><div class="fg"><label class="flabel">Se vende por</label><select class="fi" name="unidad" data-change="p-uni">${UNIDADES_P.map(([k, n]) => `<option value="${k}" ${(p.unidad || 'unidad') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="fg" id="p-cont" ${['pack', 'bulto', 'caja', 'display'].includes(p.unidad) ? '' : 'hidden'}><label class="flabel">Unidades que trae</label><input class="fi" name="contenido" type="number" min="1" max="100000" value="${p.contenido || ''}" placeholder="Ej: 12"></div></div>
     ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" name="precio_unico" ${p.precio_unico ? 'checked' : ''}> Precio único (sin descuento por cantidad x3 · x6 · x12)</label></div>` : ''}
     <div class="fg"><label class="flabel">Variantes (separadas por coma)</label><input class="fi" name="variantes" value="${esc((p.variantes || []).join(', '))}"></div>
     <div class="fg"><span class="flabel">Foto</span><div id="foto-box">${fotoHtml(foto)}</div></div>
-    <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"></div></div>
+    <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"${(m.combo || []).length ? ' disabled title="El stock de un combo sale de lo que trae"' : ''}></div></div>
     <div class="fg"><label class="flabel">Margen propio % para este producto (vacío = el general)</label><input class="fi" name="margen_propio" type="number" min="0" max="900" step="any" value="${p.margen_override != null ? Math.round(Number(p.margen_override) * 10000) / 100 : ''}" data-input="p-prev" placeholder="General: ${Math.round(Number(P.t.margen_1) * 100)}%"></div>
     ${(P.t.modo_stock || 'stock') !== 'stock' ? `<div class="fg">${P.t.modo_stock === 'mixto' ? `<label class="flabel"><input type="checkbox" name="a_pedido" ${p.a_pedido ? 'checked' : ''}> Por encargo (no lo tengo en stock: lo compro cuando me lo piden)</label>` : '<div class="hint">Tu tienda trabaja por encargo: este producto se vende aunque no tengas stock.</div>'}
       <label class="flabel" for="p-dem" style="margin-top:6px">Demora propia en días (vacío = ${Number(P.t.demora_encargo || 7)})</label><input class="fi" id="p-dem" name="demora_dias" type="number" min="1" max="120" value="${p.demora_dias || ''}"></div>` : ''}
     ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel" for="p-pvp">Precio sugerido de venta al público $ (opcional)</label><input class="fi" id="p-pvp" name="pvp_sugerido" type="number" min="0" step="any" value="${p.pvp_sugerido != null ? Number(p.pvp_sugerido) : ''}" placeholder="Vacío = lo calcula la app"><div class="hint">Es a cuánto puede venderlo tu cliente revendedor. Se usa en “Tu ganancia” (Tienda → Reglas).</div></div>` : ''}
     <div class="flabel">Así lo ve tu cliente</div><div class="pprev" id="pprev">${prevHtml(p.costo_usd, p.margen_override)}</div>
     <div class="fg"><label class="flabel">Descripción</label><textarea class="fi" name="descripcion" rows="2" maxlength="2000">${esc(p.descripcion || '')}</textarea></div>
+    ${hayV216() ? `<details class="pm-sec"${Number(p.oferta_pct) > 0 ? ' open' : ''}><summary>🏷️ Oferta con fechas</summary>
+      <div class="row2"><div class="fg"><label class="flabel" for="p-ofp">Descuento %</label><input class="fi" id="p-ofp" name="oferta_pct" type="number" min="1" max="90" step="any" value="${Number(p.oferta_pct) > 0 ? Number(p.oferta_pct) : ''}" placeholder="Ej: 15" data-input="p-cb-prev"></div>
+      <div class="fg"><label class="flabel" for="p-ofh">Hasta el (incluido)</label><input class="fi" id="p-ofh" name="oferta_hasta" type="date" value="${diaLocal(p.oferta_hasta)}"></div></div>
+      <div class="fg"><label class="flabel" for="p-ofd">Desde el (vacío = ya)</label><input class="fi" id="p-ofd" name="oferta_desde" type="date" value="${diaLocal(p.oferta_desde)}"></div>
+      <div class="hint">Mientras dure, la tienda muestra el precio tachado y la etiqueta -%. Al terminar vuelve sola al precio normal. Vacío = sin oferta.</div></details>
+    <details class="pm-sec" id="pm-cb"${(m.combo || []).length ? ' open' : ''}><summary>🧩 Combo: este producto trae otros</summary><div id="p-cb">${comboHtml()}</div></details>` : ''}
     <div class="fg"><label class="flabel"><input type="checkbox" name="activo" ${p.activo === false ? '' : 'checked'}> Visible en la tienda</label></div>
     <button class="btn btn-p" type="submit">Guardar</button>${p.id ? '<button type="button" class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="p-borrar" data-id="' + p.id + '">Eliminar producto</button>' : ''}<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cancelar</button></form></div></div>`;
   }
+  if (m.tipo === 'masivo') return modalMasivo(m);
+  if (m.tipo === 'borrar-masivo') return modalBorrar();
   if (m.tipo === 'ped') return modalPedido(m);
   if (m.tipo === 'rec') return recepcionModal();
   return '';
@@ -170,14 +189,50 @@ function prevHtml(costo, ovr) {
   return [1, 3, 6, 12].map(n => `<div><small>x${n}${n === 12 ? '+' : ''}</small><b>${fmt(pr[n])}</b></div>`).join('') + (P.t.modalidad === 'hibrido' ? `<div style="grid-column:1/-1"><small>Minorista (público)</small><b>${fmt(pr.min)}</b></div>` : '');
 }
 const fotoHtml = foto => `${foto ? `<img src="${esc(foto)}" alt="Foto actual" style="height:84px;border-radius:10px;display:block;margin-bottom:8px">` : ''}<label class="filebtn">📷 ${foto ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" data-change="p-foto"></label>${foto ? ' <button type="button" class="btn btn-s btn-sm" data-act="p-nofoto">Quitar</button>' : ''}<div class="hint" style="margin-top:4px">La achicamos automáticamente para que cargue rápido.</div>`;
+// ---- combo: qué trae, cuántos de cada uno, descuento y cómo queda el precio ----
+const cbProd = id => (P.prods || []).find(p => p.id === id);
+const precioX1 = p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); };
+function comboPrev() {
+  const L = (P.modal && P.modal.combo || []).map(c => ({ p: cbProd(c.id), c })).filter(x => x.p); if (!L.length) return '';
+  const f = document.querySelector('form[data-submit=p-prod]'), desc = f && f.combo_desc ? Number(f.combo_desc.value) || 0 : Number((P.modal.p || {}).combo_desc) || 0;
+  const sep = L.reduce((a, x) => a + precioX1(x.p) * x.c.cant, 0), costo = L.reduce((a, x) => a + Number(x.p.costo_usd) * x.c.cant, 0);
+  const pr = preciosDe(costo, null), base = P.t.modalidad === 'mayorista' ? pr[1] : pr.min, combo = conDesc(base, desc);
+  return `<div class="cb-prev"><span>Por separado: <s>${fmt(sep)}</s></span><span>Combo: <b>${fmt(combo)}</b>${sep > combo ? ` <small>(ahorran ${fmt(sep - combo)})</small>` : ''}</span></div>`;
+}
+function comboHtml() {
+  const m = P.modal || {}, L = m.combo || [], q = (m.cbq || '').toLowerCase().trim(), yo = (m.p || {}).id;
+  const res = q ? (P.prods || []).filter(p => p.id !== yo && !(Array.isArray(p.combo) && p.combo.length) && !L.some(c => c.id === p.id) && [p.nombre, p.sku, p.categoria].join(' ').toLowerCase().includes(q)).slice(0, 6) : [];
+  return `<p class="hint" style="margin-bottom:6px">Armalo con productos que ya tenés. El costo y el stock salen de lo que trae: al vender un combo se descuenta el stock de cada producto.</p>
+    ${L.map((c, i) => { const p = cbProd(c.id); return `<div class="cb-it"><span class="cb-n">${esc(p ? p.nombre : 'Producto borrado')}</span><input class="fi cb-q" type="number" min="1" max="99" value="${c.cant}" data-input="p-cb-cant" data-i="${i}" aria-label="Cantidad de ${esc(p ? p.nombre : '')}"><button type="button" class="btn btn-s btn-sm" data-act="p-cb-del" data-i="${i}" aria-label="Quitar">✕</button></div>`; }).join('')}
+    ${L.length < 10 ? `<input class="fi" id="p-cbq" data-input="p-cb-q" placeholder="Buscar producto para sumar al combo…" value="${esc(m.cbq || '')}" autocomplete="off" aria-label="Buscar producto para el combo">
+      <div class="dz-vt-res" id="p-cb-res">${res.map(p => `<button type="button" data-act="p-cb-add" data-id="${p.id}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="">` : `<span>${esc(p.emoji || '📦')}</span>`}<span>${esc(p.nombre)}</span></button>`).join('')}</div>` : ''}
+    ${L.length ? `<div class="fg" style="margin-top:8px"><label class="flabel" for="p-cbd">Descuento del combo % (frente a comprarlos por separado)</label><input class="fi" id="p-cbd" name="combo_desc" type="number" min="0" max="90" step="any" value="${Number((m.p || {}).combo_desc) || ''}" placeholder="Ej: 10" data-input="p-cb-prev"></div><div id="p-cb-pv">${comboPrev()}</div>` : ''}`;
+}
+function pintarCombo() {
+  const b = $('#p-cb'); if (!b) return; b.innerHTML = comboHtml();
+  const f = document.querySelector('form[data-submit=p-prod]'), L = (P.modal.combo || []).map(c => ({ p: cbProd(c.id), c })).filter(x => x.p);
+  if (f && f.costo_usd) { f.costo_usd.readOnly = L.length > 0; if (L.length) { f.costo_usd.value = Math.round(L.reduce((a, x) => a + Number(x.p.costo_usd) * x.c.cant, 0) * 10000) / 10000; } }
+  if (f && f.stock) { f.stock.disabled = L.length > 0; if (L.length) f.stock.value = ''; }
+}
+on('p-cb-q', (d, el) => { P.modal.cbq = el.value; const pos = el.selectionStart; pintarCombo(); const i = $('#p-cbq'); if (i) { i.focus(); try { i.setSelectionRange(pos, pos); } catch (e) { } } });
+on('p-cb-add', d => { const L = P.modal.combo = P.modal.combo || []; if (L.length < 10 && !L.some(c => c.id === d.id)) L.push({ id: d.id, cant: 1 }); P.modal.cbq = ''; pintarCombo(); const i = $('#p-cbq'); if (i) i.focus(); });
+on('p-cb-del', d => { (P.modal.combo || []).splice(+d.i, 1); pintarCombo(); });
+on('p-cb-cant', (d, el) => { const c = (P.modal.combo || [])[+d.i]; if (c) { c.cant = Math.max(1, Math.min(99, Math.floor(Number(el.value) || 1))); const v = $('#p-cb-pv'); if (v) v.innerHTML = comboPrev(); const f = document.querySelector('form[data-submit=p-prod]'); if (f && f.costo_usd && f.costo_usd.readOnly) pintarCombo(); } });
+on('p-cb-prev', () => { const v = $('#p-cb-pv'); if (v) v.innerHTML = comboPrev(); });
+// desde la lista: "Armar combo" con los productos seleccionados
+function abrirCombo(ids) {
+  const L = ids.map(cbProd).filter(p => p && !(Array.isArray(p.combo) && p.combo.length)).slice(0, 10);
+  if (L.length < 2) { toast('Elegí al menos 2 productos (que no sean combos) para armar un combo'); return; }
+  const nombre = ('Combo ' + L.map(p => p.nombre.split(' ').slice(0, 3).join(' ')).join(' + ')).slice(0, 160);
+  P.modal = { tipo: 'prod', p: { nombre, categoria: L[0].categoria, emoji: '🧩', activo: true, combo_desc: 10, imagen_url: L.find(p => p.imagen_url) ? L.find(p => p.imagen_url).imagen_url : null }, combo: L.map(p => ({ id: p.id, cant: 1 })) };
+  pintar(); pintarCombo(); const d = $('#pm-cb'); if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); }
+}
 const mm = (t, ok) => { const e = $('#mm'); if (e) e.innerHTML = `<div class="${ok ? 'ok-box' : 'err-box'}">${esc(t)}</div>`; };
 
 /* ---------- acciones ---------- */
-on('p-tab', async d => { P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado') await cargarGastos(); pintar(); window.scrollTo(0, 0); });
+on('p-tab', async d => { if (d.k !== P.tab) limpiarSel(); P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado') await cargarGastos(); pintar(); window.scrollTo(0, 0); });
 on('p-salir', async () => { if (Q.stop) Q.stop(); Q.stop = null; await api.salir(); salirFn(); });
 on('p-copiar', d => copiar(d.v));
-on('p-q', (d, el) => { Q.pq = el.value; Q.lim = 60; pintar(); });
-on('p-mas', () => { Q.lim += 60; pintar(); });
 on('p-cerrar', () => { P.modal = null; Q.pendiente = false; pintar(); });
 on('p-cerrar-bg', (d, b, e) => { if (e.target === b) { P.modal = null; pintar(); } });
 on('p-nuevo', () => { P.modal = { tipo: 'prod', p: null }; pintar(); });
@@ -214,6 +269,21 @@ on('p-prod', async (d, f) => {
   if (fd.has('pvp_sugerido')) datos.pvp_sugerido = Number(fd.get('pvp_sugerido')) > 0 ? Math.round(Number(fd.get('pvp_sugerido')) * 100) / 100 : null;
   datos.contenido = ['pack', 'bulto', 'caja', 'display'].includes(datos.unidad) && Number(fd.get('contenido')) >= 1 ? Math.floor(Number(fd.get('contenido'))) : null;
   datos.precio_unico = fd.get('precio_unico') === 'on';
+  if (hayV216()) {
+    const op = Number(fd.get('oferta_pct')), oh = fd.get('oferta_hasta'), od = fd.get('oferta_desde');
+    if (op > 0) {
+      if (op > 90) return mm('El descuento de la oferta va de 1 a 90 %.');
+      if (!oh || new Date(oh + 'T23:59:59') <= new Date()) return mm('Poné hasta qué día dura la oferta (hoy o más adelante).');
+      if (od && od > oh) return mm('La oferta tiene que empezar antes de terminar.');
+      Object.assign(datos, { oferta_pct: Math.round(op * 100) / 100, oferta_hasta: finDia(oh), oferta_desde: inicioDia(od) });
+    } else Object.assign(datos, { oferta_pct: null, oferta_hasta: null, oferta_desde: null });
+    const cb = (P.modal.combo || []).filter(c => c.id && c.id !== p0.id);
+    if (cb.length) {
+      if (cb.reduce((a, c) => a + c.cant, 0) < 2) return mm('Un combo tiene que traer al menos 2 unidades.');
+      datos.combo = cb.map(c => ({ id: c.id, cant: Math.max(1, Math.min(99, Math.floor(c.cant))) })); datos.combo_desc = Math.max(0, Math.min(90, Number(fd.get('combo_desc')) || 0));
+      datos.precio_unico = true; datos.stock = null;
+    } else { datos.combo = null; datos.combo_desc = 0; }
+  }
   try {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
     await api.guardarProducto(id, datos); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');

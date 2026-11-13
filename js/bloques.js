@@ -39,6 +39,49 @@ export function iniciarCarrusel(root) {
   timer = setInterval(() => { if (parado || !tr.isConnected) { if (!tr.isConnected) clearInterval(timer); return; } const n = (actual() + 1) % dots.length; tr.scrollTo({ left: n * tr.clientWidth, behavior: 'smooth' }); }, 5000);
 }
 
+// ---- carrusel de productos ("vitrina") y efectos de movimiento ----
+// efectos: prendidos salvo que el comercio los apague (y nunca si la persona pidió menos movimiento en su equipo)
+export const efectosOn = d => !d || d.efectos !== false;
+export const menosMovimiento = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
+const MODOS_VT = ['auto', 'elegidos', 'categoria', 'nuevos', 'vendidos', 'ofertas'];
+const TITULO_VT = { auto: '⭐ Destacados', elegidos: '⭐ Destacados', categoria: '⭐ Destacados', nuevos: '🆕 Nuevos ingresos', vendidos: '🔥 Los más vendidos', ofertas: '🏷️ Ofertas de la semana' };
+const unaVitrina = v => ({ titulo: String(v.titulo || '').trim() || TITULO_VT[MODOS_VT.includes(v.modo) ? v.modo : 'auto'], modo: MODOS_VT.includes(v.modo) ? v.modo : 'auto',
+  ids: Array.isArray(v.ids) ? v.ids.filter(x => typeof x === 'string') : [], categoria: String(v.categoria || ''), pos: v.pos === 'abajo' ? 'abajo' : 'arriba' });
+// hasta 4 carruseles (formato nuevo "vitrinas"; el viejo "vitrina" sigue andando)
+export function vitrinasCfg(d) {
+  const L = !d ? [] : Array.isArray(d.vitrinas) ? d.vitrinas : d.vitrina ? [d.vitrina] : [];
+  return L.filter(v => v && v.activo).slice(0, 4).map(unaVitrina);
+}
+export const vitrinaCfg = d => vitrinasCfg(d)[0] || null;
+// qué productos van (hasta 12): elegidos en ese orden, una categoría, una lista que manda el servidor (nuevos / más vendidos),
+// los que están en oferta, o una selección con foto que cambia en cada visita
+export function vitrinaProds(cfg, prods, azar = Math.random, idsServidor = null) {
+  const ok = p => p && !p.agotado && p.activo !== false;
+  const m = new Map(prods.map(p => [p.id, p]));
+  if (cfg.modo === 'elegidos') return cfg.ids.map(id => m.get(id)).filter(ok).slice(0, 12);
+  if ((cfg.modo === 'nuevos' || cfg.modo === 'vendidos') && Array.isArray(idsServidor) && idsServidor.length) return idsServidor.map(id => m.get(id)).filter(ok).slice(0, 12);
+  let L = prods.filter(p => ok(p) && (cfg.modo !== 'categoria' || p.categoria === cfg.categoria) && (cfg.modo !== 'ofertas' || Number(p.oferta_pct) > 0));
+  const conFoto = L.filter(p => p.imagen_url);
+  if (cfg.modo === 'categoria' || cfg.modo === 'ofertas') L = conFoto.concat(L.filter(p => !p.imagen_url));
+  else { L = conFoto.length >= 4 ? conFoto.slice() : L.slice(); for (let i = L.length - 1; i > 0; i--) { const j = Math.floor(azar() * (i + 1)); [L[i], L[j]] = [L[j], L[i]]; } }
+  return L.slice(0, 12);
+}
+
+// ---- "Comprá por categoría" con fotos ----
+export function catFotoCfg(d) { const c = d && d.catfoto; if (!c || !c.activo) return null; return { titulo: String(c.titulo || '').trim() || 'Comprá por categoría', fotos: c.fotos && typeof c.fotos === 'object' ? c.fotos : {} }; }
+// la foto de cada categoría: la del producto elegido o, si no, la del primer producto con foto (los activos y con stock primero)
+export function fotoCategoria(cat, prods, fotos) {
+  const L = prods.filter(p => p.categoria === cat && p.imagen_url && p.activo !== false);
+  const elegido = fotos && fotos[cat] ? L.find(p => p.id === fotos[cat]) : null;
+  return (elegido || L.find(p => !p.agotado) || L[0] || {}).imagen_url || '';
+}
+export function catTilesHtml(cfg, cats, prods, actual, conTodas = true) {
+  const n = c => prods.filter(p => p.categoria === c).length;
+  const tile = (c, img, cant, todas) => `<button type="button" class="ct-tile${c === actual ? ' on' : ''}" data-act="st-cat" data-c="${esc(c)}"${c === actual ? ' aria-pressed="true"' : ' aria-pressed="false"'}>
+    <span class="ct-img${img ? ' con-img' : ''}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span aria-hidden="true">${todas ? '🛍️' : '🏷️'}</span>`}</span><span class="ct-n">${esc(todas ? 'Todo' : c)}</span><span class="ct-c">${cant} ${cant === 1 ? 'producto' : 'productos'}</span></button>`;
+  return `<div class="ct-h"><h3>${esc(cfg.titulo)}</h3></div><div class="ct-track">${conTodas ? tile('Todas', '', prods.length, true) : ''}${cats.map(c => tile(c, fotoCategoria(c, prods, cfg.fotos), n(c), false)).join('')}</div>`;
+}
+
 export function beneficiosHtml(d) {
   const L = (d && d.beneficios || []).filter(x => x && x.texto);
   if (!L.length || !secOn(d, 'beneficios')) return '';
