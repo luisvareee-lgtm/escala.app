@@ -2,7 +2,8 @@
 // Todo se dibuja en el navegador con <canvas>: no sube nada a ningún servidor.
 // Tres usos:  'reventa'  (tienda pública, marca blanca: NUNCA dibuja datos del comercio),
 //             'comercio' (panel: con logo, nombre, enlace y WhatsApp de la tienda)  y  'demo' (portada).
-import { esc, fmt, on, toast, store, debounce } from './util.js';
+import { esc, fmt, on, toast, store, debounce, copiar } from './util.js';
+import { ESTILOS_PRO, CODIGOS, estiloDeCodigo, promptDe } from './flyer_pro.js';
 
 export const ESTILOS = { oscuro: 'Oscuro elegante', claro: 'Claro minimalista', vibrante: 'Vibrante oferta' };
 export const BADGES = ['🔥 En Stock', '✨ Nuevo Ingreso', '📦 Por Encargo', '⚡ Oferta'];
@@ -42,22 +43,22 @@ function rr(ctx, x, y, w, h, r) {
   if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
   else { ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 }
-const fuente = (px, peso = 800) => `${peso} ${px}px ${FUENTE}`;
+const fuente = (px, peso = 800, fam = FUENTE) => `${peso} ${px}px ${fam || FUENTE}`;
 // TODO el texto del flyer pasa por acá: así se puede comprobar qué dice (y qué NO dice) la imagen.
 function txt(ctx, s, x, y, o = {}) {
   s = String(s == null ? '' : s); if (!s) return 0;
-  ctx.font = fuente(o.px || 40, o.peso); ctx.fillStyle = o.color || '#fff'; ctx.textAlign = o.al || 'left'; ctx.textBaseline = o.base || 'alphabetic';
-  if (o.max) { let px = o.px || 40; while (ctx.measureText(s).width > o.max && px > (o.min || 18)) { px -= 2; ctx.font = fuente(px, o.peso); } }
+  ctx.font = fuente(o.px || 40, o.peso, o.fam); ctx.fillStyle = o.color || '#fff'; ctx.textAlign = o.al || 'left'; ctx.textBaseline = o.base || 'alphabetic';
+  if (o.max) { let px = o.px || 40; while (ctx.measureText(s).width > o.max && px > (o.min || 18)) { px -= 2; ctx.font = fuente(px, o.peso, o.fam); } }
   ctx.fillText(s, x, y); if (!o.mudo) F.textos.push(s); return ctx.measureText(s).width;
 }
-function renglones(ctx, s, px, peso, max, n) {
-  ctx.font = fuente(px, peso); const pal = String(s || '').split(/\s+/).filter(Boolean), L = []; let a = '';
+function renglones(ctx, s, px, peso, max, n, fam) {
+  ctx.font = fuente(px, peso, fam); const pal = String(s || '').split(/\s+/).filter(Boolean), L = []; let a = '';
   for (const p of pal) { const t = a ? a + ' ' + p : p; if (ctx.measureText(t).width <= max || !a) a = t; else { L.push(a); a = p; } }
   if (a) L.push(a);
   if (L.length > n) { let u = L[n - 1]; while (u.length > 3 && ctx.measureText(u + '…').width > max) u = u.slice(0, -1); L.length = n; L[n - 1] = u.replace(/[\s,.;:-]+$/, '') + '…'; }
   return L;
 }
-function parrafo(ctx, s, x, y, o) { const L = renglones(ctx, s, o.px, o.peso, o.max, o.n || 2); L.forEach((l, i) => txt(ctx, l, x, y + i * o.px * 1.16, { ...o, max: o.max, mudo: true })); F.textos.push(String(s)); return L.length * o.px * 1.16; }
+function parrafo(ctx, s, x, y, o) { const L = renglones(ctx, s, o.px, o.peso, o.max, o.n || 2, o.fam); L.forEach((l, i) => txt(ctx, l, x, y + i * o.px * 1.16, { ...o, max: o.max, mudo: true })); F.textos.push(String(s)); return L.length * o.px * 1.16; }
 
 // Foto normalizada: cuadradas llenan el marco; verticales/apaisadas van enteras sobre un fondo difuminado de la misma foto.
 function foto(ctx, im, it, x, y, w, h, r, T) {
@@ -114,12 +115,48 @@ function tablaEscalas(ctx, T, e, x, y, w, h) {
   });
 }
 
+
+// Pie del flyer: comercio = su marca; reventa = solo el contacto que escribe el revendedor (nunca datos del comercio); demo = aviso.
+// o.M = margen, o.fam = tipografía, o.compacto = pie bajo (formato 4:5 o franjas de cine)
+function dibujarPie(ctx, T, logo, py, o = {}) {
+  const M = o.M || 90, k = o.compacto ? 0.72 : 1, fam = o.fam, f = (px, peso, color, extra) => ({ px: Math.round(px * k), peso, color, fam, ...extra });
+  ctx.fillStyle = T.tileB; ctx.fillRect(M, py - 6, W - M * 2, 3);
+  if (F.modo === 'comercio' && F.marca) {
+    const m = F.marca; let x = M;
+    const L = Math.round(120 * k), ly = py + Math.round(34 * k);
+    if (logo) { ctx.save(); rr(ctx, x, ly, L, L, 28 * k); ctx.clip(); ctx.fillStyle = '#fff'; ctx.fillRect(x, ly, L, L); const s = Math.min(L / logo.naturalWidth, L / logo.naturalHeight); ctx.drawImage(logo, x + (L - logo.naturalWidth * s) / 2, ly + (L - logo.naturalHeight * s) / 2, logo.naturalWidth * s, logo.naturalHeight * s); ctx.restore(); x += L + 30 * k; }
+    txt(ctx, m.nombre, x, py + 84 * k, f(54, 800, T.fg, { max: W - M - x }));
+    const l2 = [m.url ? '🛒 ' + m.url : '', m.wsp ? '📲 ' + m.wsp : ''].filter(Boolean).join('   ');
+    txt(ctx, l2, x, py + 142 * k, f(36, 600, T.sub, { max: W - M - x }));
+  } else if (F.modo === 'demo') {
+    txt(ctx, 'Tu marca, tu enlace y tu WhatsApp van acá', W / 2, py + 100 * k, f(40, 700, T.sub, { al: 'center', max: W - M * 2 }));
+  } else {
+    const n = F.pie.nombre.trim(), w = F.pie.wsp.trim();
+    if (n) txt(ctx, n, W / 2, py + (w ? 84 : 110) * k, f(58, 800, T.fg, { al: 'center', max: W - M * 2 }));
+    if (w) txt(ctx, '📲 ' + w, W / 2, py + (n ? 150 : 110) * k, f(44, 700, n ? T.sub : T.fg, { al: 'center', max: W - M * 2 }));
+    if (!n && !w) txt(ctx, 'Consultame por mensaje 💬', W / 2, py + 110 * k, f(44, 700, T.sub, { al: 'center' }));
+  }
+}
+
+// lo que los estilos publicitarios (flyer_pro.js) usan del estudio
+const K = { txt, rr, parrafo, renglones, foto, sticker, tachar, precioDe, antesDe, fuente, mezcla, lum, num, fmt, F, pie: dibujarPie };
+
 /* ---------- el flyer ---------- */
 export async function dibujar(canvas) {
   const ctx = canvas.getContext('2d'), its = F.items.slice(0, 4), T = tema(F.estilo, F.modo === 'comercio' && F.marca ? F.marca.color : null);
   const ims = await Promise.all(its.map(it => cargar(it.img)));
   const logo = F.modo === 'comercio' && F.marca ? await cargar(F.marca.logo) : null;
   F.textos = []; F.fallos = its.filter((it, i) => it.img && !ims[i]).length;
+  // estilos publicitarios (/productworld, /luxury, /metaads…): cada uno arma su propia composición
+  const pro = ESTILOS_PRO[F.estilo], alto = (pro && pro.alto) || H;
+  if (canvas.height !== alto) canvas.height = alto;
+  canvas.style.aspectRatio = W + ' / ' + alto;
+  if (pro) {
+    const color = F.modo === 'comercio' && F.marca && HEX.test(F.marca.color || '') ? F.marca.color : null;
+    const quien = F.modo === 'comercio' && F.marca ? F.marca.nombre : F.modo === 'demo' ? 'Tu marca' : (F.pie.nombre.trim() || 'Mis recomendados');
+    ctx.save(); pro.dibujar(ctx, K, { W, H: alto, its, ims, logo, color, quien }); ctx.restore();
+    return terminar(canvas);
+  }
   const g = ctx.createLinearGradient(0, 0, W * 0.35, H); g.addColorStop(0, T.bg[0]); g.addColorStop(1, T.bg[1]); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   // brillo suave arriba
   const gl = ctx.createRadialGradient(W * 0.85, 120, 20, W * 0.85, 120, 760); gl.addColorStop(0, F.estilo === 'claro' ? 'rgba(0,0,0,.05)' : 'rgba(255,255,255,.13)'); gl.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = gl; ctx.fillRect(0, 0, W, 900);
@@ -157,22 +194,10 @@ export async function dibujar(canvas) {
   }
 
   // ---- pie ----
-  const py = H - pieAlto;
-  ctx.fillStyle = T.tileB; ctx.fillRect(M, py - 6, W - M * 2, 3);
-  if (F.modo === 'comercio' && F.marca) {
-    const m = F.marca; let x = M;
-    if (logo) { ctx.save(); rr(ctx, x, py + 34, 120, 120, 28); ctx.clip(); ctx.fillStyle = '#fff'; ctx.fillRect(x, py + 34, 120, 120); const s = Math.min(120 / logo.naturalWidth, 120 / logo.naturalHeight); ctx.drawImage(logo, x + (120 - logo.naturalWidth * s) / 2, py + 34 + (120 - logo.naturalHeight * s) / 2, logo.naturalWidth * s, logo.naturalHeight * s); ctx.restore(); x += 150; }
-    txt(ctx, m.nombre, x, py + 84, { px: 54, peso: 800, color: T.fg, max: W - M - x });
-    const l2 = [m.url ? '🛒 ' + m.url : '', m.wsp ? '📲 ' + m.wsp : ''].filter(Boolean).join('   ');
-    txt(ctx, l2, x, py + 142, { px: 36, peso: 600, color: T.sub, max: W - M - x });
-  } else if (F.modo === 'demo') {
-    txt(ctx, 'Tu marca, tu enlace y tu WhatsApp van acá', W / 2, py + 100, { px: 40, peso: 700, color: T.sub, al: 'center', max: W - M * 2 });
-  } else {
-    const n = F.pie.nombre.trim(), w = F.pie.wsp.trim();
-    if (n) txt(ctx, n, W / 2, py + (w ? 84 : 110), { px: 58, peso: 800, color: T.fg, al: 'center', max: W - M * 2 });
-    if (w) txt(ctx, '📲 ' + w, W / 2, py + (n ? 150 : 110), { px: 44, peso: 700, color: n ? T.sub : T.fg, al: 'center', max: W - M * 2 });
-    if (!n && !w) txt(ctx, 'Consultame por mensaje 💬', W / 2, py + 110, { px: 44, peso: 700, color: T.sub, al: 'center' });
-  }
+  dibujarPie(ctx, T, logo, H - pieAlto);
+  terminar(canvas);
+}
+function terminar(canvas) {
   canvas.setAttribute('aria-label', 'Flyer: ' + F.textos.join(' · ')); canvas.dataset.listo = String(Date.now()); canvas.dataset.fallos = String(F.fallos);
   const nota = document.getElementById('fl-nota');
   if (nota) nota.textContent = F.fallos ? `${F.fallos === 1 ? 'Una foto no se pudo usar' : F.fallos + ' fotos no se pudieron usar'} en la imagen (el sitio donde está guardada no lo permite). Va con un ícono en su lugar.` : '';
@@ -191,6 +216,10 @@ function pintar() {
     <div class="fl-grid"><div class="fl-prev"><canvas id="fl-canvas" width="${W}" height="${H}" role="img" aria-label="Flyer"></canvas><p class="hint" id="fl-nota" role="status"></p></div>
     <div class="fl-ctrl">
       <div class="fg"><span class="flabel">Estilo</span><div class="fl-chips">${chips('fl-estilo', Object.entries(ESTILOS), F.estilo)}</div></div>
+      <div class="fg"><span class="flabel">Estilos publicitarios <small class="muted">· tocá uno o escribí su código</small></span><div class="fl-chips">${chips('fl-estilo', CODIGOS.map(k => [k, ESTILOS_PRO[k].ico + ' /' + k]), F.estilo)}</div>
+        <input class="fi fl-cod" id="fl-cod" placeholder="Escribí un código: /luxury, /ugc, /metaads…" data-input="fl-cod" aria-label="Código de estilo" autocomplete="off" autocapitalize="none" value="${esc(F.cod || '')}">
+        ${ESTILOS_PRO[F.estilo] ? `<p class="hint fl-desc"><b>${esc(ESTILOS_PRO[F.estilo].nombre)}:</b> ${esc(ESTILOS_PRO[F.estilo].desc)}${ESTILOS_PRO[F.estilo].alto ? ' Sale en formato 4:5, el de las publicaciones y anuncios del feed.' : ''}${F.precios === 'escalas' ? ' Muestra el precio por unidad (la tabla x1 · x3 · x6 · x12 va en los estilos clásicos).' : ''}</p>
+        <details class="fl-ia"><summary>🤖 Prompt para IA <small class="muted">(opcional)</small></summary><p class="hint">Copialo y pegalo en ChatGPT o Gemini junto con la foto del producto: te arma una foto realista en este estilo. Después podés usarla como foto del producto.</p><textarea class="fi" id="fl-prompt" rows="6" readonly aria-label="Prompt para IA">${esc(promptDe(F.estilo, F.items))}</textarea><button type="button" class="btn btn-s btn-sm" data-act="fl-prompt">📋 Copiar prompt</button></details>` : ''}</div>
       <div class="fg"><span class="flabel">Etiqueta</span><div class="fl-chips">${chips('fl-badge', [...BADGES.map(b => [b, b]), ['', 'Sin etiqueta']], F.badge)}</div></div>
       ${com && F.puedeEscalas ? `<div class="fg"><span class="flabel">Qué precio mostrar</span><div class="fl-chips">${chips('fl-precios', [['escalas', 'Tabla x1 · x3 · x6 · x12'], ['desde', 'Desde $… llevando 12'], ...(F.items.some(i => i.min > 0) ? [['minorista', 'Precio minorista']] : [['unico', 'Solo precio x1']])], F.precios)}</div></div>` : ''}
       ${rev || F.modo === 'demo' ? `<div class="fg"><span class="flabel">${rev ? 'Tu precio de venta al público' : 'Precio que muestra'}</span>${F.items.map((it, i) => `<label class="fl-precio"><span>${esc(it.nombre)}</span><span class="fl-pin"><i>$</i><input class="fi" inputmode="numeric" data-input="fl-precio" data-i="${i}" value="${num(it.precio)}" aria-label="Precio de ${esc(it.nombre)}"></span></label>`).join('')}${rev ? '<p class="hint">Es el precio que ven tus clientes. Lo que te cuesta a vos no aparece.</p>' : ''}</div>` : ''}
@@ -208,7 +237,7 @@ export function abrirFlyer(cfg) {
   F.puedeEscalas = F.modo === 'comercio' && items.some(i => i.escalas && i.escalas[12] < i.escalas[1]);
   F.precios = F.puedeEscalas ? 'escalas' : 'unico';
   F.badge = cfg.badge !== undefined && (cfg.badge === '' || BADGES.includes(cfg.badge)) ? cfg.badge : BADGES[0];
-  F.estilo = store.get('fly:estilo', F.modo === 'comercio' ? 'claro' : 'oscuro'); if (!ESTILOS[F.estilo]) F.estilo = 'oscuro';
+  F.estilo = store.get('fly:estilo', F.modo === 'comercio' ? 'claro' : 'oscuro'); if (!ESTILOS[F.estilo] && !ESTILOS_PRO[F.estilo]) F.estilo = 'oscuro'; F.cod = '';
   const g = store.get('fly:pie', null); F.pie = { nombre: g && typeof g.nombre === 'string' ? g.nombre.slice(0, 40) : '', wsp: g && typeof g.wsp === 'string' ? g.wsp.slice(0, 24) : '' };
   pintar();
 }
@@ -217,7 +246,13 @@ const cerrar = () => { F.abierto = false; pintar(); };
 on('fl-cerrar', cerrar);
 on('fl-bg', (d, b, e) => { if (e.target === b) cerrar(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && F.abierto) cerrar(); });
-on('fl-estilo', d => { F.estilo = d.v; store.set('fly:estilo', d.v); pintar(); });
+on('fl-estilo', d => { F.estilo = d.v; F.cod = ''; store.set('fly:estilo', d.v); pintar(); });
+on('fl-cod', (d, el) => {
+  F.cod = el.value; const k = estiloDeCodigo(el.value); if (!k || k === F.estilo) return;
+  F.estilo = k; store.set('fly:estilo', k); pintar();
+  const i = document.getElementById('fl-cod'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+});
+on('fl-prompt', () => { const t = document.getElementById('fl-prompt'); if (!t) return; copiar(t.value); try { t.select(); } catch (e) { } });
 on('fl-badge', d => { F.badge = d.v; pintar(); });
 on('fl-precios', d => { F.precios = d.v; pintar(); });
 on('fl-precio', (d, el) => { const it = F.items[+d.i]; if (it) { it.precio = num(String(el.value).replace(/\D/g, '')); redibujar(); } });

@@ -71,6 +71,16 @@ export const api = {
 
   // ---- comerciante (RLS: solo ve lo suyo)
   miTienda: async () => ok(await sb.from('tenants').select('*').maybeSingle()),
+  // Programa Fundadores, sugerencias y administración (v2.17)
+  cupos: async () => ok(await sb.rpc('fundadores_cupos')),
+  esAdmin: async () => ok(await sb.rpc('es_admin')),
+  enviarSugerencia: async texto => { ok(await sb.rpc('enviar_sugerencia', { p_texto: texto })); },
+  adminTiendas: async () => ok(await sb.rpc('admin_tiendas')) || [],
+  adminSugerencias: async () => ok(await sb.rpc('admin_sugerencias')) || [],
+  adminPrueba: async (slug, accion, dias) => ok(await sb.rpc('admin_prueba', { p_slug: slug, p_accion: accion, p_dias: dias })),
+  adminFundador: async (slug, valor) => ok(await sb.rpc('admin_fundador', { p_slug: slug, p_valor: valor })),
+  adminConfig: async (cupos, dias, prueba) => ok(await sb.rpc('admin_config', { p_cupos: cupos, p_dias: dias, p_prueba: prueba })),
+  adminSugEstado: async (id, estado) => { ok(await sb.rpc('admin_sugerencia_estado', { p_id: id, p_estado: estado })); },
   crearTienda: async d => ok(await sb.rpc('crear_tienda', { p_slug: d.slug, p_nombre: d.nombre, p_rubro: d.rubro, p_whatsapp: d.whatsapp, p_modalidad: d.modalidad, p_plan: d.plan })),
   guardarTienda: async (id, cambios) => ok(await sb.from('tenants').update(cambios).eq('id', id).select().maybeSingle()),
   setCodigo: async c => ok(await sb.rpc('set_codigo_revendedor', { p_codigo: c || null })),

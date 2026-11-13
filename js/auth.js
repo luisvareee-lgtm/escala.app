@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { CONFIG } from './config.js';
 import { $, esc, on, toast, slugify, soloDigitos, normWsp, store } from './util.js';
 import { asisSwitch } from './asistente.js';
+import { cuposHtml, cargarCupos } from './fundadores.js';
 // si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
 const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
@@ -27,7 +28,8 @@ export function pantallaRegistro(app) {
     <div class="fg"><label class="flabel" for="p">Contraseña (mínimo 8 caracteres)</label><input class="fi" id="p" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Crear cuenta gratis</button></form>
     <p class="hint center" style="margin-top:10px">Al crear tu cuenta aceptás los <a href="#/terminos">Términos y condiciones</a> y la <a href="#/privacidad">Política de privacidad</a>.</p>
-    <p class="hint center" style="margin-top:8px">7 días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>`);
+    <p class="hint center" style="margin-top:8px">7 días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
+  cargarCupos();
 }
 export function pantallaOlvide(app) {
   app.innerHTML = caja('Recuperar contraseña', `<div id="m"></div><form data-submit="a-olvide"><div class="fg"><label class="flabel" for="e">Tu email</label><input class="fi" id="e" name="email" type="email" required></div><button class="btn btn-p" type="submit" id="go">Enviarme el enlace</button></form>`);

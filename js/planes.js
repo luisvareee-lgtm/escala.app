@@ -2,6 +2,7 @@
 import { esc, fmt, on, store, waLink, toast } from './util.js';
 import { P, PLAN_NOMBRE, planEf } from './state.js';
 import { MARCA, PLANES, urlTiendaDe } from './marca.js';
+import { pruebaFrase } from './fundadores.js';
 
 const diasPrueba = t => t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
 const porWsp = p => {
@@ -14,7 +15,7 @@ const SUSC = { activa: ['ok', '✓ Suscripción activa: se renueva sola cada mes
 export function planesHtml(m) {
   const t = P.t, d = diasPrueba(t), act = t.plan, su = SUSC[t.suscripcion_estado], hayAuto = PLANES.some(p => p.auto);
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho planes" role="dialog" aria-modal="true" aria-label="Planes"><div class="view-title">Elegí tu plan</div>
-    <p class="hint" style="margin-bottom:10px">${d > 0 ? `Estás en la prueba gratis: te quedan <b>${d} ${d === 1 ? 'día' : 'días'}</b> con todo desbloqueado. ` : ''}Productos y pedidos ilimitados y 0% de comisión por venta en todos los planes. Sin permanencia: cambiás o te vas cuando quieras.</p>
+    <p class="hint" style="margin-bottom:10px">${pruebaFrase(t)}Productos y pedidos ilimitados y 0% de comisión por venta en todos los planes. Sin permanencia: cambiás o te vas cuando quieras.</p>
     ${su ? `<p class="plan-susc ${su[0]}" id="plan-susc">${su[1]}</p>` : ''}
     <div class="lp-planes">${PLANES.map(p => { const wsp = porWsp(p), es = d <= 0 && act === p.id; return `<div class="lp-plan${p.destacado || m.plan === p.id ? ' on' : ''}${p.destacado ? ' glow' : ''}">${es ? '<span class="tag ok">Tu plan actual</span>' : p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(p.precio)}<small>/mes</small></div>
       <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${es && t.suscripcion_estado === 'activa' ? '' : p.auto

@@ -2,6 +2,7 @@
 import { esc, fmt, on, $ } from './util.js';
 import { MARCA, PLANES, REFERENCIA } from './marca.js';
 import { demoHtml } from './demo.js';
+import { cuposHtml, cargarCupos } from './fundadores.js';
 
 const SIM = { costo: 10, dolar: 1200, m1: 50, m12: 20, ventas: 3000000 };
 const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mismo cálculo que la base de datos
@@ -71,6 +72,7 @@ export function inicio(app) {
     <p>${N} lee la lista, calcula tus precios con tu ganancia (por unidad, por cantidad o las dos) y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
     ${demoHtml()}
     <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
+    ${cuposHtml()}
     <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📦 x1 · x3 · x6 · x12</li><li>💰 Tu cliente ve cuánto gana</li><li>📸 Flyers para tus Estados</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li></ul></section>
 
   <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
@@ -101,6 +103,7 @@ export function inicio(app) {
   <section class="lp-sec"><h2>Preguntas frecuentes</h2><div class="st-faq-l">${FAQ.map(([p, r]) => `<details><summary>${p}</summary><p>${r}</p></details>`).join('')}</div></section>
 
   <footer class="lp-foot"><b>${N}</b><nav><a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a>${MARCA.SOPORTE_WSP ? `<a href="https://api.whatsapp.com/send?phone=${esc(MARCA.SOPORTE_WSP)}&text=${encodeURIComponent('Hola, tengo una consulta sobre ' + MARCA.NOMBRE)}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}</nav></footer></div>`;
+  cargarCupos();
 }
 on('lp-sim', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; SIM[d.k] = v; const b = $('#lp-sim1'); if (b) b.innerHTML = simPrecios(); });
 on('lp-ventas', (d, el) => { SIM.ventas = Number(el.value); const b = $('#lp-sim2'), t = $('#lp-v'); if (t) t.textContent = fmt(SIM.ventas); if (b) b.innerHTML = simCosto(); });

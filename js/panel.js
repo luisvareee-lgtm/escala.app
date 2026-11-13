@@ -22,12 +22,15 @@ import { recepcionModal } from './recepcion.js';
 import { cierreCard } from './cierre.js';
 import { activarApp, instalarHtml } from './instalar.js';
 import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiarSel } from './productos.js';
+import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundadores.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
 const urlTienda = () => urlTiendaDe(P.t.slug);
-const TABS = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
+const TABS_BASE = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
+const TABS_ADMIN = [['admin', '🛡️ Admin']];
+const tabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
 export async function mostrarPanel(app) {
@@ -35,6 +38,7 @@ export async function mostrarPanel(app) {
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
   activarApp();
+  P.esAdmin = await esAdmin(); resetAdmin();
   Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; Q.fly = null;
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
@@ -52,10 +56,10 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaAjustes() + instalarHtml() }[P.tab]();
+  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaAjustes() + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
-  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${dias > 0 ? 'Prueba: ' + dias + ' d' : esc(PLAN_NOMBRE[t.plan])}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
-    <div class="tabs-panel" role="tablist">${TABS.map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
+  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
+    <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
     <div class="page wide" style="padding-top:16px">${avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
 }
@@ -63,12 +67,14 @@ function pintar() {
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
 const MAS = [['asistente', '🧠', 'Asistente', 'Cobranzas, reposición y ventas en dólares'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
-  const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab);
+  const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab) || P.tab === 'admin';
   return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
 }
 function menuMas() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
+    ${P.esAdmin ? '<button data-act="p-tab" data-k="admin"><span class="i">🛡️</span><span>Admin<small>Tiendas, pruebas, fundadores y sugerencias</small></span></button>' : ''}
     <button data-act="p-ayuda"><span class="i">💬</span><span>Ayuda<small>Buscá una solución o escribinos</small></span></button>
+    <button data-act="p-sugerir"><span class="i">💡</span><span>Sugerir una mejora<small>Contanos qué te falta</small></span></button>
     <button data-act="p-ver-tienda"><span class="i">👀</span><span>Ver mi tienda<small>Como la ven tus clientes</small></span></button>
     <button data-act="p-salir"><span class="i">🚪</span><span>Salir<small>Cerrar sesión en este dispositivo</small></span></button></div>
     <button class="btn btn-s" style="margin-top:12px" data-act="p-cerrar">Cerrar</button></div></div>`;
@@ -119,7 +125,7 @@ function filaProd(p, extra) {
 function itemFlyer(p) {
   const b = preciosDe(p.costo_usd, p.margen_override), m = P.t.modalidad, may = m !== 'minorista', pr = {}; Object.keys(b).forEach(k => { pr[k] = precioFinal(p, b[k]); });
   const base = m === 'mayorista' ? b[1] : b.min, precio = m === 'mayorista' ? pr[1] : pr.min;
-  return { nombre: p.nombre, img: p.imagen_url || '', emoji: p.emoji, precio, antes: precio < base ? base : 0, pct: Math.round(ofertaVig(p) || 0),
+  return { nombre: p.nombre, categoria: p.categoria, img: p.imagen_url || '', emoji: p.emoji, precio, antes: precio < base ? base : 0, pct: Math.round(ofertaVig(p) || 0),
     escalas: may && !p.precio_unico ? { 1: pr[1], 3: pr[3], 6: pr[6], 12: pr[12] } : null, min: m === 'hibrido' ? pr.min : 0 };
 }
 const encargoP = p => P.t.modo_stock === 'encargo' || (P.t.modo_stock === 'mixto' && !!p.a_pedido);
@@ -144,6 +150,7 @@ function modal() {
   const m = P.modal;
   if (m.tipo === 'mas') return menuMas();
   if (m.tipo === 'ayuda') return ayudaHtml();
+  if (m.tipo === 'sugerir') return sugerirHtml();
   if (m.tipo === 'planes') return planesHtml(m);
   if (m.tipo === 'imp') return vistaImportar();
   if (m.tipo === 'cat') return vistaCatalogo();
