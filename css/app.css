@@ -995,3 +995,32 @@ details.card > summary { cursor: pointer; }
 .cb-prev{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-top:8px;padding:9px 10px;border-radius:10px;background:var(--acs);font-size:.84rem;font-variant-numeric:tabular-nums}
 .cb-prev small{color:var(--green);font-weight:700}
 #p-cb .dz-vt-res{margin-top:6px}
+
+/* Programa Fundadores: cupos en portada y registro */
+.fund-cupos{margin:14px auto 0;max-width:560px;padding:10px 14px;border-radius:var(--rs);background:linear-gradient(100deg,rgba(234,179,8,.16),var(--acs));border:1px solid rgba(234,179,8,.45);color:var(--t1);font-size:.86rem;line-height:1.45;text-align:center}
+.fund-cupos b{color:var(--t1)}
+/* Administración de la plataforma */
+.adm-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.adm-top h3{margin:0}
+.adm-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:12px 0}
+.adm-kpis div{background:var(--bg3);border-radius:var(--rs);padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.adm-kpis b{font-size:1.35rem;font-variant-numeric:tabular-nums;color:var(--t1)}.adm-kpis span{font-size:.74rem;color:var(--t3)}
+.adm-cfg{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:12px;border:1px dashed var(--bd2);border-radius:var(--rs);margin-bottom:8px}
+.adm-cfg>b{width:100%;font-size:.86rem}
+.adm-cfg label{display:flex;flex-direction:column;gap:4px;font-size:.74rem;color:var(--t2);flex:1 1 140px;min-width:0}
+.adm-filtros{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px}
+.adm-filtros .pill small{opacity:.7;margin-left:2px}
+.adm-lista{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.adm-t,.adm-s{border:1px solid var(--bd);border-radius:var(--rs);padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0;background:var(--bg2)}
+.adm-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.adm-h b{font-size:.95rem;margin-right:2px}
+.adm-m,.adm-u{font-size:.78rem;color:var(--t2);overflow-wrap:anywhere}.adm-u{color:var(--t1)}
+.adm-m .sel{user-select:all}
+.adm-acc{display:flex;flex-wrap:wrap;gap:6px}
+.adm-s p{margin:0;font-size:.86rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.adm-s .adm-h small{margin-left:auto}.adm-s.hecha{opacity:.65}.adm-s.nueva{border-color:var(--ac)}
+.fi.fi-sm{width:auto;padding:4px 8px;font-size:.78rem;min-height:0}
+/* Estudio de flyers: estilos publicitarios, código y prompt para IA */
+.fl-cod{margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem}
+.fl-desc{margin:6px 0 0}
+.fl-ia{margin-top:8px;border:1px solid var(--bd);border-radius:var(--rs);padding:8px 10px;background:var(--bg3)}
+.fl-ia summary{cursor:pointer;font-weight:700;font-size:.84rem}
+.fl-ia textarea{margin:6px 0;font-size:.78rem;line-height:1.4;resize:vertical}
