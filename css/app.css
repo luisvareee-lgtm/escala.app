@@ -1024,3 +1024,25 @@ details.card > summary { cursor: pointer; }
 .fl-ia{margin-top:8px;border:1px solid var(--bd);border-radius:var(--rs);padding:8px 10px;background:var(--bg3)}
 .fl-ia summary{cursor:pointer;font-weight:700;font-size:.84rem}
 .fl-ia textarea{margin:6px 0;font-size:.78rem;line-height:1.4;resize:vertical}
+
+/* ---------- v2.18 · traer desde la web del proveedor ---------- */
+.web-prov{margin:10px 0 0;border-left:4px solid var(--ac)}
+.web-prov>summary{cursor:pointer;list-style:none;line-height:1.4}
+.web-prov>summary::-webkit-details-marker{display:none}
+.web-prov>summary::after{content:'▾';float:right;color:var(--t3);transition:transform .15s}
+.web-prov[open]>summary::after{transform:rotate(180deg)}
+.web-prov .tag{font-size:.68rem;vertical-align:middle}
+.web-ok{padding:8px 10px;border:1px dashed var(--bd2);border-radius:var(--rs);background:var(--bg3)}
+.web-guia{margin-top:10px}
+.web-guia summary{cursor:pointer;font-weight:700}
+.web-guia ul{margin:4px 0 8px;padding-left:18px}
+.web-guia li{margin:3px 0}
+.web-guia p{margin:6px 0}
+.foto-alt{margin-top:10px;border:1px solid var(--bd);border-radius:var(--rs);padding:8px 10px;background:var(--bg3)}
+.foto-alt summary{cursor:pointer;font-weight:700;font-size:.84rem}
+.foto-alt-b{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.foto-alt-b .btn{width:auto;margin:0}
+.foto-alt-r{display:flex;gap:6px;align-items:center}
+.foto-alt-r .fi{flex:1;min-width:0}
+.foto-alt-r .btn{width:auto;margin:0;flex:none}
+@media (max-width:560px){.web-prov .row2{grid-template-columns:1fr;gap:0}}
