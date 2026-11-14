@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EscalaBot · lector de catálogos</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg: #f7f8fb; --fg: #1b2333; --t2: #4a5568; --ac: #1d4ba8; --bd: #dde2ec; color-scheme: light; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #11161f; --fg: #e8ecf4; --t2: #a9b3c4; --ac: #7ea2ff; --bd: #2a3342; color-scheme: dark; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 680px; margin: 0 auto; padding: 40px max(16px, env(safe-area-inset-left, 0px)) 56px; }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
+  h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+  p, li { color: var(--t2); }
+  code, pre { font: .9rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: color-mix(in srgb, var(--bd) 45%, transparent); border: 1px solid var(--bd); border-radius: 10px; padding: 12px 14px; overflow-x: auto; color: var(--fg); }
+  a { color: var(--ac); }
+</style>
+</head>
+<body>
+<main>
+  <h1>EscalaBot: el lector de catálogos de Escala</h1>
+  <p>Si viste <code>EscalaBot/1.0</code> en los registros de tu sitio: es la herramienta con la que un comercio que revende tus productos trae a su tienda online los datos de tu catálogo público (nombre, precio, foto y descripción).</p>
+  <h2>Cómo trabaja</h2>
+  <ul>
+    <li>Solo lee páginas públicas. No inicia sesión, no usa contraseñas ni cookies y no salta captchas ni bloqueos.</li>
+    <li>Respeta tu <code>robots.txt</code> (las reglas para <code>EscalaBot</code> o, si no hay, las de <code>*</code>).</li>
+    <li>Lee despacio, de a pocas páginas por vez, solo cuando un comercio lo pide.</li>
+    <li>Quien lo usa declara ser tu cliente o revendedor y tener tu permiso para usar tus fotos y textos.</li>
+  </ul>
+  <h2>Si preferís que no lea tu sitio</h2>
+  <p>Agregá esto a tu <code>robots.txt</code> y deja de leerlo:</p>
+  <pre>User-agent: EscalaBot
+Disallow: /</pre>
+</main>
+</body>
+</html>
