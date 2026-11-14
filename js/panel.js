@@ -9,6 +9,7 @@ import { vistaPrecios } from './precios.js';
 import { vistaEquipo } from './equipo.js';
 import { vistaTienda, vistaAjustes, resetAj } from './ajustes.js';
 import { redimensionar } from './img.js';
+import { fichaDesdeEnlace, promptFoto, limpiarNombre } from './webprov.js';
 import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
 import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
 import { vistaEnviosDiseno, resetDis } from './diseno.js';
@@ -195,7 +196,13 @@ function prevHtml(costo, ovr) {
   if (P.t.modalidad === 'minorista') return `<div style="grid-column:1/-1"><small>Precio de venta</small><b>${fmt(pr.min)}</b></div>`;
   return [1, 3, 6, 12].map(n => `<div><small>x${n}${n === 12 ? '+' : ''}</small><b>${fmt(pr[n])}</b></div>`).join('') + (P.t.modalidad === 'hibrido' ? `<div style="grid-column:1/-1"><small>Minorista (público)</small><b>${fmt(pr.min)}</b></div>` : '');
 }
-const fotoHtml = foto => `${foto ? `<img src="${esc(foto)}" alt="Foto actual" style="height:84px;border-radius:10px;display:block;margin-bottom:8px">` : ''}<label class="filebtn">📷 ${foto ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" data-change="p-foto"></label>${foto ? ' <button type="button" class="btn btn-s btn-sm" data-act="p-nofoto">Quitar</button>' : ''}<div class="hint" style="margin-top:4px">La achicamos automáticamente para que cargue rápido.</div>`;
+const fotoHtml = foto => `${foto ? `<img src="${esc(foto)}" alt="Foto actual" style="height:84px;border-radius:10px;display:block;margin-bottom:8px">` : ''}<label class="filebtn">📷 ${foto ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" data-change="p-foto"></label>${foto ? ' <button type="button" class="btn btn-s btn-sm" data-act="p-nofoto">Quitar</button>' : ''}<div class="hint" style="margin-top:4px">La achicamos automáticamente para que cargue rápido.</div>${fotoAlt()}`;
+// sin foto propia: buscar la oficial, traerla de un enlace (marca o proveedor) o pedirla a una IA (v2.18)
+const fotoAlt = () => `<details class="foto-alt" data-asistente="foto"><summary>¿No tenés foto? Buscala o traela de la web</summary>
+  <div class="foto-alt-b"><a class="btn btn-s btn-sm" data-act="p-fbuscar" href="https://www.google.com/search?tbm=isch" target="_blank" rel="noopener">🔎 Buscar la foto oficial</a><a class="btn btn-s btn-sm" data-act="p-fficha" href="https://www.google.com/search" target="_blank" rel="noopener">📄 Buscar la ficha técnica</a><button type="button" class="btn btn-s btn-sm" data-act="p-fprompt">🤖 Indicación para crearla con IA</button></div>
+  <label class="flabel" for="p-wurl" style="margin-top:8px">Traer foto y descripción desde un enlace</label>
+  <div class="foto-alt-r"><input class="fi" id="p-wurl" data-asis="p-wurl" type="url" inputmode="url" autocomplete="off" maxlength="500" placeholder="Página del producto (marca o proveedor) o enlace de la foto"><button type="button" class="btn btn-p btn-sm" data-act="p-wtraer">Traer</button></div>
+  <p class="hint">Primero buscá la página oficial de la marca o la de tu proveedor, copiá su enlace y pegalo acá. Usá fotos ajenas solo si te autorizan. Si creás la foto con IA, tiene que mostrar el producto real: aclará “imagen ilustrativa”.</p></details>`;
 // ---- combo: qué trae, cuántos de cada uno, descuento y cómo queda el precio ----
 const cbProd = id => (P.prods || []).find(p => p.id === id);
 const precioX1 = p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); };
@@ -261,6 +268,26 @@ on('p-estado', async (d, b) => {
 });
 on('p-foto', async (d, el) => {
   try { const f = el.files[0]; if (!f) return; const box = $('#foto-box'); if (box) box.insertAdjacentHTML('afterbegin', '<p class="hint" id="foto-sub"><span class="spin"></span> Subiendo…</p>'); const b = await redimensionar(f, 900); P.modal.foto = await api.subirFoto(P.t.id, b, (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))); const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(P.modal.foto); } catch (e) { const s2 = $('#foto-sub'); if (s2) s2.remove(); mm(e.message); }
+});
+const formProd = () => document.querySelector('form[data-submit=p-prod]');
+const busqueda = () => { const f = formProd(); const marca = f && f.marca ? f.marca.value.trim() : ''; const n = limpiarNombre(f && f.nombre ? f.nombre.value : '', marca).nombre; return [n, marca && !n.toLowerCase().includes(marca.toLowerCase()) ? marca : ''].filter(Boolean).join(' '); };
+on('p-fbuscar', (d, el) => { el.href = 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(busqueda() + ' producto'); });
+on('p-fficha', (d, el) => { el.href = 'https://www.google.com/search?q=' + encodeURIComponent(busqueda() + ' ficha técnica características'); });
+on('p-fprompt', () => { const f = formProd(); copiar(promptFoto(f && f.nombre ? f.nombre.value : '', f && f.marca ? f.marca.value.trim() : '')); toast('Indicación copiada: pegala en ChatGPT o Gemini (si tenés una foto del producto, adjuntala)'); });
+on('p-wtraer', async (d, b) => {
+  const inp = $('#p-wurl'), url = inp ? inp.value.trim() : ''; if (!url) { mm('Pegá el enlace de la página del producto o de la foto.'); return; }
+  b.disabled = true; const t0 = b.textContent; b.innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await fichaDesdeEnlace(url, (u, x) => api.leerWeb(u, x));
+    const hecho = [];
+    if (r.imagen) { const bl = await api.fotoWeb(r.imagen); const w = await redimensionar(new File([bl], 'foto', { type: bl.type || 'image/jpeg' }), 900); P.modal.foto = await api.subirFoto(P.t.id, w, (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))); hecho.push('la foto'); }
+    const f = formProd();
+    if (f && r.descripcion && f.descripcion && !f.descripcion.value.trim()) { f.descripcion.value = r.descripcion; hecho.push('la descripción'); }
+    if (f && r.marca && f.marca && !f.marca.value.trim()) { f.marca.value = r.marca.slice(0, 60); hecho.push('la marca'); }
+    const bx = $('#foto-box'); if (bx && r.imagen) bx.innerHTML = fotoHtml(P.modal.foto);
+    mm(hecho.length ? 'Listo: trajimos ' + hecho.join(', ').replace(/, ([^,]*)$/, ' y $1') + '. Revisalo y tocá Guardar.' : 'La página no tenía datos nuevos para este producto (la descripción que ya escribiste no se cambia).', true);
+  } catch (e) { mm(e.message); }
+  if (b.isConnected) { b.disabled = false; b.textContent = t0; }
 });
 on('p-nofoto', () => { P.modal.foto = null; const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(null); });
 on('p-prev', () => { const f = document.querySelector('form[data-submit=p-prod]'), bx = $('#pprev'); if (!f || !bx) return; const mp = f.margen_propio.value; bx.innerHTML = prevHtml(f.costo_usd.value, mp === '' ? null : Number(mp) / 100); });

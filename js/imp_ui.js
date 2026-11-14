@@ -6,6 +6,8 @@ import { P, can, precioArs } from './state.js';
 import { urlTiendaDe } from './marca.js';
 import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, ocr } from './importer.js';
 import { redimensionar } from './img.js';
+import { traerDeLaWeb, aFilas, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
+import { asisSwitch } from './asistente.js';
 
 const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
 export const CON_CONTENIDO = ['pack', 'bulto', 'caja', 'display'];
@@ -17,6 +19,8 @@ const nuevoEstado = () => ({
   pub: null,                  // {margen, unidad, contenido, unico, visible, categoria}
   ed: {}, items: null, mostrar: 60, uso: {}, sinFotos: false, recorte: null, ocultarFaltan: false,
   destino: 'mis', nombre: '', msg: '', err: '', busy: false,
+  // traer desde la web del proveedor (v2.18)
+  web: { url: '', acepto: false, limpiar: true, desc: false, fotos: 'copiar', agotados: true, abierto: false, res: '' }, webBusy: false, webCancel: false,
 });
 const I = nuevoEstado();
 // Aviso para los clientes después de actualizar la lista (sobrevive al reinicio del importador)
@@ -37,7 +41,7 @@ function procesar() {
     if (tb.opts.margen == null) tb.opts.margen = Math.round(Number(P.t.margen_1) * 100);
     if (tb.map.nombre == null || (tb.map.precio == null && tb.map.costo == null)) return;
     tablaAProductos(tb.det, tb.map, { ...tb.opts, cot: c, margen: Number(tb.opts.margen) / 100 })
-      .filter(x => x.nombre).forEach((x, i) => out.push({ ...x, uid: 't' + ti + '-' + i, fuente: tb.archivo }));
+      .filter(x => x.nombre).forEach((x, i) => out.push({ ...x, uid: 't' + ti + '-' + i, fuente: tb.archivo, ...(tb.web ? { web: tb.web.fotos, imagen_url: tb.web.fotos === 'no' ? null : x.imagen_url } : {}) }));
   });
   const ajuste = it => {      // texto / fotos: "el precio leído es mi costo / precio de venta / no usar"
     if (I.opts.tipo === 'ninguno') { it.costo_usd = null; it.precio_ars = null; }
@@ -133,7 +137,7 @@ on('i-mismo', d => { (I.ed[d.u] = I.ed[d.u] || {}).mismo = d.v === '1'; if (d.v 
 
 /* ---------- vista ---------- */
 function vistaTablas() {
-  return I.tablas.map((tb, ti) => !tb.det ? '' : `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · reconocido como ${esc(tb.det.plataforma)}</summary>
+  return I.tablas.map((tb, ti) => !tb.det ? '' : `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · ${tb.web ? 'web del proveedor (' + esc(tb.web.plataforma) + ')' : 'reconocido como ' + esc(tb.det.plataforma)}</summary>
     ${tb.hojas && tb.hojas.length > 1 ? `<div class="fg" style="margin-top:8px"><label class="flabel">Hoja</label><select class="fi" data-change="i-hoja" data-t="${ti}">${tb.hojas.map((h, i) => `<option value="${i}" ${tb.hoja === i ? 'selected' : ''}>${esc(h.nombre)} (${h.filas.length} filas)</option>`).join('')}</select></div>` : ''}
     <p class="hint" style="margin:6px 0">Revisá que cada dato esté en la columna correcta:</p>
     <div class="row2">${CAMPOS.map(([k, n]) => `<div class="fg"><label class="flabel">${n}</label><select class="fi" data-change="i-map" data-t="${ti}" data-k="${k}"><option value="">— no importar —</option>${tb.det.head.map((h, i) => `<option value="${i}" ${tb.map[k] === i ? 'selected' : ''}>${esc(h || 'Columna ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div>
@@ -183,6 +187,34 @@ function vistaRecorte() {
     <div id="rec-box" class="rec-box"><img id="rec-img" src="${esc(f.url)}" alt="" draggable="false"><div id="rec-sel" class="rec-sel"></div></div>
     <button class="btn btn-p" style="margin-top:10px" data-act="i-rec-ok" disabled>Usar este recorte</button><button class="btn btn-s" style="margin-top:8px" data-act="i-rec-no">Cancelar</button></div></div>`;
 }
+/* ---------- traer desde la web del proveedor (v2.18) ---------- */
+function vistaWeb() {
+  const W = I.web, listo = W.acepto && W.url.trim().length > 4;
+  return `<details class="card web-prov" ${W.abierto ? 'open' : ''} data-asistente="web" id="web-prov"><summary data-act="w-abrir">🌐 <b>Traer productos desde la web del proveedor</b> <span class="tag ok">nuevo</span>${W.res ? `<br><small class="muted">${esc(W.res)}</small>` : ''}</summary>
+    <p class="hint" style="margin:8px 0">Pegá el enlace de la tienda online de tu proveedor (la portada, “Productos” o una categoría) y traemos nombre, costo, foto, categoría y, si querés, la descripción. Ordenamos los nombres y sacamos los códigos del proveedor. Después revisás todo abajo antes de cargar.</p>
+    ${asisSwitch()}
+    <div class="fg"><label class="flabel" for="w-url">Enlace de la web del proveedor</label><input class="fi" id="w-url" data-asis="w-url" type="url" inputmode="url" autocomplete="off" maxlength="500" placeholder="https://tuproveedor.com.ar/productos" value="${esc(W.url)}" data-input="w-url"></div>
+    <div class="row2"><div class="fg"><label class="flabel" for="w-fotos">Fotos</label><select class="fi" id="w-fotos" data-asis="w-fotos" data-change="w-opt" data-k="fotos"><option value="copiar" ${W.fotos === 'copiar' ? 'selected' : ''}>Copiarlas a mi tienda (recomendado)</option><option value="enlace" ${W.fotos === 'enlace' ? 'selected' : ''}>Usar el enlace del proveedor</option><option value="no" ${W.fotos === 'no' ? 'selected' : ''}>Sin fotos</option></select></div>
+    <div class="fg"><label class="flabel" for="w-limpiar">Nombres</label><select class="fi" id="w-limpiar" data-asis="w-limpiar" data-change="w-opt" data-k="limpiar"><option value="1" ${W.limpiar ? 'selected' : ''}>Ordenados y sin códigos</option><option value="0" ${!W.limpiar ? 'selected' : ''}>Como los tiene el proveedor</option></select></div></div>
+    <label class="chk"><input type="checkbox" data-asis="w-desc" data-change="w-opt" data-k="desc" ${W.desc ? 'checked' : ''}> Traer también las descripciones (tarda más: abre cada producto)</label>
+    <label class="chk"><input type="checkbox" data-asis="w-agot" data-change="w-opt" data-k="agotados" ${W.agotados ? 'checked' : ''}> Marcar como agotados los que el proveedor no tiene</label>
+    <label class="chk web-ok"><input type="checkbox" data-asis="w-acepto" data-change="w-opt" data-k="acepto" ${W.acepto ? 'checked' : ''}><span>Soy cliente o revendedor de este proveedor y <b>tengo su permiso</b> para usar sus fotos y textos en mi tienda.</span></label>
+    <button class="btn btn-p" style="margin-top:8px" data-act="w-traer" ${listo && !I.busy ? '' : 'disabled'}>🔎 Buscar productos</button>
+    <details class="hint web-guia"><summary>¿Para qué sirve, cómo se usa y qué tener en cuenta?</summary>
+      <p><b>Para qué sirve:</b> cargar en minutos el catálogo de un proveedor que vende por internet, sin tipear nada. Si ya tenés sus productos, actualiza tus costos y te muestra qué subió, qué bajó y qué hay de nuevo.</p>
+      <p><b>Cómo se usa:</b> 1) Copiá el enlace de su web (la portada, “Productos” o una categoría). 2) Elegí qué hacer con las fotos y los nombres. 3) Tildá que tenés su permiso. 4) Tocá “Buscar productos”. 5) Revisá la tabla: el precio del proveedor se toma como <b>tu costo</b>; poné tu ganancia y cargá.</p>
+      <p><b>Qué tener en cuenta (Argentina)</b> · orientación general, no es asesoramiento legal:</p>
+      <ul>
+        <li><b>Fotos y textos tienen dueño</b> (Ley 11.723 de Propiedad Intelectual). Usalos solo si sos su cliente o revendedor y el proveedor está de acuerdo. Pedíselo por escrito: un WhatsApp alcanza para dejar constancia.</li>
+        <li><b>Fotos con personas:</b> la imagen de una persona no se puede usar sin su consentimiento (art. 53 del Código Civil y Comercial). Preferí las fotos que muestran solo el producto.</li>
+        <li><b>Marcas:</b> podés nombrar la marca del producto original que vendés, pero no presentarte como tienda oficial ni usar su logo como si fuera tuyo.</li>
+        <li><b>Información veraz</b> (Ley 24.240 de Defensa del Consumidor): la foto y la descripción tienen que corresponder a lo que entregás. Revisá precios y stock antes de publicar.</li>
+        <li><b>Solo páginas públicas:</b> no entramos a catálogos con usuario y contraseña ni saltamos bloqueos o captchas (entrar sin permiso a un sistema restringido es delito: Ley 26.388). Respetamos las reglas del sitio para robots (robots.txt) y leemos despacio para no sobrecargarlo.</li>
+      </ul>
+      <p><b>Límites técnicos:</b> si la web pide iniciar sesión, bloquea la lectura automática o muestra los productos de una forma que no podemos leer, te avisamos: en ese caso pedile la lista en Excel o PDF, o subí las fotos de su catálogo. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
+      <p><b>¿Te falta la foto de algún producto?</b> En la ficha del producto tenés “Buscar la foto oficial”, “Traer foto y descripción desde un enlace” y una indicación lista para crear una imagen con IA.</p>
+    </details></details>`;
+}
 export function vistaImportar() {
   if (I.recorte) return vistaRecorte();
   const it = I.items, ok = listos(), nuevos = ok.filter(x => !x.existente), upd = ok.filter(x => x.existente);
@@ -199,11 +231,12 @@ export function vistaImportar() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">📥 Cargar o actualizar productos</div><div id="mm">${I.err ? `<div class="err-box">${esc(I.err)}</div>` : ''}${I.msg && !I.busy ? `<div class="ok-box">${esc(I.msg)}</div>` : ''}</div>${I.busy ? '' : vistaAviso()}
     <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
     <input id="i-file" type="file" hidden multiple data-change="i-file" accept=".csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*">
+    ${vistaWeb()}
     <details class="hint" style="margin:8px 0"><summary>¿Cómo traigo los productos de un canal o grupo de WhatsApp?</summary>
       <p><b>Grupo o chat:</b> en el celular abrí el grupo → ⋮ → Más → <b>Exportar chat</b> → <b>Incluir archivos</b> → guardalo y subí ese .zip acá. Cada foto se une con su texto (nombre y precio).</p>
       <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen.</p></details>
     <textarea class="fi" id="imp-t" rows="3" data-input="i-texto" placeholder="…o pegá el texto de la lista (uno por renglón): Perfume X 100ml $12.500">${esc(I.texto)}</textarea>
-    ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div></div>` : ''}
+    ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div>${I.webBusy ? '<button class="btn btn-s btn-sm" style="margin-top:6px" data-act="w-cancelar">Detener y quedarme con lo leído</button>' : ''}</div>` : ''}
     ${vistaTablas()}${vistaOpcionesLectura()}${(I.items || I.texto || I.tablas.length || I.fotos.length) ? destino : ''}${vistaListaViva()}${vistaPublicar(nuevos.length)}${tabla}
     <button class="btn btn-p" style="margin-top:10px" data-act="i-ok" ${hay && !I.busy ? '' : 'disabled'}>${I.destino === 'mis' ? `Cargar ${ok.length} productos` : 'Cargar ' + upd.length + ' precios'}</button>
     <button class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cerrar</button></div></div>`;
@@ -311,6 +344,63 @@ document.addEventListener('pointerdown', e => {
 on('i-todos', d => { (I.items || []).forEach(x => { (I.ed[x.uid] = I.ed[x.uid] || {}).incluir = d.v === '1'; }); procesar(); refrescar(); });
 on('i-mas', () => { I.mostrar += 200; refrescar(); });
 
+/* ---------- eventos: web del proveedor ---------- */
+on('w-abrir', () => { I.web.abierto = !I.web.abierto; });
+on('w-url', (d, el) => { I.web.url = el.value; const b = $('[data-act=w-traer]'); if (b) b.disabled = !(I.web.acepto && el.value.trim().length > 4) || I.busy; });
+on('w-opt', (d, el) => {
+  const W = I.web;
+  if (d.k === 'fotos') W.fotos = el.value;
+  else if (d.k === 'limpiar') W.limpiar = el.value === '1';
+  else W[d.k] = !!el.checked;
+  // lo ya leído se rearma al momento (sin volver a entrar a la web)
+  I.tablas.forEach(t => {
+    if (!t.web) return;
+    if (d.k === 'fotos') t.web.fotos = W.fotos;
+    if (['limpiar', 'agotados', 'desc'].includes(d.k) && t.web.prods) t.filas = aFilas(t.web.prods, { limpiar: W.limpiar, descripciones: W.desc, agotados: W.agotados });
+  });
+  const rearmar = I.items && ['fotos', 'limpiar', 'agotados', 'desc'].includes(d.k) && I.tablas.some(t => t.web);
+  if (rearmar) procesar();
+  const b = $('[data-act=w-traer]'); if (b) b.disabled = !(W.acepto && W.url.trim().length > 4) || I.busy;
+  if (rearmar) refrescar();
+});
+on('w-cancelar', () => { I.webCancel = true; progreso('Deteniendo… nos quedamos con lo que ya leímos.'); });
+on('w-traer', async () => {
+  const W = I.web; if (!W.acepto || W.url.trim().length < 5 || I.busy) return;
+  AV.texto = ''; AV.resumen = '';
+  let err = '';
+  I.busy = true; I.webBusy = true; I.webCancel = false; I.err = ''; W.abierto = true; progreso('Abriendo la web del proveedor…'); refrescar();
+  try {
+    const r = await traerDeLaWeb(W.url, { descripciones: W.desc, cancelado: () => I.webCancel }, (u, x) => api.leerWeb(u, x), progreso);
+    if (!r.productos.length) throw new Error('No encontramos productos en esa página. Probá con el enlace de la sección “Productos” o de una categoría. Si la web pide iniciar sesión o no muestra precios, pedile al proveedor la lista en Excel o PDF y subila acá arriba.');
+    const usd = r.productos.filter(p => p.moneda === 'USD').length > r.productos.length / 2;
+    const archivo = 'web · ' + r.host;
+    I.tablas = I.tablas.filter(t => t.archivo !== archivo);               // si la volvés a leer, reemplaza la anterior
+    I.tablas.push({ archivo, filas: aFilas(r.productos, { limpiar: W.limpiar, descripciones: W.desc, agotados: W.agotados }), hojas: null, hoja: 0, map: null, opts: { moneda: usd ? 'usd' : 'ars', tipo: 'costo', margen: null }, web: { host: r.host, plataforma: r.plataforma, fotos: W.fotos, prods: r.productos } });
+    const sinPrecio = r.productos.filter(p => !(p.precio > 0)).length;
+    W.res = `Última lectura: ${r.productos.length} productos de ${r.host} (${r.plataforma})` + (r.cortado ? ' · llegamos al máximo por vez: para el resto usá el enlace de cada categoría' : '') + (I.webCancel ? ' · detenida antes de terminar' : '') + (sinPrecio ? ` · ${sinPrecio} sin precio (completalos en la tabla)` : '') + (r.fallas ? ` · ${r.fallas} no se pudieron leer` : '') + (r.aviso ? ' · ' + r.aviso : '') + '.';
+    W.abierto = false;
+  } catch (e) { err = e.message; }
+  I.busy = false; I.webBusy = false; I.msg = ''; procesar(); I.err = err; refrescar();      // procesar() limpia el error: va después
+  if (!I.err) { const t = document.querySelector('.imp-tbl'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+});
+// Antes de guardar: copia las fotos de la web del proveedor a la tienda (achicadas a WebP). Si alguna falla, queda el enlace.
+async function copiarFotosWeb(items) {
+  const L = items.filter(x => x.web === 'copiar' && x.imagen_url && !/\/storage\/v1\/object\/public\/fotos\//.test(x.imagen_url));
+  let hechas = 0, fallas = 0; const cola = L.slice();
+  const trabajar = async () => {
+    while (cola.length) {
+      const x = cola.shift();
+      try {
+        const b = await api.fotoWeb(x.imagen_url);
+        const blob = await redimensionar(new File([b], 'foto', { type: b.type || 'image/jpeg' }));
+        x.imagen_url = await api.subirFoto(P.t.id, blob, 'web-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8));
+      } catch (e) { fallas++; }
+      hechas++; progreso(`Copiando las fotos a tu tienda: ${hechas} de ${L.length}…`);
+    }
+  };
+  await Promise.all([trabajar(), trabajar(), trabajar()]);
+  return fallas;
+}
 async function subirFotos(items) {      // fotos de productos nuevos (achicadas a 900 px WebP), de a 3
   let hechas = 0;
   items = items.filter(x => x.foto && x.usoFoto === 'usar');
@@ -331,6 +421,7 @@ on('i-ok', async () => {
     if (I.destino === 'mis') {
       const nuevos = ok.filter(x => !x.existente), upd = ok.filter(x => x.existente), u = I.pub;
       const DF = diffLista(), ocultar = I.ocultarFaltan ? DF.faltan : [];
+      const fallasWeb = await copiarFotosWeb([...nuevos, ...upd.filter(x => !x.existente.imagen_url)]);
       await subirFotos(nuevos);
       const m = Number(u.margen) / 100, mOvr = Math.abs(m - Number(t.margen_1)) > 0.0001 ? m : null;
       const cont = CON_CONTENIDO.includes(u.unidad) && Number(u.contenido) >= 1 ? Math.floor(Number(u.contenido)) : null;
@@ -344,7 +435,7 @@ on('i-ok', async () => {
       AV.nuevos = filas.filter(f => f.activo).map(f => f.nombre); AV.bajan = DF.bajan.map(x => x.existente.id);
       AV.texto = armarAviso(DF, m); AV.resumen = AV.texto ? `${DF.suben.length} subieron, ${DF.bajan.length} bajaron, ${DF.nuevos.length} nuevos${ocultar.length ? ', ' + ocultar.length + ' ocultos' : ''}.` : '';
       const sinFoto = nuevos.filter(x => x.errorFoto).length;
-      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}`;
+      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}${fallasWeb ? ' ' + fallasWeb + (fallasWeb === 1 ? ' foto quedó' : ' fotos quedaron') + ' con el enlace del proveedor (no se pudieron copiar).' : ''}`;
     } else {
       const items = ok.filter(x => x.existente);
       for (let i = 0; i < items.length; i += 1000) {

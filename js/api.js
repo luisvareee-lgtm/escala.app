@@ -130,6 +130,15 @@ export const api = {
   estadoIntegraciones: async () => ok(await sb.rpc('estado_integraciones')),
   guardarIntegraciones: async (token, quitar, nuevoSecreto) => ok(await sb.rpc('guardar_integraciones', { p_mp_token: token || null, p_quitar_mp: !!quitar, p_nuevo_secreto: !!nuevoSecreto })),
   probarWebhook: () => llamarFn('/api/webhook-test', {}, true),
+  // leer la web pública de un proveedor (v2.18): texto/JSON de una página, o una foto como Blob
+  leerWeb: (url, extra = {}) => llamarFn('/api/leer-web', { url, ...extra }, true),
+  async fotoWeb(url) {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/leer-web', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify({ url, tipo: 'imagen' }) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'No se pudo traer la foto (' + r.status + ')'); }
+    const b = await r.blob(); if (!/^image\//.test(b.type)) throw new Error('Ese enlace no es una foto.');
+    return b;
+  },
   mpPreferencia: (slug, pedido) => llamarFn('/api/mp-preferencia', { slug, pedido }, false),
 
   // pedidos en vivo (si Realtime está activo en el proyecto; si falla, el panel igual funciona)
