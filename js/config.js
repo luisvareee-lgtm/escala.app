@@ -8,11 +8,13 @@ export const CONFIG = {
 };
 export const configurado = () => !!window.__SB_TEST__ || /^https:\/\/.+\.supabase\.co/.test(CONFIG.SUPABASE_URL) && CONFIG.SUPABASE_ANON_KEY.length > 40;
 window.CONFIG_MARCA = {
+      PAGO_ALIAS: 'mp-urbano',
+      PAGO_CBU: '0000003100023563240267',
       SOPORTE_WSP: '5491153162392',
       EMAIL_CONTACTO: 'contacto@elite-urbano.com',
-      TITULAR: 'Tu nombre o razón social',
-      CUIT: '20-12345678-9',
+      TITULAR: 'Luis Varela',
+      CUIT: '20-32960746-2',
       DOMINIO: '',
-      DEMO_URL: '',
+      DEMO_URL: 'https://escala-c22.pages.dev/t/luabeauty',
       PLANES: { base: { link: '' }, pro: { link: '' }, api: { link: '' } }
     };
