@@ -6,7 +6,7 @@ import { P, can, precioArs } from './state.js';
 import { urlTiendaDe } from './marca.js';
 import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, ocr } from './importer.js';
 import { redimensionar } from './img.js';
-import { traerDeLaWeb, aFilas, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
+import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
 
 const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
@@ -20,7 +20,8 @@ const nuevoEstado = () => ({
   ed: {}, items: null, mostrar: 60, uso: {}, sinFotos: false, recorte: null, ocultarFaltan: false,
   destino: 'mis', nombre: '', msg: '', err: '', busy: false,
   // traer desde la web del proveedor (v2.18)
-  web: { url: '', acepto: false, limpiar: true, desc: false, fotos: 'copiar', agotados: true, abierto: false, res: '' }, webBusy: false, webCancel: false,
+  web: { url: '', acepto: false, limpiar: true, desc: false, fotos: 'copiar', agotados: true, traducir: true, abierto: false, res: '', elegir: null, parcial: null }, webBusy: false, webCancel: false,
+  restaurable: null, restauraVisto: false,
 });
 const I = nuevoEstado();
 // Aviso para los clientes después de actualizar la lista (sobrevive al reinicio del importador)
@@ -40,8 +41,13 @@ function procesar() {
     if (!tb.map) { tb.map = { ...tb.det.map }; if (['Tiendanube', 'Shopify', 'WooCommerce'].includes(tb.det.plataforma)) Object.assign(tb.opts, { moneda: 'ars', tipo: 'venta' }); }
     if (tb.opts.margen == null) tb.opts.margen = Math.round(Number(P.t.margen_1) * 100);
     if (tb.map.nombre == null || (tb.map.precio == null && tb.map.costo == null)) return;
+    const W = tb.web, k = W && W.monedaTabla === 'USD' && Number(W.cotProv) > 0 ? Number(W.cotProv) / c : 1;   // dólar al que le paga a ESE proveedor
     tablaAProductos(tb.det, tb.map, { ...tb.opts, cot: c, margen: Number(tb.opts.margen) / 100 })
-      .filter(x => x.nombre).forEach((x, i) => out.push({ ...x, uid: 't' + ti + '-' + i, fuente: tb.archivo, ...(tb.web ? { web: tb.web.fotos, imagen_url: tb.web.fotos === 'no' ? null : x.imagen_url } : {}) }));
+      .filter(x => x.nombre).forEach((x, i) => {
+        if (W && k !== 1 && x.costo_usd > 0) { x.costo_usd = Math.round(x.costo_usd * k * 10000) / 10000; x.precio_ars = Math.round(x.costo_usd * c); }
+        const pw = W && W.elegidos && W.elegidos[i];
+        out.push({ ...x, uid: pw ? 'w:' + W.host + ':' + (pw.url || pw.nombre) : 't' + ti + '-' + i, fuente: tb.archivo, ...(W ? { web: W.fotos, imagen_url: W.fotos === 'no' ? null : x.imagen_url } : {}) });
+      });
   });
   const ajuste = it => {      // texto / fotos: "el precio leído es mi costo / precio de venta / no usar"
     if (I.opts.tipo === 'ninguno') { it.costo_usd = null; it.precio_ars = null; }
@@ -137,7 +143,7 @@ on('i-mismo', d => { (I.ed[d.u] = I.ed[d.u] || {}).mismo = d.v === '1'; if (d.v 
 
 /* ---------- vista ---------- */
 function vistaTablas() {
-  return I.tablas.map((tb, ti) => !tb.det ? '' : `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · ${tb.web ? 'web del proveedor (' + esc(tb.web.plataforma) + ')' : 'reconocido como ' + esc(tb.det.plataforma)}</summary>
+  return I.tablas.map((tb, ti) => !tb.det ? '' : tb.web ? vistaCatalogoWeb(tb, ti) : `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · ${tb.web ? 'web del proveedor (' + esc(tb.web.plataforma) + ')' : 'reconocido como ' + esc(tb.det.plataforma)}</summary>
     ${tb.hojas && tb.hojas.length > 1 ? `<div class="fg" style="margin-top:8px"><label class="flabel">Hoja</label><select class="fi" data-change="i-hoja" data-t="${ti}">${tb.hojas.map((h, i) => `<option value="${i}" ${tb.hoja === i ? 'selected' : ''}>${esc(h.nombre)} (${h.filas.length} filas)</option>`).join('')}</select></div>` : ''}
     <p class="hint" style="margin:6px 0">Revisá que cada dato esté en la columna correcta:</p>
     <div class="row2">${CAMPOS.map(([k, n]) => `<div class="fg"><label class="flabel">${n}</label><select class="fi" data-change="i-map" data-t="${ti}" data-k="${k}"><option value="">— no importar —</option>${tb.det.head.map((h, i) => `<option value="${i}" ${tb.map[k] === i ? 'selected' : ''}>${esc(h || 'Columna ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div>
@@ -187,36 +193,90 @@ function vistaRecorte() {
     <div id="rec-box" class="rec-box"><img id="rec-img" src="${esc(f.url)}" alt="" draggable="false"><div id="rec-sel" class="rec-sel"></div></div>
     <button class="btn btn-p" style="margin-top:10px" data-act="i-rec-ok" disabled>Usar este recorte</button><button class="btn btn-s" style="margin-top:8px" data-act="i-rec-no">Cancelar</button></div></div>`;
 }
-/* ---------- traer desde la web del proveedor (v2.18) ---------- */
+/* ---------- traer desde la web del proveedor (v2.18 · v2.19) ---------- */
+const hace = ts => { const m = Math.round((Date.now() - ts) / 60000); return m < 2 ? 'recién' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`; };
+function vistaRestaurar() {
+  const R = I.restaurable; if (!R || I.tablas.some(t => t.web)) return '';
+  const partes = (R.tablas || []).map(t => `${t.prods.length} de ${t.host}`);
+  if (R.parcial && R.parcial.prods) partes.push(`${R.parcial.prods.length} de ${R.parcial.host} (lectura cortada)`);
+  return `<div class="lv lv-ok" id="w-rest"><b>💾 Tenés productos leídos que todavía no cargaste</b><p class="hint" style="margin:4px 0">${esc(partes.join(' · '))} · guardado ${hace(R.ts)} en este navegador.</p>
+    <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-recuperar">Recuperar y seguir</button><button class="btn btn-s btn-sm" data-act="w-descartar">Descartar</button></div></div>`;
+}
+function vistaElegir() {
+  const E = I.web.elegir; if (!E) return '';
+  const n = E.marcadas.length + (E.buscador && E.termino.trim() ? 1 : 0), es = E.nombresEs || {};
+  return `<div class="lv wel" id="w-elegir"><b>Encontramos ${E.categorias.length} categorías en ${esc(E.host)}</b>
+    <p class="hint" style="margin:4px 0">Elegí qué querés traer: es más rápido que leer toda la web y te llegan solo los productos que vendés.</p>
+    ${E.buscador ? `<div class="fg"><label class="flabel" for="w-termino">Buscar en su web (una marca o un producto)</label><input class="fi" id="w-termino" data-asis="w-termino" data-input="w-termino" maxlength="80" value="${esc(E.termino)}" placeholder="Ej: Karseell"></div>` : ''}
+    <div class="wel-cats">${E.categorias.map((c, i) => `<label class="chk" style="padding-left:${Math.min(c.nivel || 0, 3) * 18}px"><input type="checkbox" data-change="w-marcar" data-i="${i}" ${E.marcadas.includes(i) ? 'checked' : ''}> ${esc(es[c.nombre] || c.nombre)}${es[c.nombre] && es[c.nombre] !== c.nombre ? ` <small class="muted">(${esc(c.nombre)})</small>` : ''}</label>`).join('')}</div>
+    <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-elegido" ${n ? '' : 'disabled'}>Leer lo elegido${n ? ' (' + n + ')' : ''}</button><button class="btn btn-s btn-sm" data-act="w-todo">Leer toda la web (más lento)</button><button class="btn-link" data-act="w-elegir-no">cancelar</button></div></div>`;
+}
 function vistaWeb() {
-  const W = I.web, listo = W.acepto && W.url.trim().length > 4;
-  return `<details class="card web-prov" ${W.abierto ? 'open' : ''} data-asistente="web" id="web-prov"><summary data-act="w-abrir">🌐 <b>Traer productos desde la web del proveedor</b> <span class="tag ok">nuevo</span>${W.res ? `<br><small class="muted">${esc(W.res)}</small>` : ''}</summary>
-    <p class="hint" style="margin:8px 0">Pegá el enlace de la tienda online de tu proveedor (la portada, “Productos” o una categoría) y traemos nombre, costo, foto, categoría y, si querés, la descripción. Ordenamos los nombres y sacamos los códigos del proveedor. Después revisás todo abajo antes de cargar.</p>
+  const W = I.web, listo = W.acepto && W.url.trim().length > 4, leidas = I.tablas.filter(t => t.web);
+  return `${vistaRestaurar()}<details class="card web-prov" ${W.abierto || W.elegir ? 'open' : ''} data-asistente="web" id="web-prov"><summary data-act="w-abrir">🌐 <b>Traer productos desde la web del proveedor</b> <span class="tag ok">nuevo</span>${W.res ? `<br><small class="muted">${esc(W.res)}</small>` : ''}</summary>
+    <p class="hint" style="margin:8px 0">Pegá el enlace de la tienda online de tu proveedor (la portada, “Productos”, una categoría o una búsqueda) y traemos nombre, costo, foto, categoría y, si querés, la descripción. Si la web está en otro idioma la traducimos, y si los precios están en dólares, reales o guaraníes los pasamos a tu moneda.</p>
     ${asisSwitch()}
-    <div class="fg"><label class="flabel" for="w-url">Enlace de la web del proveedor</label><input class="fi" id="w-url" data-asis="w-url" type="url" inputmode="url" autocomplete="off" maxlength="500" placeholder="https://tuproveedor.com.ar/productos" value="${esc(W.url)}" data-input="w-url"></div>
+    ${leidas.length ? `<p class="hint wp-leidas">✅ Ya leíste: ${esc(leidas.map(t => t.web.host + ' (' + t.web.prods.length + ')').join(' · '))}. <b>Para sumar otro proveedor o categoría</b>, pegá otro enlace y buscá de nuevo: lo leído se mantiene.</p>` : ''}
+    <div class="fg"><label class="flabel" for="w-url">${leidas.length ? 'Otro enlace (otro proveedor o categoría)' : 'Enlace de la web del proveedor'}</label><input class="fi" id="w-url" data-asis="w-url" type="url" inputmode="url" autocomplete="off" maxlength="500" placeholder="https://tuproveedor.com/productos" value="${esc(W.url)}" data-input="w-url"></div>
     <div class="row2"><div class="fg"><label class="flabel" for="w-fotos">Fotos</label><select class="fi" id="w-fotos" data-asis="w-fotos" data-change="w-opt" data-k="fotos"><option value="copiar" ${W.fotos === 'copiar' ? 'selected' : ''}>Copiarlas a mi tienda (recomendado)</option><option value="enlace" ${W.fotos === 'enlace' ? 'selected' : ''}>Usar el enlace del proveedor</option><option value="no" ${W.fotos === 'no' ? 'selected' : ''}>Sin fotos</option></select></div>
     <div class="fg"><label class="flabel" for="w-limpiar">Nombres</label><select class="fi" id="w-limpiar" data-asis="w-limpiar" data-change="w-opt" data-k="limpiar"><option value="1" ${W.limpiar ? 'selected' : ''}>Ordenados y sin códigos</option><option value="0" ${!W.limpiar ? 'selected' : ''}>Como los tiene el proveedor</option></select></div></div>
+    <label class="chk"><input type="checkbox" data-asis="w-trad" data-change="w-opt" data-k="traducir" ${W.traducir ? 'checked' : ''}> Traducir al español si la web está en portugués, inglés o chino</label>
     <label class="chk"><input type="checkbox" data-asis="w-desc" data-change="w-opt" data-k="desc" ${W.desc ? 'checked' : ''}> Traer también las descripciones (tarda más: abre cada producto)</label>
     <label class="chk"><input type="checkbox" data-asis="w-agot" data-change="w-opt" data-k="agotados" ${W.agotados ? 'checked' : ''}> Marcar como agotados los que el proveedor no tiene</label>
     <label class="chk web-ok"><input type="checkbox" data-asis="w-acepto" data-change="w-opt" data-k="acepto" ${W.acepto ? 'checked' : ''}><span>Soy cliente o revendedor de este proveedor y <b>tengo su permiso</b> para usar sus fotos y textos en mi tienda.</span></label>
     <button class="btn btn-p" style="margin-top:8px" data-act="w-traer" ${listo && !I.busy ? '' : 'disabled'}>🔎 Buscar productos</button>
+    ${vistaElegir()}
     <details class="hint web-guia"><summary>¿Para qué sirve, cómo se usa y qué tener en cuenta?</summary>
-      <p><b>Para qué sirve:</b> cargar en minutos el catálogo de un proveedor que vende por internet, sin tipear nada. Si ya tenés sus productos, actualiza tus costos y te muestra qué subió, qué bajó y qué hay de nuevo.</p>
-      <p><b>Cómo se usa:</b> 1) Copiá el enlace de su web (la portada, “Productos” o una categoría). 2) Elegí qué hacer con las fotos y los nombres. 3) Tildá que tenés su permiso. 4) Tocá “Buscar productos”. 5) Revisá la tabla: el precio del proveedor se toma como <b>tu costo</b>; poné tu ganancia y cargá.</p>
+      <p><b>Para qué sirve:</b> cargar en minutos el catálogo de uno o varios proveedores que venden por internet (de Argentina, Paraguay, Brasil, Estados Unidos…), sin tipear nada. Si ya tenés sus productos, actualiza tus costos y te muestra qué subió, qué bajó y qué hay de nuevo.</p>
+      <p><b>Cómo se usa:</b> 1) Copiá el enlace de su web: la portada, “Productos”, una categoría o una búsqueda (por ejemplo, la página de una marca). 2) Tildá que tenés su permiso y tocá “Buscar productos”. 3) Si pegaste la portada, elegí las categorías que te interesan o buscá una marca. 4) En el panel del proveedor marcá qué categorías importar, revisá la moneda y el dólar al que le pagás. 5) Revisá la tabla, poné tu ganancia y cargá. Para sumar otro proveedor, pegá otro enlace: lo ya leído no se pierde.</p>
+      <p><b>Monedas:</b> si la web muestra el precio en dólares (U$, US$) usamos ese, aunque también figure en reales o guaraníes. Si solo está en otra moneda, lo pasamos a dólares con la cotización que publica la propia web o con la de referencia del día. Después elegís a qué dólar le pagás a ese proveedor (oficial, blue, cripto/USDT o el tuyo) y tu costo en pesos queda exacto.</p>
+      <p><b>Idioma:</b> si la web tiene versión en español la usamos; si no, traducimos nombres, categorías y descripciones al español (las marcas y los modelos no se traducen). Podés ver los nombres originales cuando quieras.</p>
+      <p><b>No se pierde lo leído:</b> lo que vas encontrando se guarda en este navegador. Si se cierra sin querer, al volver a “Cargar o actualizar lista” te ofrecemos recuperarlo y seguir leyendo desde donde quedó.</p>
       <p><b>Qué tener en cuenta (Argentina)</b> · orientación general, no es asesoramiento legal:</p>
       <ul>
         <li><b>Fotos y textos tienen dueño</b> (Ley 11.723 de Propiedad Intelectual). Usalos solo si sos su cliente o revendedor y el proveedor está de acuerdo. Pedíselo por escrito: un WhatsApp alcanza para dejar constancia.</li>
         <li><b>Fotos con personas:</b> la imagen de una persona no se puede usar sin su consentimiento (art. 53 del Código Civil y Comercial). Preferí las fotos que muestran solo el producto.</li>
         <li><b>Marcas:</b> podés nombrar la marca del producto original que vendés, pero no presentarte como tienda oficial ni usar su logo como si fuera tuyo.</li>
-        <li><b>Información veraz</b> (Ley 24.240 de Defensa del Consumidor): la foto y la descripción tienen que corresponder a lo que entregás. Revisá precios y stock antes de publicar.</li>
+        <li><b>Información veraz</b> (Ley 24.240 de Defensa del Consumidor): la foto, la traducción y la descripción tienen que corresponder a lo que entregás. Revisá precios y stock antes de publicar.</li>
         <li><b>Solo páginas públicas:</b> no entramos a catálogos con usuario y contraseña ni saltamos bloqueos o captchas (entrar sin permiso a un sistema restringido es delito: Ley 26.388). Respetamos las reglas del sitio para robots (robots.txt) y leemos despacio para no sobrecargarlo.</li>
       </ul>
-      <p><b>Límites técnicos:</b> si la web pide iniciar sesión, bloquea la lectura automática o muestra los productos de una forma que no podemos leer, te avisamos: en ese caso pedile la lista en Excel o PDF, o subí las fotos de su catálogo. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
+      <p><b>Límites técnicos:</b> si la web pide iniciar sesión, bloquea la lectura automática o muestra los productos de una forma que no podemos leer, te avisamos: en ese caso pedile la lista en Excel o PDF, o subí capturas de su catálogo. Los grandes portales (1688, Alibaba, AliExpress, Temu, Shein, Mercado Libre) no permiten leer su catálogo de forma automática: piden iniciar sesión y sus reglas lo prohíben. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
       <p><b>¿Te falta la foto de algún producto?</b> En la ficha del producto tenés “Buscar la foto oficial”, “Traer foto y descripción desde un enlace” y una indicación lista para crear una imagen con IA.</p>
     </details></details>`;
 }
+/* panel de cada proveedor leído: idioma, moneda, dólar al que le pagás, categorías y búsqueda */
+const catDe = p => (p.categoriaEs || p.categoria || '').trim() || 'Sin categoría';
+const normal = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+function elegidosDe(w) {
+  const q = normal(w.filtro.q).trim(), cats = w.filtro.cats;
+  return w.prods.filter(p => (!cats || cats.includes(catDe(p))) && (!q || normal([p.nombreEs, p.nombre, p.marca, p.sku, catDe(p)].join(' ')).includes(q)));
+}
+const MON = { USD: 'dólares (USD)', ARS: 'pesos (ARS)', BRL: 'reales (R$)', PYG: 'guaraníes (Gs)', EUR: 'euros', CNY: 'yuanes', UYU: 'pesos uruguayos', CLP: 'pesos chilenos' };
+const fnum = (n, d = 2) => Number(n).toLocaleString('es-AR', { maximumFractionDigits: d });
+function vistaCatalogoWeb(tb, ti) {
+  const w = tb.web, eleg = w.elegidos || [], usd = w.monedaTabla === 'USD';
+  const cats = [...w.prods.reduce((m, p) => m.set(catDe(p), (m.get(catDe(p)) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]);
+  const mostrar = w.verCats ? cats : cats.slice(0, 30);
+  const monedas = [...w.prods.reduce((m, p) => { const k = (w.forzar || p.moneda || '').toUpperCase(); if (p.precio > 0 && k) m.set(k, (m.get(k) || 0) + 1); return m; }, new Map())];
+  const conv = monedas.filter(([m]) => m !== 'USD' && m !== 'ARS' && usd).map(([m]) => w.tasas && w.tasas[m] ? `${MON[m] || m} → dólares a ${fnum(w.tasas[m])} por dólar${w.tasasSitio && w.tasasSitio[m] ? ' (la cotización que publica la web)' : ' (referencia del día)'}` : `${MON[m] || m}: no tenemos la cotización, esos quedan sin costo`);
+  const A = (CAMBIO && CAMBIO.ars) || {};
+  const refs = [['Tu cotización', cot()], ['Oficial', A.oficial && A.oficial.venta], ['Blue', A.blue && A.blue.venta], ['Cripto / USDT', A.cripto && A.cripto.venta]].filter(r => r[1] > 0);
+  const idioma = w.idioma && w.idioma !== 'es' ? (w.traducido ? `🌎 Traducido del ${NOMBRE_IDIOMA[w.idioma] || w.idioma} al español. <button class="btn-link" data-act="w-orig" data-t="${ti}">${w.original ? 'ver traducidos' : 'ver nombres originales'}</button>`
+    : `🌎 Esta web está en ${NOMBRE_IDIOMA[w.idioma] || w.idioma}.${w.trAviso ? ' ' + esc(w.trAviso) : ''} <button class="btn btn-s btn-sm" data-act="w-traducir" data-t="${ti}">Traducir al español</button>`) : w.enEspanol ? '🌎 Usamos la versión en español de la web.' : '';
+  return `<div class="card wcat" style="margin-top:10px" id="wcat-${ti}"><div class="imp-bar"><b>🌐 ${esc(w.host)}</b> <span class="tag">${esc(w.plataforma || 'web')}</span> <span class="tag ok">${eleg.length} de ${w.prods.length} para importar</span><span style="flex:1"></span>
+      ${w.pendiente ? `<button class="btn btn-s btn-sm" data-act="w-seguir" data-t="${ti}" ${I.busy ? 'disabled' : ''}>▶️ Seguir leyendo</button>` : ''}<button class="btn btn-s btn-sm" data-act="w-quitar" data-t="${ti}" aria-label="Quitar ${esc(w.host)}">✕ Quitar</button></div>
+    ${idioma ? `<p class="hint" style="margin:6px 0">${idioma}</p>` : ''}
+    <div class="row2"><div class="fg"><label class="flabel" for="w-forzar-${ti}">Precios del proveedor</label><select class="fi" id="w-forzar-${ti}" data-asis="w-forzar" data-change="w-forzar" data-t="${ti}"><option value="" ${!w.forzar ? 'selected' : ''}>Automático: ${esc(monedas.map(([m, n]) => (MON[m] || m) + (monedas.length > 1 ? ' ' + n : '')).join(' · ') || 'sin precios')}</option>${['USD', 'ARS', 'BRL', 'PYG'].map(m => `<option value="${m}" ${w.forzar === m ? 'selected' : ''}>Todos en ${MON[m]}</option>`).join('')}</select></div>
+    ${usd ? `<div class="fg"><label class="flabel" for="w-cot-${ti}">Dólar al que le pagás ($ por USD)</label><input class="fi" id="w-cot-${ti}" data-asis="w-cot" type="number" min="1" step="any" value="${esc(w.cotProv)}" data-input="w-cot" data-t="${ti}"></div>` : '<div></div>'}</div>
+    ${usd && refs.length ? `<div class="chips-row">${refs.map(([n, v]) => `<button class="chipf ${Math.abs(Number(w.cotProv) - v) < 0.01 ? 'on' : ''}" data-act="w-cotref" data-t="${ti}" data-v="${v}">${esc(n)} <b>$${fnum(v, 0)}</b></button>`).join('')}</div>` : ''}
+    ${usd ? `<p class="hint" style="margin:4px 0 8px">Tu tienda pasa los dólares a pesos a $${fnum(cot(), 0)} (Ajustes). Si a este proveedor le pagás a otro valor (cripto/USDT, blue…), ponelo acá: tu costo en pesos queda exacto.${conv.length ? ' Conversión: ' + esc(conv.join(' · ')) + '.' : ''}</p>` : conv.length ? `<p class="hint">${esc(conv.join(' · '))}</p>` : ''}
+    <div class="flabel" style="margin-top:6px">Categorías (${cats.length}) · <button class="btn-link" data-act="w-cats" data-t="${ti}" data-v="1">todas</button> · <button class="btn-link" data-act="w-cats" data-t="${ti}" data-v="0">ninguna</button></div>
+    <div class="chips-row">${mostrar.map(([c, n]) => `<button class="chipf ${!w.filtro.cats || w.filtro.cats.includes(c) ? 'on' : ''}" data-act="w-cat" data-t="${ti}" data-c="${esc(c)}">${esc(c)} <b>${n}</b></button>`).join('')}${cats.length > mostrar.length ? `<button class="btn-link" data-act="w-vercats" data-t="${ti}">y ${cats.length - mostrar.length} más…</button>` : ''}</div>
+    <div class="fg" style="margin-top:8px"><label class="flabel" for="w-q-${ti}">Buscar en lo encontrado</label><input class="fi" id="w-q-${ti}" data-asis="w-q" data-input="w-q" data-t="${ti}" maxlength="80" value="${esc(w.filtro.q)}" placeholder="Ej: Karseell, perfume, iPhone"></div></div>`;
+}
 export function vistaImportar() {
   if (I.recorte) return vistaRecorte();
+  if (!I.restauraVisto) { I.restauraVisto = true; buscarGuardado(); }
   const it = I.items, ok = listos(), nuevos = ok.filter(x => !x.existente), upd = ok.filter(x => x.existente);
   const sinCosto = (it || []).filter(x => !(x.costo_usd > 0)).length;
   const tabla = it ? `<div class="card" style="margin-top:10px"><div class="imp-bar"><b>${it.length} productos encontrados</b> · <span class="tag ok">${ok.length} elegidos</span>${I.destino === 'mis' ? ` <span class="tag">${nuevos.length} nuevos · ${upd.length} actualizan</span>` : ''}${sinCosto ? ` <span class="tag bad">${sinCosto} sin costo</span>` : ''}
@@ -290,7 +350,7 @@ on('i-file', (d, el) => { cargar(el.files); el.value = ''; });
 document.addEventListener('dragover', e => { const z = e.target.closest && e.target.closest('#drop'); if (z) { e.preventDefault(); z.classList.add('over'); } });
 document.addEventListener('dragleave', e => { const z = e.target.closest && e.target.closest('#drop'); if (z) z.classList.remove('over'); });
 document.addEventListener('drop', e => { const z = e.target.closest && e.target.closest('#drop'); if (z) { e.preventDefault(); cargar(e.dataTransfer.files); } });
-on('i-limpiar', () => { const d = I.destino; resetImp(); I.destino = d; refrescar(); });
+on('i-limpiar', () => { const d = I.destino; borrarGuardado(); resetImp(); I.destino = d; I.restauraVisto = true; refrescar(); });
 on('i-hoja', (d, el) => { const tb = I.tablas[+d.t]; tb.hoja = +el.value; tb.filas = tb.hojas[tb.hoja].filas; tb.map = null; procesar(); refrescar(); });
 on('i-map', (d, el) => { const tb = I.tablas[+d.t]; if (el.value === '') delete tb.map[d.k]; else tb.map[d.k] = +el.value; procesar(); refrescar(); });
 on('i-topt', (d, el) => { I.tablas[+d.t].opts[d.k] = el.value; procesar(); if (d.k !== 'margen') refrescar(); else { clearTimeout(on.t2); on.t2 = setTimeout(refrescar, 600); } });
@@ -304,11 +364,12 @@ on('i-pub', (d, el) => {
   if (el.tagName === 'SELECT' || el.type === 'checkbox') refrescar();
   else if (d.k === 'margen') { clearTimeout(on.t3); on.t3 = setTimeout(refrescar, 600); }
 });
-on('i-inc', (d, el) => { (I.ed[d.u] = I.ed[d.u] || {}).incluir = el.checked; procesar(); refrescar(); });
+on('i-inc', (d, el) => { (I.ed[d.u] = I.ed[d.u] || {}).incluir = el.checked; procesar(); refrescar(); if (String(d.u).startsWith('w:')) guardarPronto(); });
 on('i-ed', (d, el) => {
   const e = (I.ed[d.u] = I.ed[d.u] || {});
   if (d.k === 'nombre') e.nombre = el.value; else e.costoArs = el.value === '' ? 0 : Number(el.value);
   if ((e.nombre || '').trim() && e.costoArs > 0 && e.incluir == null) e.incluir = true;
+  if (String(d.u).startsWith('w:')) guardarPronto();
   clearTimeout(on.t4); on.t4 = setTimeout(() => { procesar(); const id = el.dataset.u, k = el.dataset.k, pos = el.selectionStart; refrescar(); const n = document.querySelector(`[data-input=i-ed][data-u="${CSS.escape(id)}"][data-k="${k}"]`); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { } } }, 700);
 });
 on('i-sinfotos', (d, el) => { I.sinFotos = el.checked; Object.values(I.ed).forEach(e => { delete e.usoFoto; }); procesar(); refrescar(); });
@@ -341,7 +402,7 @@ document.addEventListener('pointerdown', e => {
   const fin = () => { document.removeEventListener('pointermove', mover); document.removeEventListener('pointerup', fin); };
   document.addEventListener('pointermove', mover); document.addEventListener('pointerup', fin);
 });
-on('i-todos', d => { (I.items || []).forEach(x => { (I.ed[x.uid] = I.ed[x.uid] || {}).incluir = d.v === '1'; }); procesar(); refrescar(); });
+on('i-todos', d => { (I.items || []).forEach(x => { (I.ed[x.uid] = I.ed[x.uid] || {}).incluir = d.v === '1'; }); procesar(); refrescar(); if (I.tablas.some(t => t.web)) guardarPronto(); });
 on('i-mas', () => { I.mostrar += 200; refrescar(); });
 
 /* ---------- eventos: web del proveedor ---------- */
@@ -353,36 +414,139 @@ on('w-opt', (d, el) => {
   else if (d.k === 'limpiar') W.limpiar = el.value === '1';
   else W[d.k] = !!el.checked;
   // lo ya leído se rearma al momento (sin volver a entrar a la web)
-  I.tablas.forEach(t => {
-    if (!t.web) return;
-    if (d.k === 'fotos') t.web.fotos = W.fotos;
-    if (['limpiar', 'agotados', 'desc'].includes(d.k) && t.web.prods) t.filas = aFilas(t.web.prods, { limpiar: W.limpiar, descripciones: W.desc, agotados: W.agotados });
-  });
-  const rearmar = I.items && ['fotos', 'limpiar', 'agotados', 'desc'].includes(d.k) && I.tablas.some(t => t.web);
-  if (rearmar) procesar();
+  const rearmar = ['fotos', 'limpiar', 'agotados', 'desc'].includes(d.k) && I.tablas.some(t => t.web);
+  if (rearmar) { I.tablas.forEach(t => { if (t.web) armar(t); }); procesar(); guardarPronto(); }
   const b = $('[data-act=w-traer]'); if (b) b.disabled = !(W.acepto && W.url.trim().length > 4) || I.busy;
   if (rearmar) refrescar();
 });
 on('w-cancelar', () => { I.webCancel = true; progreso('Deteniendo… nos quedamos con lo que ya leímos.'); });
-on('w-traer', async () => {
-  const W = I.web; if (!W.acepto || W.url.trim().length < 5 || I.busy) return;
+on('w-traer', () => leerWeb({}));
+
+/* ---------- web del proveedor: lectura, traducción, moneda, guardado ---------- */
+const BLOQUEADOS = /(^|\.)(1688|alibaba|aliexpress|taobao|tmall|temu|shein|mercadolibre|mercadolivre)\.[a-z.]+$/i;
+let CAMBIO = null;
+async function cambioRemoto() { if (!CAMBIO || !CAMBIO.ok) CAMBIO = await api.cambio(); return CAMBIO || { tasas: {}, ars: {} }; }
+const monedaTabla = w => { if (w.forzar) return w.forzar === 'ARS' ? 'ARS' : 'USD'; const c = w.prods.filter(p => p.precio > 0); return c.filter(p => (p.moneda || 'ARS') !== 'ARS').length > c.length / 2 ? 'USD' : 'ARS'; };
+function armar(tb) {
+  const w = tb.web, W = I.web; w.fotos = W.fotos;
+  w.elegidos = elegidosDe(w); w.monedaTabla = monedaTabla(w);
+  const dest = w.monedaTabla, prods = w.original ? w.elegidos.map(p => ({ ...p, nombreEs: '', descripcionEs: '' })) : w.elegidos;
+  tb.filas = aFilas(prods, { limpiar: W.limpiar, descripciones: W.desc, agotados: W.agotados, precio: p => enMoneda(w.forzar ? { ...p, moneda: w.forzar } : p, dest, w.tasas, cot()) });
+  tb.opts = { ...(tb.opts || {}), moneda: dest === 'USD' ? 'usd' : 'ars', tipo: 'costo' }; tb.map = null;
+}
+function meter(w) {
+  w.filtro = w.filtro || { cats: null, q: '' }; if (!(Number(w.cotProv) > 0)) w.cotProv = cot();
+  let tb = I.tablas.find(t => t.web && t.web.host === w.host);
+  if (tb) tb.web = w; else { tb = { archivo: 'web · ' + w.host, filas: [], hojas: null, hoja: 0, map: null, opts: { moneda: 'usd', tipo: 'costo', margen: null }, web: w }; I.tablas.push(tb); }
+  armar(tb); return tb;
+}
+async function traducirWeb(w) {
+  if (!I.web.traducir || !w.idioma || w.idioma === 'es' || !NOMBRE_IDIOMA[w.idioma]) return;
+  const faltan = w.prods.filter(p => !p.nombreEs); if (!faltan.length) { w.traducido = true; return; }
+  try { await traducirProductos(faltan, w.idioma, (t, de) => api.traducir(t, de), { descripciones: I.web.desc }, progreso); w.traducido = w.prods.some(p => p.nombreEs); w.trAviso = w.traducido ? '' : 'No se pudo traducir.'; }
+  catch (e) { w.trAviso = e.message; if (w.prods.some(p => p.nombreEs)) w.traducido = true; }
+}
+// lo leído se guarda en este navegador: si se cierra sin querer, se recupera
+const CLAVE = () => 'escala_imp_web_' + ((P.t && P.t.id) || '');
+function guardar(parcial = null) {
+  if (!P.t) return;
+  const tablas = I.tablas.filter(t => t.web).map(t => { const w = t.web; return { host: w.host, url: w.url, plataforma: w.plataforma, prods: w.prods, idioma: w.idioma, enEspanol: w.enEspanol, traducido: w.traducido, trAviso: w.trAviso, forzar: w.forzar || '', tasas: w.tasas, tasasSitio: w.tasasSitio, cotProv: w.cotProv, filtro: w.filtro, original: !!w.original, pendiente: w.pendiente || null }; });
+  if (!tablas.length && !parcial) { borrarGuardado(); return; }
+  const ed = {}; Object.keys(I.ed).forEach(k => { if (k.startsWith('w:')) ed[k] = I.ed[k]; });
+  const W = I.web, est = { v: 1, ts: Date.now(), web: { limpiar: W.limpiar, desc: W.desc, fotos: W.fotos, agotados: W.agotados, traducir: W.traducir, acepto: W.acepto }, tablas, ed, parcial };
+  try { localStorage.setItem(CLAVE(), JSON.stringify(est)); }
+  catch (e) {             // sin lugar: guardamos sin descripciones
+    try { est.tablas.forEach(t => { t.prods = t.prods.map(p => ({ ...p, descripcion: '', descripcionEs: '' })); }); if (est.parcial) est.parcial.prods = est.parcial.prods.map(p => ({ ...p, descripcion: '' })); localStorage.setItem(CLAVE(), JSON.stringify(est)); } catch (e2) { }
+  }
+}
+function guardarPronto() { clearTimeout(guardarPronto.t); guardarPronto.t = setTimeout(() => guardar(), 800); }
+function borrarGuardado() { try { localStorage.removeItem(CLAVE()); } catch (e) { } I.restaurable = null; }
+function buscarGuardado() {
+  if (I.tablas.some(t => t.web)) return;
+  try { const s = JSON.parse(localStorage.getItem(CLAVE()) || 'null'); if (s && s.v === 1 && ((s.tablas && s.tablas.length) || (s.parcial && s.parcial.prods && s.parcial.prods.length))) I.restaurable = s; } catch (e) { }
+}
+on('w-descartar', () => { borrarGuardado(); refrescar(); });
+on('w-recuperar', () => recuperar(true));
+async function recuperar(avisar) {
+  const s = I.restaurable; if (!s) return;
+  Object.assign(I.web, s.web || {}); I.ed = { ...(s.ed || {}), ...I.ed }; I.restaurable = null;
+  await cambioRemoto();
+  (s.tablas || []).forEach(t => meter({ ...t, fotos: I.web.fotos }));
+  const pc = s.parcial;
+  if (pc && pc.prods && pc.prods.length) {
+    const tb = I.tablas.find(t => t.web && t.web.host === pc.host), ya = new Set(tb ? tb.web.prods.map(p => p.url || p.nombre) : []);
+    const prods = (tb ? tb.web.prods : []).concat(pc.prods.filter(p => !ya.has(p.url || p.nombre)));
+    meter({ ...(tb ? tb.web : { host: pc.host, url: pc.url, plataforma: pc.plataforma || 'web', idioma: idiomaDe(pc.prods.slice(0, 200).map(p => p.nombre + ' ' + (p.categoria || '')), pc.lang || ''), tasas: { ...((CAMBIO && CAMBIO.tasas) || {}), ...(pc.tasasSitio || {}) }, tasasSitio: pc.tasasSitio || {} }), prods, pendiente: { urls: pc.urls || null, todo: !!pc.todo, url: pc.url } });
+  }
+  if (!avisar) return;
+  I.web.res = 'Recuperamos lo que habías leído.' + (pc ? ' La lectura de ' + pc.host + ' se había cortado: tocá “Seguir leyendo” en su panel.' : '');
+  procesar(); refrescar(); guardar();
+}
+on('w-termino', (d, el) => { const E = I.web.elegir; if (!E) return; E.termino = el.value; const b = $('[data-act=w-elegido]'), n = E.marcadas.length + (E.buscador && el.value.trim() ? 1 : 0); if (b) { b.disabled = !n; b.textContent = 'Leer lo elegido' + (n ? ' (' + n + ')' : ''); } });
+on('w-marcar', (d, el) => { const E = I.web.elegir; if (!E) return; const i = Number(d.i); E.marcadas = el.checked ? [...new Set([...E.marcadas, i])] : E.marcadas.filter(x => x !== i); const b = $('[data-act=w-elegido]'), n = E.marcadas.length + (E.buscador && E.termino.trim() ? 1 : 0); if (b) { b.disabled = !n; b.textContent = 'Leer lo elegido' + (n ? ' (' + n + ')' : ''); } });
+on('w-elegir-no', () => { I.web.elegir = null; refrescar(); });
+on('w-elegido', () => {
+  const E = I.web.elegir; if (!E) return;
+  const urls = E.marcadas.sort((a, b) => a - b).map(i => E.categorias[i]).filter(Boolean).map(c => ({ url: c.url, nombre: c.nombre }));
+  if (E.buscador && E.termino.trim()) urls.unshift({ url: urlBusqueda(E.buscador, E.termino), nombre: '' });
+  if (urls.length) leerWeb({ base: E.url, urls });
+});
+on('w-todo', () => { const E = I.web.elegir; if (E) leerWeb({ base: E.url, todo: true }); });
+on('w-seguir', d => { const tb = I.tablas[Number(d.t)]; const w = tb && tb.web; if (!w || !w.pendiente) return; leerWeb({ base: w.pendiente.url || w.url, urls: w.pendiente.urls, todo: w.pendiente.todo, previos: new Map(w.prods.filter(p => p.url).map(p => [p.url, p])) }); });
+on('w-quitar', d => { const tb = I.tablas[Number(d.t)]; if (!tb) return; I.tablas = I.tablas.filter(t => t !== tb); Object.keys(I.ed).forEach(k => { if (k.startsWith('w:' + tb.web.host + ':')) delete I.ed[k]; }); procesar(); refrescar(); guardar(); });
+const conTabla = (d, fn) => { const tb = I.tablas[Number(d.t)]; if (!tb || !tb.web) return; fn(tb.web, tb); armar(tb); procesar(); refrescar(); guardarPronto(); };
+on('w-cat', d => conTabla(d, w => { const todas = [...new Set(w.prods.map(catDe))], sel = w.filtro.cats || todas; w.filtro.cats = sel.includes(d.c) ? sel.filter(c => c !== d.c) : [...sel, d.c]; if (w.filtro.cats.length === todas.length) w.filtro.cats = null; }));
+on('w-cats', d => conTabla(d, w => { w.filtro.cats = d.v === '1' ? null : []; }));
+on('w-vercats', d => conTabla(d, w => { w.verCats = true; }));
+on('w-orig', d => conTabla(d, w => { w.original = !w.original; }));
+on('w-forzar', (d, el) => conTabla(d, w => { w.forzar = el.value; }));
+on('w-cotref', d => conTabla(d, w => { w.cotProv = Number(d.v); }));
+on('w-cot', (d, el) => { const tb = I.tablas[Number(d.t)]; if (!tb || !tb.web) return; const v = Number(el.value); if (!(v > 0)) return; tb.web.cotProv = v; clearTimeout(on.tc); on.tc = setTimeout(() => { procesar(); const pos = el.selectionStart, id = el.id; refrescar(); const n = document.getElementById(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { } } guardarPronto(); }, 700); });
+on('w-q', (d, el) => { const tb = I.tablas[Number(d.t)]; if (!tb || !tb.web) return; tb.web.filtro.q = el.value; clearTimeout(on.tq); on.tq = setTimeout(() => { armar(tb); procesar(); const pos = el.selectionStart, id = el.id; refrescar(); const n = document.getElementById(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { } } guardarPronto(); }, 500); });
+on('w-traducir', async d => {
+  const tb = I.tablas[Number(d.t)]; if (!tb || !tb.web || I.busy) return;
+  I.busy = true; I.err = ''; progreso('Traduciendo…'); refrescar();
+  const antes = I.web.traducir; I.web.traducir = true; await traducirWeb(tb.web); I.web.traducir = antes;
+  armar(tb); I.busy = false; I.msg = ''; procesar(); refrescar(); guardar();
+});
+
+async function leerWeb(o) {
+  const W = I.web; if (I.busy || !W.acepto) return;
+  const url = String(o.base || W.url).trim(); if (url.length < 5) return;
+  let host = ''; try { host = new URL(/^https?:/i.test(url) ? url : 'https://' + url).hostname; } catch (e) { }
+  if (BLOQUEADOS.test(host)) { I.err = `${host} no permite leer su catálogo de forma automática: pide iniciar sesión, tiene bloqueos anti-robots y sus reglas para robots (robots.txt) lo prohíben. No lo salteamos. Alternativas: descargá su lista o tus pedidos en Excel, o sacá capturas de los productos y subilas acá arriba (leemos nombre y precio de cada imagen).`; refrescar(); return; }
+  if (I.restaurable) await recuperar(false);      // no pisar lo guardado que todavía no recuperó
   AV.texto = ''; AV.resumen = '';
-  let err = '';
+  let err = '', ultimo = 0;
   I.busy = true; I.webBusy = true; I.webCancel = false; I.err = ''; W.abierto = true; progreso('Abriendo la web del proveedor…'); refrescar();
+  // lo que se va encontrando se guarda cada pocos segundos (por si se cierra el navegador)
+  const parcial = prods => { if (Date.now() - ultimo < 3000 || !prods.length) return; ultimo = Date.now(); guardar({ host, url, plataforma: '', prods: prods.slice(0, MAX_PRODUCTOS), urls: o.urls || null, todo: !!o.todo }); };
   try {
-    const r = await traerDeLaWeb(W.url, { descripciones: W.desc, cancelado: () => I.webCancel }, (u, x) => api.leerWeb(u, x), progreso);
-    if (!r.productos.length) throw new Error('No encontramos productos en esa página. Probá con el enlace de la sección “Productos” o de una categoría. Si la web pide iniciar sesión o no muestra precios, pedile al proveedor la lista en Excel o PDF y subila acá arriba.');
-    const usd = r.productos.filter(p => p.moneda === 'USD').length > r.productos.length / 2;
-    const archivo = 'web · ' + r.host;
-    I.tablas = I.tablas.filter(t => t.archivo !== archivo);               // si la volvés a leer, reemplaza la anterior
-    I.tablas.push({ archivo, filas: aFilas(r.productos, { limpiar: W.limpiar, descripciones: W.desc, agotados: W.agotados }), hojas: null, hoja: 0, map: null, opts: { moneda: usd ? 'usd' : 'ars', tipo: 'costo', margen: null }, web: { host: r.host, plataforma: r.plataforma, fotos: W.fotos, prods: r.productos } });
-    const sinPrecio = r.productos.filter(p => !(p.precio > 0)).length;
-    W.res = `Última lectura: ${r.productos.length} productos de ${r.host} (${r.plataforma})` + (r.cortado ? ' · llegamos al máximo por vez: para el resto usá el enlace de cada categoría' : '') + (I.webCancel ? ' · detenida antes de terminar' : '') + (sinPrecio ? ` · ${sinPrecio} sin precio (completalos en la tabla)` : '') + (r.fallas ? ` · ${r.fallas} no se pudieron leer` : '') + (r.aviso ? ' · ' + r.aviso : '') + '.';
-    W.abierto = false;
+    const [r] = await Promise.all([traerDeLaWeb(url, { descripciones: W.desc, cancelado: () => I.webCancel, urls: o.urls, todo: o.todo, previos: o.previos, parcial }, (u, x) => api.leerWeb(u, x), progreso), cambioRemoto()]);
+    if (r.elegir) {
+      W.elegir = { url: r.url, host: r.host, plataforma: r.plataforma, categorias: r.categorias, buscador: r.buscador, marcadas: [], termino: '', nombresEs: {} };
+      const de = idiomaDe(r.categorias.map(c => c.nombre), r.lang);
+      if (W.traducir && de !== 'es' && NOMBRE_IDIOMA[de]) { try { const m = await traducirLista(r.categorias.map(c => c.nombre), de, (t, l) => api.traducir(t, l), progreso, 'Traduciendo las categorías'); m.forEach((v, k) => { W.elegir.nombresEs[k] = v; }); } catch (e) { } }
+    } else {
+      if (!r.productos.length) throw new Error(r.aviso || 'No encontramos productos en esa página. Probá con el enlace de una categoría o de una búsqueda (por ejemplo, la página de una marca). Si la web pide iniciar sesión o no muestra precios, pedile al proveedor la lista en Excel o PDF y subila acá arriba.');
+      W.elegir = null;
+      const prev = I.tablas.find(t => t.web && t.web.host === r.host);
+      let w;
+      if (prev) { w = prev.web; const ya = new Set(w.prods.map(p => p.url || p.nombre)); r.productos.forEach(p => { if (!ya.has(p.url || p.nombre)) { w.prods.push(p); ya.add(p.url || p.nombre); } }); }
+      else w = { host: r.host, url: r.url, plataforma: r.plataforma, prods: r.productos, idioma: r.idioma, enEspanol: r.enEspanol, tasasSitio: r.tasasSitio || {}, filtro: { cats: null, q: '' } };
+      w.tasas = { ...((CAMBIO && CAMBIO.tasas) || {}), ...(w.tasasSitio || {}), ...(r.tasasSitio || {}) };
+      w.pendiente = r.incompleta ? { urls: o.urls || null, todo: !!o.todo, url } : null;
+      await traducirWeb(w);
+      meter(w);
+      const sinPrecio = r.productos.filter(p => !(p.precio > 0)).length;
+      W.res = `Última lectura: ${r.productos.length} productos de ${r.host} (${r.plataforma})` + (r.cortado ? ' · llegamos al máximo por vez: para el resto usá el enlace de cada categoría' : '') + (r.incompleta ? ' · quedó a medias: podés seguir leyendo desde su panel' : '') + (sinPrecio ? ` · ${sinPrecio} sin precio (completalos en la tabla)` : '') + (r.fallas ? ` · ${r.fallas} no se pudieron leer` : '') + (r.aviso ? ' · ' + r.aviso : '') + '.';
+      W.url = ''; W.abierto = false;
+    }
   } catch (e) { err = e.message; }
   I.busy = false; I.webBusy = false; I.msg = ''; procesar(); I.err = err; refrescar();      // procesar() limpia el error: va después
-  if (!I.err) { const t = document.querySelector('.imp-tbl'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
-});
+  guardar();
+  if (!I.err && !W.elegir) { const t = document.querySelector('.wcat:last-of-type') || document.querySelector('.imp-tbl'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+}
 // Antes de guardar: copia las fotos de la web del proveedor a la tienda (achicadas a WebP). Si alguna falla, queda el enlace.
 async function copiarFotosWeb(items) {
   const L = items.filter(x => x.web === 'copiar' && x.imagen_url && !/\/storage\/v1\/object\/public\/fotos\//.test(x.imagen_url));
@@ -446,7 +610,8 @@ on('i-ok', async () => {
       I.msg = `Listo: ${items.length} precios cargados (${I.nombre.trim()}).`;
     }
     P.prods = await api.misProductos(); try { P.provs = await api.misProveedores(); } catch (e) { }
-    const m = I.msg, dest = I.destino, abierto = P.modal && P.modal.tipo === 'imp'; resetImp(); I.msg = m; I.destino = dest; if (abierto) P.modal = { tipo: 'imp' };   // si lo cerró mientras guardaba, no lo reabrimos
+    borrarGuardado();
+    const m = I.msg, dest = I.destino, abierto = P.modal && P.modal.tipo === 'imp'; resetImp(); I.restauraVisto = true; I.msg = m; I.destino = dest; if (abierto) P.modal = { tipo: 'imp' };   // si lo cerró mientras guardaba, no lo reabrimos
     toast(m);
   } catch (e) { I.err = e.message; }
   I.busy = false; refrescar();

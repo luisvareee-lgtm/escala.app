@@ -132,6 +132,9 @@ export const api = {
   probarWebhook: () => llamarFn('/api/webhook-test', {}, true),
   // leer la web pública de un proveedor (v2.18): texto/JSON de una página, o una foto como Blob
   leerWeb: (url, extra = {}) => llamarFn('/api/leer-web', { url, ...extra }, true),
+  // traducción automática al español (v2.19) y cotizaciones de referencia (unidades por dólar)
+  traducir: async (textos, de) => (await llamarFn('/api/traducir', { textos, de }, true)).textos || [],
+  async cambio() { try { const r = await fetch('/api/cambio'); return await r.json(); } catch (e) { return { ok: false, tasas: {} }; } },
   async fotoWeb(url) {
     const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
     let r; try { r = await fetch('/api/leer-web', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify({ url, tipo: 'imagen' }) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
