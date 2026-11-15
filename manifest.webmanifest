@@ -1,6 +1,6 @@
 {
-  "name": "Escala · Panel de mi tienda",
-  "short_name": "Escala",
+  "name": "Eskalapp · Panel de mi tienda",
+  "short_name": "Eskalapp",
   "description": "Tu tienda, pedidos y precios desde el celular.",
   "start_url": "/app#/panel",
   "scope": "/",
