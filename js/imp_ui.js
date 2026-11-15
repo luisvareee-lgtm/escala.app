@@ -6,7 +6,7 @@ import { P, can, precioArs } from './state.js';
 import { urlTiendaDe } from './marca.js';
 import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, ocr } from './importer.js';
 import { redimensionar } from './img.js';
-import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, productosDePegado, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
+import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, queSePego, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
 
 const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
@@ -211,15 +211,33 @@ function vistaElegir() {
     <div class="wel-cats">${E.categorias.map((c, i) => `<label class="chk" style="padding-left:${Math.min(c.nivel || 0, 3) * 18}px"><input type="checkbox" data-change="w-marcar" data-i="${i}" ${E.marcadas.includes(i) ? 'checked' : ''}> ${esc(es[c.nombre] || c.nombre)}${es[c.nombre] && es[c.nombre] !== c.nombre ? ` <small class="muted">(${esc(c.nombre)})</small>` : ''}</label>`).join('')}</div>
     <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-elegido" ${n ? '' : 'disabled'}>Leer lo elegido${n ? ' (' + n + ')' : ''}</button><button class="btn btn-s btn-sm" data-act="w-todo">Leer toda la web (más lento)</button><button class="btn-link" data-act="w-elegir-no">cancelar</button></div></div>`;
 }
-function vistaPegar() {
-  const W = I.web, u = String(W.pegarUrl || W.url || '').trim(), abrir = u ? (/^https?:\/\//i.test(u) ? u : 'https://' + u) : '';
-  return `<details class="lv wp-pegar" id="w-pegar-box" ${W.pegar ? 'open' : ''}><summary data-act="w-pegar-abrir"><b>📋 ¿La web no se deja leer? Copiala y pegala</b></summary>
-    <p class="hint" style="margin:6px 0">Algunas webs se ven bien en tu navegador pero no dejan que las lea un programa (protección anti-robots). Con esto la cargás igual, con fotos y precios:</p>
-    <ol class="hint wp-pasos"><li>Abrí la página del proveedor donde se ven los productos (una categoría o una búsqueda)${abrir ? ` → <a href="${esc(abrir)}" target="_blank" rel="noopener">abrir ${esc(abrir.replace(/^https?:\/\//, '').slice(0, 50))} ↗</a>` : ''}.</li>
-      <li>Bajá hasta el final para que se carguen todos.</li>
-      <li>Apretá <b>Ctrl+A</b> y después <b>Ctrl+C</b> (en el celular: mantené apretado un texto → <b>Seleccionar todo</b> → <b>Copiar</b>).</li>
-      <li>Volvé acá, tocá el recuadro y pegá con <b>Ctrl+V</b> (o mantené apretado → <b>Pegar</b>). Repetí con cada página o categoría: se van sumando.</li></ol>
-    <textarea class="fi wp-area" id="w-pegar" data-asis="w-pegar" rows="2" placeholder="Tocá acá y pegá la página copiada (Ctrl+V)"></textarea></details>`;
+const abrirWeb = () => { const W = I.web, u = String(W.pegarUrl || W.url || '').trim(); return u ? (/^https?:\/\//i.test(u) ? u : 'https://' + u) : ''; };
+const linkWeb = () => { const a = abrirWeb(); return a ? ` → <a href="${esc(a)}" target="_blank" rel="noopener">abrir ${esc(a.replace(/^https?:\/\//, '').slice(0, 50))} ↗</a>` : ''; };
+// dentro de "Traer desde la web": si la web no se dejó leer, lleva al recuadro único de pegar (abajo)
+function vistaBloqueada() {
+  if (!I.web.pegar) return '';
+  return `<div class="lv wp-bloq" id="w-bloq"><b>🛡️ Esa web no deja que la lea un programa, pero la podés cargar igual</b>
+    <p class="hint" style="margin:4px 0">Abrila en tu navegador${linkWeb()}, copiá la página (<b>Ctrl+A</b> y <b>Ctrl+C</b>) y pegala en el recuadro <b>📋 Pegar</b> de abajo. Reconocemos cada producto con su foto y su precio.</p>
+    <div class="lv-acc"><button class="btn btn-s btn-sm" data-act="w-ir-pegar">📋 Ir al recuadro para pegar</button></div></div>`;
+}
+// Un solo recuadro para pegar: texto de una lista (WhatsApp, mail, Excel) o una página web copiada del navegador.
+// Lo que se pega se reconoce solo (ver el evento 'paste' más abajo).
+function vistaPegado() {
+  const W = I.web, pp = W.pegado;
+  return `<div class="pegar-box" id="pegar-box" data-asistente="web"><label class="flabel" for="imp-t">📋 Pegar una lista o una página web</label>
+    <textarea class="fi" id="imp-t" rows="3" data-asis="w-pegar" data-input="i-texto" placeholder="Pegá acá el texto de la lista (uno por renglón: Perfume X 100ml $12.500) o la página de tu proveedor copiada con Ctrl+A y Ctrl+C">${esc(I.texto)}</textarea>
+    <p class="hint pegar-que">Nos damos cuenta solos de qué pegaste: <b>texto</b> de WhatsApp, mail o Excel → un producto por renglón · <b>página web</b> copiada del navegador → cada producto con su foto y su precio, en el panel 🌐 de ese proveedor.</p>
+    ${pp ? `<div class="lv lv-ok" id="w-pegado"><b>🌐 Pegaste una página de ${esc(pp.host)} con ${pp.productos.length} ${pp.productos.length === 1 ? 'producto' : 'productos'}</b>
+      <p class="hint" style="margin:4px 0">Para usar sus fotos y textos en tu tienda tenés que ser cliente o revendedor de este proveedor y <b>tener su permiso</b>.</p>
+      <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-pegado-ok">✅ Tengo su permiso · cargar ${pp.productos.length}</button><button class="btn-link" data-act="w-pegado-no">cancelar</button></div></div>` : ''}
+    <details class="hint pegar-ayuda" id="pegar-web" ${W.pegar ? 'open' : ''}><summary>¿Cómo copio la página de un proveedor?</summary>
+      <ol class="wp-pasos"><li>Abrí la página del proveedor donde se ven los productos (una categoría o una búsqueda)${linkWeb()}.</li>
+        <li>Bajá hasta el final para que se carguen todos.</li>
+        <li>Apretá <b>Ctrl+A</b> y después <b>Ctrl+C</b> (en el celular: mantené apretado un texto → <b>Seleccionar todo</b> → <b>Copiar</b>).</li>
+        <li>Volvé acá, tocá el recuadro y pegá con <b>Ctrl+V</b> (o mantené apretado → <b>Pegar</b>). Repetí con cada página o categoría: se van sumando.</li></ol></details>
+    <details class="hint pegar-ayuda"><summary>¿Cómo traigo los productos de un canal o grupo de WhatsApp?</summary>
+      <p><b>Grupo o chat:</b> en el celular abrí el grupo → ⋮ → Más → <b>Exportar chat</b> → <b>Incluir archivos</b> → guardalo y subí ese .zip arriba. Cada foto se une con su texto (nombre y precio).</p>
+      <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen. Si el canal tiene la lista escrita, copiala y pegala acá.</p></details></div>`;
 }
 function vistaWeb() {
   const W = I.web, listo = W.acepto && W.url.trim().length > 4, leidas = I.tablas.filter(t => t.web);
@@ -236,7 +254,7 @@ function vistaWeb() {
     <label class="chk web-ok"><input type="checkbox" data-asis="w-acepto" data-change="w-opt" data-k="acepto" ${W.acepto ? 'checked' : ''}><span>Soy cliente o revendedor de este proveedor y <b>tengo su permiso</b> para usar sus fotos y textos en mi tienda.</span></label>
     <button class="btn btn-p" style="margin-top:8px" data-act="w-traer" ${listo && !I.busy ? '' : 'disabled'}>🔎 Buscar productos</button>
     ${vistaElegir()}
-    ${vistaPegar()}
+    ${vistaBloqueada()}
     <details class="hint web-guia"><summary>¿Para qué sirve, cómo se usa y qué tener en cuenta?</summary>
       <p><b>Para qué sirve:</b> cargar en minutos el catálogo de uno o varios proveedores que venden por internet (de Argentina, Paraguay, Brasil, Estados Unidos…), sin tipear nada. Si ya tenés sus productos, actualiza tus costos y te muestra qué subió, qué bajó y qué hay de nuevo.</p>
       <p><b>Cómo se usa:</b> 1) Copiá el enlace de su web: la portada, “Productos”, una categoría o una búsqueda (por ejemplo, la página de una marca). 2) Tildá que tenés su permiso y tocá “Buscar productos”. 3) Si pegaste la portada, elegí las categorías que te interesan o buscá una marca. 4) En el panel del proveedor marcá qué categorías importar, revisá la moneda y el dólar al que le pagás. 5) Revisá la tabla, poné tu ganancia y cargá. Para sumar otro proveedor, pegá otro enlace: lo ya leído no se pierde.</p>
@@ -251,7 +269,7 @@ function vistaWeb() {
         <li><b>Información veraz</b> (Ley 24.240 de Defensa del Consumidor): la foto, la traducción y la descripción tienen que corresponder a lo que entregás. Revisá precios y stock antes de publicar.</li>
         <li><b>Solo páginas públicas:</b> no entramos a catálogos con usuario y contraseña ni saltamos bloqueos o captchas (entrar sin permiso a un sistema restringido es delito: Ley 26.388). Respetamos las reglas del sitio para robots (robots.txt) y leemos despacio para no sobrecargarlo.</li>
       </ul>
-      <p><b>Límites técnicos:</b> muchas webs tienen una protección anti-robots: se ven bien en tu navegador pero no dejan que las lea un programa. No la salteamos: en ese caso usá “📋 Copiar y pegar la página” (tu navegador ya la abrió, así que la cargás igual, con fotos y precios). Si la web pide iniciar sesión, pedile al proveedor la lista en Excel o PDF, o subí capturas de su catálogo. Los grandes portales (1688, Alibaba, AliExpress, Temu, Shein, Mercado Libre) no permiten leer su catálogo de forma automática: piden iniciar sesión y sus reglas lo prohíben. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
+      <p><b>Límites técnicos:</b> muchas webs tienen una protección anti-robots: se ven bien en tu navegador pero no dejan que las lea un programa. No la salteamos: en ese caso copiá la página desde tu navegador y pegala en el recuadro “📋 Pegar” (tu navegador ya la abrió, así que la cargás igual, con fotos y precios). Si la web pide iniciar sesión, pedile al proveedor la lista en Excel o PDF, o subí capturas de su catálogo. Los grandes portales (1688, Alibaba, AliExpress, Temu, Shein, Mercado Libre) no permiten leer su catálogo de forma automática: piden iniciar sesión y sus reglas lo prohíben. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
       <p><b>¿Te falta la foto de algún producto?</b> En la ficha del producto tenés “Buscar la foto oficial”, “Traer foto y descripción desde un enlace” y una indicación lista para crear una imagen con IA.</p>
     </details></details>`;
 }
@@ -303,10 +321,7 @@ export function vistaImportar() {
     <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
     <input id="i-file" type="file" hidden multiple data-change="i-file" accept=".csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*">
     ${vistaWeb()}
-    <details class="hint" style="margin:8px 0"><summary>¿Cómo traigo los productos de un canal o grupo de WhatsApp?</summary>
-      <p><b>Grupo o chat:</b> en el celular abrí el grupo → ⋮ → Más → <b>Exportar chat</b> → <b>Incluir archivos</b> → guardalo y subí ese .zip acá. Cada foto se une con su texto (nombre y precio).</p>
-      <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen.</p></details>
-    <textarea class="fi" id="imp-t" rows="3" data-input="i-texto" placeholder="…o pegá el texto de la lista (uno por renglón): Perfume X 100ml $12.500">${esc(I.texto)}</textarea>
+    ${vistaPegado()}
     ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div>${I.webBusy ? '<button class="btn btn-s btn-sm" style="margin-top:6px" data-act="w-cancelar">Detener y quedarme con lo leído</button>' : ''}</div>` : ''}
     ${vistaTablas()}${vistaOpcionesLectura()}${(I.items || I.texto || I.tablas.length || I.fotos.length) ? destino : ''}${vistaListaViva()}${vistaPublicar(nuevos.length)}${tabla}
     <button class="btn btn-p" style="margin-top:10px" data-act="i-ok" ${hay && !I.busy ? '' : 'disabled'}>${I.destino === 'mis' ? `Cargar ${ok.length} productos` : 'Cargar ' + upd.length + ' precios'}</button>
@@ -534,31 +549,34 @@ async function sumarAlProveedor(r, pendiente) {
   meter(w);
   return w;
 }
-// "Copiar y pegar la página": lo que el comercio copió de su navegador
-on('w-pegar-abrir', () => { I.web.pegar = !I.web.pegar; });
+// Recuadro único de pegar: queSePego (webprov.js) decide si llegó una página web o el texto de una lista.
+on('w-ir-pegar', () => { const t = $('#imp-t'), b = $('#pegar-web'); if (b) b.open = true; if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.focus(); } });
 document.addEventListener('paste', e => {
-  if (!e.target || e.target.id !== 'w-pegar') return;
+  if (!e.target || e.target.id !== 'imp-t') return;
+  const cd = e.clipboardData; if (!cd || I.busy) return;
+  const W = I.web, r = queSePego(cd.getData('text/html'), cd.getData('text/plain'), !!W.pegar, W.pegarUrl || W.url);
+  if (r.tipo !== 'web') return;                  // texto común: el navegador lo pega en el recuadro y se lee como lista
   e.preventDefault();
-  const cd = e.clipboardData; pegarPagina(cd ? cd.getData('text/html') : '', cd ? cd.getData('text/plain') : '');
+  if (!W.acepto) { W.pegado = r.p; I.err = ''; refrescar(); const b = $('#w-pegado'); if (b) b.scrollIntoView({ block: 'nearest' }); return; }
+  pegarPagina(r.p);
 });
-async function pegarPagina(html, texto) {
-  const W = I.web; if (I.busy) return;
-  if (!W.acepto) { I.err = 'Primero tildá que sos cliente o revendedor de este proveedor y tenés su permiso para usar sus fotos y textos.'; refrescar(); return; }
-  if (!String(html || texto || '').trim()) { I.err = 'No llegó nada al pegar. Volvé a la página del proveedor, apretá Ctrl+A y Ctrl+C, y pegá de nuevo.'; refrescar(); return; }
+on('w-pegado-ok', () => { const p = I.web.pegado; if (!p) return; I.web.acepto = true; pegarPagina(p); });
+on('w-pegado-no', () => { I.web.pegado = null; refrescar(); });
+async function pegarPagina(p) {
+  const W = I.web; if (I.busy || !p) return;
+  W.pegado = null;
   if (I.restaurable) await recuperar(false);
   I.busy = true; I.err = ''; progreso('Leyendo lo que pegaste…'); refrescar();
   let err = '';
   try {
     await cambioRemoto();
-    const p = productosDePegado(html, texto, W.pegarUrl || W.url);
-    if (!p.productos.length) throw new Error('No reconocimos productos en lo que pegaste. Copiá la página donde se ven los productos con su precio (una categoría o una búsqueda), con Ctrl+A y Ctrl+C, y pegala de nuevo.');
     const w = await sumarAlProveedor({ host: p.host, url: p.base, plataforma: 'copiada del navegador', productos: p.productos, idioma: p.idioma, enEspanol: false, tasasSitio: p.tasas }, null);
     const sinPrecio = p.productos.filter(x => !(x.precio > 0)).length;
     W.res = `Pegaste ${p.productos.length} productos de ${p.host}${p.como === 'texto' ? ' (sin fotos: la página se copió solo como texto)' : ''}` + (sinPrecio ? ` · ${sinPrecio} sin precio` : '') + `. Ya van ${w.prods.length}. Podés pegar otra página o categoría: se suman.`;
-    W.pegar = true; W.abierto = true;
+    W.abierto = true;
   } catch (e) { err = e.message; }
   I.busy = false; I.msg = ''; procesar(); I.err = err; refrescar(); guardar();
-  const n = $('#w-pegar'); if (n) n.value = '';
+  const t = document.querySelector('.wcat:last-of-type'); if (!err && t) t.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 async function leerWeb(o) {
   const W = I.web; if (I.busy || !W.acepto) return;
@@ -578,7 +596,7 @@ async function leerWeb(o) {
       const de = idiomaDe(r.categorias.map(c => c.nombre), r.lang);
       if (W.traducir && de !== 'es' && NOMBRE_IDIOMA[de]) { try { const m = await traducirLista(r.categorias.map(c => c.nombre), de, (t, l) => api.traducir(t, l), progreso, 'Traduciendo las categorías'); m.forEach((v, k) => { W.elegir.nombresEs[k] = v; }); } catch (e) { } }
     } else {
-      if (!r.productos.length) { const e = new Error(r.aviso || `No encontramos productos en esa página${r.titulo ? ' (la web respondió «' + r.titulo + '»)' : ''}. Si en tu navegador se ven bien, usá “Copiar y pegar la página” (abajo). Si no, probá con el enlace de una categoría o de una búsqueda, o pedile al proveedor la lista en Excel o PDF.`); e.bloqueado = true; throw e; }
+      if (!r.productos.length) { const e = new Error(r.aviso || `No encontramos productos en esa página${r.titulo ? ' (la web respondió «' + r.titulo + '»)' : ''}. Si en tu navegador se ven bien, usá “Copiar y pegar”: copiá la página y pegala en el recuadro 📋 Pegar (abajo). Si no, probá con el enlace de una categoría o de una búsqueda, o pedile al proveedor la lista en Excel o PDF.`); e.bloqueado = true; throw e; }
       W.elegir = null;
       await sumarAlProveedor(r, r.incompleta ? { urls: o.urls || null, todo: !!o.todo, url } : null);
       const sinPrecio = r.productos.filter(p => !(p.precio > 0)).length;

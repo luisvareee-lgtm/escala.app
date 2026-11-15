@@ -4,9 +4,9 @@ import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, de
 import { htmlCatalogo, imprimir } from './catalogo.js';
 import { abrirFlyer } from './flyer.js';
 import { tiraCierreHtml } from './cuenta.js';
-import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catFotoCfg, catTilesHtml } from './bloques.js';
+import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catFotoCfg, catTilesHtml, rubrosCfg, claveCat, rubroDe, rubrosHtml, rubroCabHtml, lookDe } from './bloques.js';
 
-const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [] };
+const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [], rubro: null, foco: null, niveles: null, orden: 'dest' };
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
 // medios de pago que la tienda tiene prendidos (panel: Tienda → Envíos y entregas → Medios de pago); si la base es vieja, los tres
 const pagos = () => { const a = S.tienda && Array.isArray(S.tienda.pagos_activos) && S.tienda.pagos_activos.length ? S.tienda.pagos_activos : null; return Object.keys(PAGO).filter(k => !a || a.includes(k)); };
@@ -32,10 +32,12 @@ const prod = id => S.prods.find(p => p.id === id);
 // Escalas acumulables (mismo criterio que el servidor): se cuentan por producto, sumando la misma categoría o todo el carrito.
 // Los productos con precio único no suman ni restan.
 const grupoModo = () => (S.tienda.escala_grupo === 'categoria' || S.tienda.escala_grupo === 'carrito' ? S.tienda.escala_grupo : 'producto');
-const grupoDe = p => { const m = grupoModo(); return m === 'categoria' ? 'c:' + (p.categoria || '') : m === 'carrito' ? '*' : 'p:' + p.id; };
+const grupoDe = p => { const m = grupoModo(); return m === 'categoria' ? claveCat(S.tienda.diseno, p.categoria) : m === 'carrito' ? '*' : 'p:' + p.id; };
+// nombre del grupo "por categoría": la categoría o, si su rubro suma junto, el rubro
+const nombreCat = p => { const k = claveCat(S.tienda.diseno, p.categoria), r = k.startsWith('r:') ? rubroDe(S.tienda.diseno, k.slice(2)) : null; return r && r.titulo ? r.titulo : p.categoria || 'la categoría'; };
 const qtyEsc = p => { if (!p) return 0; if (p.precio_unico) return qtyDe(p.id); const k = grupoDe(p); return S.cart.reduce((a, l) => { const o = prod(l.id); return o && !o.precio_unico && grupoDe(o) === k ? a + l.qty : a; }, 0); };
 // " de Cuidado facial" / " (cualquier producto)" / "" para los mensajes
-const grupoTxt = p => { const m = grupoModo(); return m === 'categoria' ? ' de ' + esc(p.categoria || 'la categoría') : m === 'carrito' ? ' (cualquier producto)' : ''; };
+const grupoTxt = p => { const m = grupoModo(); return m === 'categoria' ? ' de ' + esc(nombreCat(p)) : m === 'carrito' ? ' de cualquier producto' : ''; };
 // "Tu ganancia": lo que gana el cliente que revende (solo en lista mayorista y si la tienda lo activó)
 const ganOn = () => !!S.tienda.reventa_activa && vista() === 'may';
 const pvpDe = p => +p.pvp_sugerido > 0 ? +p.pvp_sugerido : Math.ceil(unidad(p, 1) * (1 + (+S.tienda.reventa_margen || 0.6)) / 10) * 10;
@@ -71,7 +73,7 @@ function pista() {
     S.cart.forEach(m => { const o = prod(m.id), to = o && tramos(o); if (to && !to.unico && grupoDe(o) === k) ahorro += Math.max(0, unidad(o, q) - to[nx]) * m.qty; });
     if (!(ahorro > 0)) return;
     const falta = nx - q; ahorro += falta * Math.max(0, unidad(p, q) - t[nx]);
-    const m = grupoModo(), de = m === 'categoria' ? 'de ' + (p.categoria || p.nombre) : m === 'carrito' ? 'de cualquier producto' : 'de ' + p.nombre;
+    const m = grupoModo(), de = m === 'categoria' ? 'de ' + nombreCat(p) : m === 'carrito' ? 'de cualquier producto' : 'de ' + p.nombre;
     if (!mejor || falta < mejor.falta) mejor = { falta, nombre: p.nombre, de, ahorro, q, nx };
   });
   return mejor;
@@ -93,8 +95,8 @@ function escalaHtml(p, compacta) {
   const e = escala(p); if (!e || (compacta && !e.q)) return '';
   const q = e.q, u = e.falta === 1 ? '1 unidad' : e.falta + ' unidades', gr = grupoTxt(p), m = grupoModo();
   const msg = !e.nx ? `🎉 ¡Mejor precio desbloqueado${m === 'producto' ? '' : gr}!${e.ahorro > 0 ? ` Ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`
-    : !q ? `Llevando ${e.nx} pagás <b>${fmt(e.pn)}</b> c/u${m === 'categoria' ? ` <small>(podés combinar productos${gr})</small>` : m === 'carrito' ? ' <small>(podés combinar cualquier producto)</small>' : ''}`
-    : `Te ${e.falta === 1 ? 'falta' : 'faltan'} <b>${u}</b>${gr} para el precio x${e.nx}${e.nx === 12 ? '+' : ''} (${fmt(e.pn)} c/u)${e.ahorro > 0 ? ` · ya ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`;
+    : !q ? `Llevando ${e.nx} pagás <b>${fmt(e.pn)}</b> c/u${m === 'categoria' ? ` · <small>podés combinar productos${gr}</small>` : m === 'carrito' ? ' · <small>podés combinar cualquier producto</small>' : ''}`
+    : `Te ${e.falta === 1 ? 'falta' : 'faltan'} <b>${u}</b>${gr} para el precio x${e.nx}${e.nx === 12 ? '+' : ''} · ${fmt(e.pn)} c/u${e.ahorro > 0 ? ` · ya ahorrás <b>${fmt(e.ahorro)}</b>` : ''}`;
   return `<div class="esc-bar lvl${e.nivel}" data-falta="${e.falta}" role="status"><div class="esc-msg">${msg}</div><div class="esc-track" aria-hidden="true"><i style="width:${e.pos}%"></i>${[3, 6, 12].map((n, i) => `<span class="${q >= n ? 'ok' : ''}" style="left:${[33.3, 66.6, 100][i]}%">x${n}</span>`).join('')}</div></div>`;
 }
 // aclaración en la ficha cuando las escalas se suman entre productos
@@ -141,9 +143,19 @@ function marca() {
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255, osc = x => Math.round(x * 0.82);
   const ac2 = '#' + [r, g, b].map(x => osc(x).toString(16).padStart(2, '0')).join('');
   const root = document.documentElement;
-  if (t.tema === 'oscuro') root.setAttribute('data-theme', 'dark'); else if (t.tema === 'claro') root.setAttribute('data-theme', 'light'); else root.removeAttribute('data-theme');
+  const pref = lookDe(t.diseno).modo ? temaPref() : null;      // lo que eligió el cliente con ☀️/🌙 manda sobre el tema de la tienda
+  if (pref) root.setAttribute('data-theme', pref); else if (t.tema === 'oscuro') root.setAttribute('data-theme', 'dark'); else if (t.tema === 'claro') root.setAttribute('data-theme', 'light'); else root.removeAttribute('data-theme');
   return `--ac:${c};--ac2:${ac2};--acs:color-mix(in srgb, ${c} 14%, transparent);--on-ac:${lum > 0.62 ? '#0A0F1F' : '#FFFFFF'}`;
 }
+
+/* ---------- modo claro / oscuro que elige el cliente (se recuerda en su navegador, por tienda) ---------- */
+const temaPref = () => { const v = store.get('tema:' + S.slug, null); return v === 'dark' || v === 'light' ? v : null; };
+const oscuro = () => { const a = document.documentElement.getAttribute('data-theme'); if (a) return a === 'dark'; try { return matchMedia('(prefers-color-scheme: dark)').matches; } catch (e) { return false; } };
+const temaBtn = () => `<button type="button" class="hdr-pill tema-btn" data-act="st-tema" aria-label="${oscuro() ? 'Pasar a modo claro' : 'Pasar a modo oscuro'}" title="${oscuro() ? 'Modo claro' : 'Modo oscuro'}">${oscuro() ? '☀️' : '🌙'}</button>`;
+on('st-tema', () => {
+  const nuevo = oscuro() ? 'light' : 'dark'; store.set('tema:' + S.slug, nuevo); document.documentElement.setAttribute('data-theme', nuevo);
+  document.querySelectorAll('[data-act=st-tema]').forEach(b => { b.outerHTML = temaBtn(); });
+});
 
 /* ---------- Meta Pixel (solo si el plan lo incluye y el comercio cargó su ID) ---------- */
 function cargarPixel(id) {
@@ -170,7 +182,7 @@ export async function mostrarTienda(slug, app) {
   S.cart = (store.get('cart:' + slug, []) || []).filter(l => l && prod(l.id));
   try { const pg = new URLSearchParams(location.search).get('pago'); S.avisoPago = ({ ok: '✅ ¡Gracias! Estamos confirmando tu pago con Mercado Pago. El comercio te avisa por WhatsApp.', pendiente: '⏳ Tu pago quedó pendiente. Cuando se acredite, el comercio lo confirma.', error: 'El pago no se completó. Podés volver a intentar o coordinar por WhatsApp.' })[pg] || ''; } catch (e) { S.avisoPago = ''; }
   try { const r = new URLSearchParams(location.search).get('r'); if (r && /^[A-Za-z0-9_-]{8,64}$/.test(r)) store.set('ref:' + slug, { r, ts: Date.now() }); const g = store.get('ref:' + slug, null); S.ref = g && g.r && Date.now() - g.ts < 30 * 864e5 ? g.r : null; } catch (e) { S.ref = null; }   // la atribución al revendedor vence a los 30 días
-  S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null;
+  S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null; S.rubro = null; S.foco = null; S.niveles = null; S.orden = 'dest';
   cargarPixel(S.tienda.pixel_id);
   document.title = S.tienda.nombre;
   pintar();
@@ -179,12 +191,15 @@ export async function mostrarTienda(slug, app) {
 /* ---------- pantallas ---------- */
 function pintar() {
   const app = $('#root'), m = vista(), T = totales();
-  app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}" style="${marca()}">
-    <div id="hdr"><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${esc(S.tienda.nombre)}</div>
-      <button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">🛒${T.n ? `<span id="cart-n">${T.n}</span>` : ''}</button></div>
+  const st = marca(), L = lookDe(S.tienda.diseno), c = L.compacto && S.vista === 'cat';
+  app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}${L.compacto ? ' compacto' : ''}" style="${st}">
+    <div id="hdr"${L.compacto ? ' class="hdr-c"' : ''}><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${L.compacto ? `<span class="hdr-nm">${esc(S.tienda.nombre)}${S.tienda.eslogan ? `<small>${esc(S.tienda.eslogan)}</small>` : ''}</span>` : esc(S.tienda.nombre)}</div>
+      <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
     ${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); iniciarVitrina(); }
 }
+
+const fabHtml = T => (lookDe(S.tienda.diseno).compacto ? '🛒<span class="fab-tx"> Mi pedido</span>' : '🛒') + (T.n ? `<span id="cart-n">${T.n}</span>` : '');
 
 /* ---------- ofertas y combos (los precios ya vienen con el descuento desde la base) ---------- */
 const DIAS_C = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
@@ -304,7 +319,36 @@ const cerrarComprar = () => { const r = $('#pop-root'); if (r) r.innerHTML = '';
 on('st-comprar', () => { const r = $('#pop-root'); if (r) { r.innerHTML = comprarModalHtml(S.tienda.diseno, S.tienda); const b = r.querySelector('[data-act=st-comprar-cerrar]'); if (b) b.focus(); } });
 on('st-comprar-cerrar', cerrarComprar);
 on('st-comprar-bg', (d, b, e) => { if (e.target === b) cerrarComprar(); });
-on('st-hero', () => { const e = $('#search-row'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+// botón de un banner de portada: a un rubro, a una categoría, a todo el catálogo o (sin destino) baja a los productos
+on('st-hero', d => {
+  const ir = String(d.ir || ''), rb = rubrosCfg(S.tienda.diseno, S.prods);
+  if (ir.startsWith('r:') && rb && rb.lista.some(r => r.id === ir.slice(2))) return entrarRubro(ir.slice(2));
+  if (ir === 'todo' && rb) return entrarRubro('*');
+  if (ir.startsWith('c:') && S.prods.some(p => p.categoria === ir.slice(2))) {
+    const c = ir.slice(2), r = rb && rb.lista.find(x => x.cats.includes(c));
+    if (rb) return entrarRubro(r ? r.id : '*', c);
+    S.cat = c; S.limite = 60; pintarGrid();
+  }
+  const e = $('#search-row'); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+// banners de rubro: entrar a uno (o a todo el catálogo con "*") y volver a la portada
+function aRubros() {
+  const e = $('#rubros'); if (!e) return;
+  const tope = [...document.querySelectorAll('#hdr, #search-row')].filter(x => getComputedStyle(x).position === 'sticky').reduce((a, x) => a + x.offsetHeight, 0) + 6;
+  window.scrollTo({ top: Math.max(0, e.getBoundingClientRect().top + window.scrollY - tope), behavior: menosMovimiento() ? 'auto' : 'smooth' });
+}
+function entrarRubro(id, cat) {
+  const venia = S.rubro; S.rubro = id; S.cat = cat || 'Todas'; S.limite = 60;
+  try { if (venia === null) history.pushState({ rb: id }, ''); else history.replaceState({ rb: id }, ''); } catch (e) { }   // el "atrás" del celular vuelve a la portada
+  pintarGrid(); aRubros();
+}
+function volverRubros() { S.rubro = null; S.cat = 'Todas'; S.limite = 60; pintarGrid(); aRubros(); }
+on('st-rubro', d => {
+  if (d.r) return entrarRubro(d.r);
+  if (history.state && history.state.rb) { try { history.back(); return; } catch (e) { } }
+  volverRubros();
+});
+window.addEventListener('popstate', () => { if (S.tienda && S.vista === 'cat' && S.rubro !== null && $('#rubros')) volverRubros(); });
 function banner() {
   const aviso = S.avisoPago ? `<div class="ok-box" role="status" style="margin:12px 16px">${esc(S.avisoPago)}</div>` : '';
   const t = S.tienda, m = vista();
@@ -315,48 +359,124 @@ function banner() {
   if (t.modo_stock === 'encargo') chips += `<span class="chip">📦 Por encargo · llega en ${+t.demora_encargo || 7} días</span>`;
   if (+t.envio_gratis_desde > 0 && envios().some(e => e.tipo !== 'retiro')) chips += `<span class="chip">🚚 Envío gratis desde ${fmt(t.envio_gratis_desde)}</span>`;
   chips += '<button class="chip" data-act="st-pdf">📄 Lista de precios (PDF)</button>';
+  // encabezado compacto: el nombre va arriba y "Cómo comprar" y el PDF quedan como botones chicos
+  if (lookDe(t.diseno).compacto) return aviso + heroHtml(t.diseno) + `<div id="store-banner" class="sb-c"><div class="banner-row">${chips.replace(/<button class="chip" data-act="st-pdf">[^<]*<\/button>/, '')}</div>${caja}</div>` + beneficiosHtml(t.diseno);
   return aviso + heroHtml(t.diseno) + `<div id="store-banner"><div class="banner-name">${esc(t.nombre)}</div><div class="banner-sub">${esc(t.eslogan || '')}</div><div class="banner-row">${chips}</div>${caja}</div>` + beneficiosHtml(t.diseno) + comprarCardHtml(t.diseno);
 }
+const ORDEN = [['dest', 'Destacados'], ['menor', 'Menor precio'], ['mayor', 'Mayor precio'], ['az', 'A – Z']];
 function pantallaCat() {
-  return `${banner()}${vitrinasHtml('arriba')}<div id="search-row"><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div></div>
-    <div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${vitrinasHtml('abajo')}${testimoniosHtml(S.tienda.diseno)}${faqHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="flybar" hidden></div><div id="cartbar" hidden></div></div><div style="height:90px"></div>`;
+  const c = lookDe(S.tienda.diseno).compacto, n = totales().n;
+  return `${banner()}${vitrinasHtml('arriba')}<div id="search-row"${c ? ' class="sr-c"' : ''}><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div>${c ? `<button type="button" class="sr-cart" data-act="st-ir" data-v="cart" aria-label="Mi pedido">🛒<span id="sr-n">${n || ''}</span></button>` : ''}</div>
+    ${c ? `<div class="catalog-meta" id="cmeta"><span id="cm-n"></span><label class="cm-ord">Ordenar <select class="fi" data-change="st-orden" aria-label="Ordenar productos">${ORDEN.map(([k, t]) => `<option value="${k}" ${S.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>` : ''}
+    <div id="rubros"></div><div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${vitrinasHtml('abajo')}${testimoniosHtml(S.tienda.diseno)}${faqHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="flybar" hidden></div><div id="cartbar" hidden></div></div><div class="cart-esp"></div>`;
 }
+on('st-orden', (d, el) => { S.orden = ORDEN.some(o => o[0] === el.value) ? el.value : 'dest'; S.limite = 60; pintarGrid(); });
+// encabezado compacto: la fila del buscador se esconde al bajar y vuelve apenas se sube
+let ultY = 0;
+window.addEventListener('scroll', () => {
+  const sr = document.querySelector('#search-row.sr-c'); if (!sr) return;
+  const y = window.scrollY, abajo = y > ultY + 6, arriba = y < ultY - 4;
+  if (y > 200 && abajo && document.activeElement !== $('#srch')) sr.classList.add('oculta'); else if (arriba || y <= 200) sr.classList.remove('oculta');
+  if (abajo || arriba) ultY = y;
+}, { passive: true });
 function pintarGrid() {
+  const d = S.tienda.diseno, L = lookDe(d), q = S.q.toLowerCase().trim();
+  // banners de rubro: portada ("Seleccioná la categoría"), adentro de un rubro o "todo el catálogo"
+  const rb = rubrosCfg(d, S.prods);
+  if (!rb) S.rubro = null; else if (S.rubro && S.rubro !== '*' && !rb.lista.some(r => r.id === S.rubro)) S.rubro = null;
+  const rAct = rb && S.rubro && S.rubro !== '*' ? rb.lista.find(r => r.id === S.rubro) : null;
+  const portada = !!rb && S.rubro === null && !q;
+  const rbe = $('#rubros');
+  if (rbe) rbe.innerHTML = !rb ? '' : portada ? rubrosHtml(rb, S.prods, S.prods.length) : S.rubro !== null ? rubroCabHtml(rAct, S.prods, S.cat) : '';
   const cats = ['Todas', ...new Set(S.prods.map(p => p.categoria))];
-  const cf = catFotoCfg(S.tienda.diseno), ce = $('#cats'), xs = ce.querySelector('.ct-track') ? ce.querySelector('.ct-track').scrollLeft : 0;
-  ce.hidden = !secOn(S.tienda.diseno, 'categorias'); ce.classList.toggle('ct', !!cf);
-  ce.innerHTML = cf && cats.length > 2 ? catTilesHtml(cf, cats.slice(1), S.prods, S.cat)
+  const cf = catFotoCfg(d), ce = $('#cats'), xs = ce.querySelector('.ct-track') ? ce.querySelector('.ct-track').scrollLeft : 0;
+  ce.hidden = !secOn(d, 'categorias') || (!!rb && S.rubro !== '*'); ce.classList.toggle('ct', !!cf);
+  ce.innerHTML = rb && S.rubro !== '*' ? '' : cf && cats.length > 2 ? catTilesHtml(cf, cats.slice(1), S.prods, S.cat)
     : cats.map(c => `<button class="pill ${c === S.cat ? 'on' : ''}" data-act="st-cat" data-c="${esc(c)}">${esc(c)}</button>`).join('');
   if (xs) { const tr = ce.querySelector('.ct-track'); if (tr) tr.scrollLeft = xs; }   // no vuelve al principio al elegir una
-  const q = S.q.toLowerCase().trim();
-  const lista = S.prods.filter(p => (S.cat === 'Todas' || p.categoria === S.cat) && (!q || p.nombre.toLowerCase().includes(q) || (p.marca || '').toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q)));
-  const m = vista(), esc_ = S.tienda.escalas_activas, g = $('#pgrid');
-  if (!lista.length) { g.innerHTML = '<div style="grid-column:1/-1" class="empty"><div class="ico">🔍</div><p>No encontramos productos.</p></div>'; $('#mas').innerHTML = ''; return; }
-  const verCat = S.cat === 'Todas' && cats.length > 2;   // la etiqueta de categoría solo suma si hay varias
+  const g = $('#pgrid'), cm = $('#cmeta');
+  if (portada) { g.innerHTML = ''; $('#mas').innerHTML = ''; if (cm) cm.hidden = true; return; }
+  const base = rAct ? S.prods.filter(p => rAct.cats.includes(p.categoria)) : S.prods;
+  let lista = base.filter(p => (S.cat === 'Todas' || p.categoria === S.cat) && (!q || p.nombre.toLowerCase().includes(q) || (p.marca || '').toLowerCase().includes(q) || p.categoria.toLowerCase().includes(q)));
+  // orden (encabezado compacto) y, en "Todo el rubro", agrupado por subcategoría con un separador
+  const precioDe = p => { const t = tramos(p); return t ? t[1] : +p.precio_1; };
+  const cmp = { menor: (a, b) => precioDe(a) - precioDe(b), mayor: (a, b) => precioDe(b) - precioDe(a), az: (a, b) => a.nombre.localeCompare(b.nombre, 'es') }[S.orden];
+  const separar = rAct && S.cat === 'Todas' && rAct.cats.length > 1 && !q;
+  if (cmp || separar) { const ix = p => separar ? rAct.cats.indexOf(p.categoria) : 0; lista = lista.map((p, i) => [p, i]).sort((a, b) => (ix(a[0]) - ix(b[0])) || (cmp ? cmp(a[0], b[0]) : 0) || a[1] - b[1]).map(x => x[0]); }
+  if (cm) { cm.hidden = false; const n = $('#cm-n'); if (n) n.textContent = `Mostrando ${lista.length} ${lista.length === 1 ? 'producto' : 'productos'}`; }
+  const m = vista(), esc_ = S.tienda.escalas_activas;
+  if (!lista.length) { g.innerHTML = `<div style="grid-column:1/-1" class="empty"><div class="ico">🔍</div><p>No encontramos productos${rAct ? ' en ' + esc(rAct.titulo) : ''}.</p>${rAct && q ? '<button class="btn btn-s btn-sm" style="margin-top:8px" data-act="st-rubro" data-r="*">Buscar en todo el catálogo</button>' : ''}</div>`; $('#mas').innerHTML = ''; return; }
+  const verCat = S.cat === 'Todas' && cats.length > 2 && !L.limpia && !separar;   // la etiqueta de categoría solo suma si hay varias
+  let previa = null;
   g.innerHTML = lista.slice(0, S.limite).map(p => {
     const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = S.sel[p.id] || 0, vars = p.variantes || [];
+    const div = separar && p.categoria !== previa ? `<div class="pg-div"><b>${esc(p.categoria)}</b><span>${lista.filter(x => x.categoria === p.categoria).length} productos</span></div>` : ''; previa = p.categoria;
     const hl = n => qe > 0 && ((n === 12 && qe >= 12) || (n === 6 && qe >= 6 && qe < 12) || (n === 3 && qe >= 3 && qe < 6) || (n === 1 && qe < 3)) ? 'hl' : '';
     const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
-    const precio = (m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${tachado(p, p.precio_1)}${porUnidad(p)}${usd(+p.precio_1)}</div>`
+    const limpio = L.limpia && m === 'may' && t && !t.unico && esc_ && t[12] < t[1];
+    const hoy = limpio && qty && qe >= 3 && unidad(p, qe) < t[1];
+    const precio = (limpio ? `${porUnidad(p)}<div class="price-clean"><div class="pc-l">Precio supermayorista</div><div class="pc-p">${fmt(t[12])} <small>c/u</small></div><div class="pc-q">llevando 12 o más</div><div class="pc-1">Precio por 1 unidad: ${fmt(t[1])}</div>${hoy ? `<div class="pc-hoy">✓ En tu pedido hoy: ${fmt(unidad(p, qe))} c/u</div>` : ''}</div>`
+      : m === 'min' || !t ? `<div><span class="retail-price">${fmt(p.precio_1)}</span>${tachado(p, p.precio_1)}${porUnidad(p)}${usd(+p.precio_1)}</div>`
       : t.unico ? `<div><span class="retail-price">${fmt(t[1])}</span>${m === 'may' && S.tienda.modalidad === 'mayorista' ? tachado(p, t[1]) : ''}${porUnidad(p)}<div class="flat-note">precio mayorista único</div>${usd(t[1])}</div>`
       : esc_ ? `${porUnidad(p)}<div class="ptiers">${[1, 3, 6, 12].map(n => `<div class="ptier ${hl(n)}"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>`
       : `<div><span class="retail-price">${fmt(t[1])}</span>${porUnidad(p)}<div class="flat-note">precio mayorista</div>${usd(t[1])}</div>`) + ofertaNota(p);
     const enFly = S.fly.includes(p.id);
     const ctrl = p.agotado ? '<button class="qadd" disabled>Agotado</button>' : qty > 0
-      ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span><button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
-      : `<button class="qadd" data-act="st-add" data-id="${p.id}">+ Agregar</button>`;
+      ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>${L.limpia ? '<span class="q-en">en pedido</span>' : ''}<button class="qbtn" data-act="st-add" data-id="${p.id}" aria-label="Agregar uno">+</button>`
+      : `<button class="qadd" data-act="st-add" data-id="${p.id}">${L.limpia ? '+ Agregar al pedido' : '+ Agregar'}</button>`;
     const rv = fxOn() && typeof IntersectionObserver !== 'undefined' && !(S.vistos && S.vistos.has(p.id)) ? ' rv' : '';
-    return `<div class="pcard${qty ? ' in-cart' : ''}${rv}" data-id="${p.id}"><div class="pimg${p.imagen_url ? ' con-img' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;${p.imagen_url ? cssImg(p.imagen_url) : 'background:linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${comboTxt(p) ? '<span class="badge badge-cat badge-cb">🧩 Combo</span>' : verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${ofPct(p) ? `<span class="badge badge-of">-${ofPct(p)}%</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.a_pedido && S.tienda.modo_stock === 'mixto' ? `<span class="badge badge-enc">Por encargo · llega en ${+p.demora_dias} días</span>` : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}</div>
-      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${escalaHtml(p, true)}${ganHtml(p)}<div class="pqty">${ctrl}</div>${flyOn() ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
+    const flyIco = flyOn() && L.limpia ? `<button type="button" class="fly-ico${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}" aria-label="${enFly ? 'Quitar del flyer' : 'Elegir para un flyer para vender'}" title="Flyer para vender">${enFly ? '✓' : '📲'}</button>` : '';
+    return `${div}<div class="pcard${qty ? ' in-cart' : ''}${rv}${L.limpia ? ' limpia' : ''}" data-id="${p.id}"><div class="pimg${p.imagen_url ? ' con-img' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;${p.imagen_url ? cssImg(p.imagen_url) : 'background:linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${comboTxt(p) ? '<span class="badge badge-cat badge-cb">🧩 Combo</span>' : verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${ofPct(p) ? `<span class="badge badge-of">-${ofPct(p)}%</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.a_pedido && S.tienda.modo_stock === 'mixto' ? `<span class="badge badge-enc">Por encargo · llega en ${+p.demora_dias} días</span>` : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}${flyIco}</div>
+      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${escalaHtml(p, true)}${ganHtml(p)}<div class="pqty">${ctrl}</div>${flyOn() && !L.limpia ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
   }).join('');
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
   revelar();
 }
+/* ---------- barra del pedido con niveles (1u · 3u · 6u · 12u+): vibra, se sacude y avisa al desbloquear uno ---------- */
+const NIVELES = [[1, 'Inicial'], [3, 'Mayorista'], [6, 'Especial'], [12, '🏆 Super']];
+const gamiOn = () => lookDe(S.tienda.diseno).barra && vista() === 'may' && !!S.tienda.escalas_activas;
+const nivelDe = q => (q >= 12 ? 3 : q >= 6 ? 2 : q >= 3 ? 1 : 0);
+const posNivel = q => (q >= 12 ? 100 : q >= 6 ? 66.67 + (q - 6) / 6 * 33.33 : q >= 3 ? 33.33 + (q - 3) / 3 * 33.34 : Math.max(0, (q - 1) / 2 * 33.33));
+// el producto que se muestra: el último que tocó el cliente; si ese no tiene escala, el último del carrito que sí tenga
+function focoEsc() {
+  const ids = [S.foco, ...S.cart.map(l => l.id).reverse()];
+  for (const id of ids) { const p = prod(id), e = p && escala(p); if (e && e.q > 0) return { p, e }; }
+  return null;
+}
+const deGrupo = p => { const m = grupoModo(); return m === 'categoria' ? 'de ' + nombreCat(p) : m === 'carrito' ? 'de cualquier producto' : 'de ' + p.nombre; };
+function celebrar(cb, nivel) {
+  if (efectosOn(S.tienda.diseno)) { try { if (navigator.vibrate) navigator.vibrate(nivel >= 3 ? [65, 35, 130] : [45, 25, 70]); } catch (e) { } }
+  setTimeout(() => { const x = cb.querySelector('.gb-pill'); if (x) x.remove(); }, 2400);
+  if (!fxOn()) return;
+  cb.classList.remove('gb-shake'); void cb.offsetWidth; cb.classList.add('gb-shake');
+}
+function pintarGami(cb, T) {
+  const mc = minimo(), f = focoEsc(), mini = !!store.get('gbmini:' + S.slug, false);
+  // niveles ya alcanzados al entrar (no se festejan de nuevo)
+  if (!S.niveles) { S.niveles = {}; S.cart.forEach(l => { const p = prod(l.id), e = p && escala(p); if (e) S.niveles[grupoDe(p)] = nivelDe(e.q); }); }
+  let msg, track = '', nivel = -1, subio = false;
+  if (f) {
+    const { p, e } = f, k = grupoDe(p), antes = S.niveles[k] === undefined ? -1 : S.niveles[k];
+    nivel = nivelDe(e.q); subio = nivel > antes && nivel >= 1; S.niveles[k] = nivel;
+    msg = e.nx ? `Sumá <b>${e.falta} u.</b> más ${esc(deGrupo(p))} y desbloqueá el precio ${NIVELES[nivel + 1][1]} · <b>${fmt(e.pn)} c/u</b>`
+      : `🏆 ¡Desbloqueaste el precio Super!${e.ahorro > 0 ? ` · ahorrás <b>${fmt(e.ahorro)}</b>` : ''} ${esc(deGrupo(p).replace(/^de /, 'en '))}`;
+    track = `<div class="gb-track" aria-hidden="true"><div class="gb-rail"><i style="width:${posNivel(e.q).toFixed(1)}%"></i></div>${NIVELES.map(([n, nm], i) => `<span class="gb-cp${e.q >= n ? ' ok' : ''}${subio && i === nivel ? ' pop' : ''}" style="left:${[0, 33.33, 66.67, 100][i]}%"><b></b><small>${n}u${n === 12 ? '+' : ''} · ${nm}</small></span>`).join('')}</div>`;
+  } else msg = mc && T.total < mc ? `Te faltan <b>${fmt(mc - T.total)}</b> para desbloquear la compra mayorista` : 'Tu pedido está listo para enviar';
+  const mcTxt = mc ? (T.total >= mc ? '✓ Mínimo cubierto' : `Faltan ${fmt(mc - T.total)} para el mínimo`) : '';
+  cb.className = `gami lvl${Math.max(0, nivel)}${mini ? ' mini' : ''}`;
+  cb.innerHTML = `<div class="gb-top"><div class="gb-msg" role="status">${msg}</div><button type="button" class="gb-tg" data-act="gb-min" aria-expanded="${!mini}">${mini ? '▴ Ver escala' : '▾ Minimizar'}</button></div>${track}
+    <div class="gb-foot"><span class="gb-tot"><b>${T.n} u.</b> · ${fmt(T.total)}</span>${mcTxt ? `<span class="gb-mc${T.total >= mc ? ' ok' : ''}">${mcTxt}</span>` : ''}<span class="gb-go">Ver pedido →</span></div>${subio ? '<span class="gb-pill" role="status">¡Nivel desbloqueado!</span>' : ''}`;
+  if (subio) celebrar(cb, nivel);
+}
+on('gb-min', () => { store.set('gbmini:' + S.slug, !store.get('gbmini:' + S.slug, false)); pintarBarra(); });
 function pintarBarra() {
   const T = totales(), cb = $('#cartbar'); if (!cb) return;
-  cb.hidden = T.n === 0; if (!T.n) return;
+  cb.hidden = T.n === 0; const app = $('#app'), gami = !!T.n && gamiOn(); if (app) app.classList.toggle('gb-on', gami);
+  if (!T.n) return;
   const h = pista(), mc = minimo();
   cb.setAttribute('data-act', 'st-ir'); cb.dataset.v = 'cart';
+  if (gami) return pintarGami(cb, T);
+  cb.className = '';
   cb.innerHTML = `<div class="cb-main"><div class="cb-t">${T.n} u. · ${fmt(T.total)}</div><div class="cb-h">${h ? `Sumá ${h.falta} u. más${grupoModo() === 'producto' ? '' : ' ' + esc(h.de)} y ahorrá ${fmt(h.ahorro)}` : (mc && T.total < mc ? `Faltan ${fmt(mc - T.total)} para el mínimo` : 'Listo para finalizar')}</div></div><div class="cb-go">Ver carrito →</div>`;
 }
 function pintarFlybar() {
@@ -473,16 +593,16 @@ on('st-var', d => { S.sel[d.id] = +d.i; pintarGrid(); pintarDet(); });
 on('st-add', (d, b) => {
   const p = prod(d.id); if (!p || p.agotado) return;
   const vr = (p.variantes || [])[S.sel[p.id] || 0] || '';
-  const ex = S.cart.find(l => l.id === p.id && l.vr === vr); ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1 });
+  const ex = S.cart.find(l => l.id === p.id && l.vr === vr); ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1 }); S.foco = p.id;
   guardarCarrito(); evento('AddToCart', { content_name: p.nombre }); marcarAct('c', p.id); refrescar(); golpe(b);
 });
 on('st-dec', d => {
   const p = prod(d.id), vr = (p.variantes || [])[S.sel[p.id] || 0] || '';
   const l = S.cart.find(x => x.id === d.id && x.vr === vr) || S.cart.find(x => x.id === d.id); if (!l) return;
-  l.qty--; if (l.qty < 1) S.cart = S.cart.filter(x => x !== l); guardarCarrito(); refrescar();
+  l.qty--; if (l.qty < 1) S.cart = S.cart.filter(x => x !== l); S.foco = d.id; guardarCarrito(); refrescar();
 });
 on('st-lq', d => { const l = S.cart[+d.i]; if (!l) return; l.qty += +d.d; if (l.qty < 1) S.cart.splice(+d.i, 1); guardarCarrito(); pintar(); });
-function refrescar() { const T = totales(); const f = $('#cart-fab'); if (f) f.innerHTML = '🛒' + (T.n ? `<span id="cart-n">${T.n}</span>` : ''); pintarGrid(); pintarBarra(); pintarDet(); pintarVitrina(); }
+function refrescar() { const T = totales(); const f = $('#cart-fab'); if (f) f.innerHTML = fabHtml(T); const sn = $('#sr-n'); if (sn) sn.textContent = T.n || ''; pintarGrid(); pintarBarra(); pintarDet(); pintarVitrina(); }
 // en el carrusel solo se actualiza el "N u" (así no salta de lugar mientras la persona agrega)
 function pintarVitrina() { document.querySelectorAll('section.vt .vt-card').forEach(c => { const q = qtyDe(c.dataset.id), b = c.querySelector('.vt-q'); c.classList.toggle('in-cart', !!q); if (b) { b.hidden = !q; b.textContent = q + ' u'; } }); }
 /* ---------- ficha de producto (foto grande, descripción, variantes y escalas) ---------- */
@@ -512,7 +632,7 @@ function setVar(id, i, n) {
   n = Math.max(0, Math.min(9999, Math.round(Number(n) || 0)));
   const l = S.cart.find(x => x.id === id && x.vr === vr), antes = l ? l.qty : 0;
   if (!n) S.cart = S.cart.filter(x => x !== l); else if (l) l.qty = n; else S.cart.push({ id, vr, qty: n });
-  if (n > antes) evento('AddToCart', { content_name: p.nombre });
+  if (n > antes) evento('AddToCart', { content_name: p.nombre }); S.foco = id;
   guardarCarrito(); refrescar();
 }
 on('st-vq', d => setVar(d.id, d.i, qtyVar(d.id, (prod(d.id).variantes || [])[+d.i]) + +d.d));

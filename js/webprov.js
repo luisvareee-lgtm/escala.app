@@ -639,6 +639,33 @@ export function productosDePegado(html, texto, urlSugerida) {
   return { host: host === 'pegado.local' ? 'página pegada' : host, base, productos, tasas: tasasDelSitio(plano.slice(0, 20000)), idioma, como, monedaDef };
 }
 
+// Recuadro único de pegar del importador. Decide qué llegó:
+//  · una página web copiada (HTML con tarjetas de productos) → panel 🌐 de ese proveedor, con fotos y precios;
+//  · si veníamos de una web que no se dejó leer y llegó solo el texto de la página → también va a ese proveedor;
+//  · cualquier otra cosa (lista de WhatsApp, mail, Excel) → se pega como texto y se lee renglón por renglón.
+// El texto de una página copiada trae el precio en su propio renglón ("U$ 66,00"); una lista de WhatsApp,
+// el nombre y el precio juntos ("Perfume X 100ml $12.500").
+export function pareceTextoDePagina(texto) {
+  const L = String(texto || '').split(/\n/).map(l => l.trim()).filter(Boolean);
+  const MON = '(?:U\\$S?|US\\$|R\\$|Gs\\.?|₲|\\$|USD|BRL|PYG)';
+  const conPrecio = L.filter(l => /\d/.test(l) && new RegExp(MON, 'i').test(l));
+  const solo = conPrecio.filter(l => new RegExp('^(?:precio\\s*:?\\s*)?' + MON + '\\s*[\\d.,]+(?:\\s*(?:USD|BRL|PYG))?$', 'i').test(l));
+  return solo.length > 0 && solo.length * 2 >= conPrecio.length;
+}
+export function queSePego(html, texto, modoWeb, urlSugerida) {
+  html = String(html || ''); texto = String(texto || '');
+  const links = (html.match(/<a\b[^>]*href=/gi) || []).length;
+  if (html && links) {
+    let p = null; try { p = productosDePegado(html, texto, urlSugerida); } catch (e) { p = null; }
+    if (p && p.productos.length && (p.como === 'tarjetas' || (modoWeb && links >= 10))) return { tipo: 'web', p };
+  }
+  if (modoWeb && pareceTextoDePagina(texto)) {
+    let p = null; try { p = productosDePegado('', texto, urlSugerida); } catch (e) { p = null; }
+    if (p && p.productos.length) return { tipo: 'web', p };
+  }
+  return { tipo: 'texto' };
+}
+
 // Precios a la moneda de la tabla. tasas = unidades por dólar ({BRL: 5.7, PYG: 7300, …}); cot = pesos por dólar.
 export function enMoneda(p, destino, tasas, cot) {
   const v = Number(p.precio) || 0; if (!(v > 0)) return 0;

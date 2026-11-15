@@ -17,7 +17,7 @@ export function anuncioHtml(d) {
 
 // ---- banners de portada (1 a 4; con más de uno pasan solos) ----
 export const banners = d => !d ? [] : (Array.isArray(d.banners) ? d.banners : d.banner ? [d.banner] : []).filter(b => b && (b.titulo || b.texto || okUrl(b.imagen)));
-const slide = b => `<div class="st-hero${okUrl(b.imagen) ? ' con-img' : ''}">${okUrl(b.imagen) ? `<img src="${esc(b.imagen)}" alt="" loading="lazy">` : ''}<div class="st-hero-tx">${b.titulo ? `<h2>${esc(b.titulo)}</h2>` : ''}${b.texto ? `<p>${esc(b.texto)}</p>` : ''}${b.boton ? `<button class="btn btn-p btn-sm" data-act="st-hero">${esc(b.boton)}</button>` : ''}</div></div>`;
+const slide = b => `<div class="st-hero${okUrl(b.imagen) ? ' con-img' : ''}">${okUrl(b.imagen) ? `<img src="${esc(b.imagen)}" alt="" loading="lazy">` : ''}<div class="st-hero-tx">${b.titulo ? `<h2>${esc(b.titulo)}</h2>` : ''}${b.texto ? `<p>${esc(b.texto)}</p>` : ''}${b.boton ? `<button class="btn btn-p btn-sm" data-act="st-hero" data-ir="${esc(b.ir || '')}">${esc(b.boton)}</button>` : ''}</div></div>`;
 export function heroHtml(d) {
   const L = banners(d); if (!L.length) return '';
   if (L.length === 1) return `<section class="st-heros">${slide(L[0])}</section>`;
@@ -81,6 +81,59 @@ export function catTilesHtml(cfg, cats, prods, actual, conTodas = true) {
     <span class="ct-img${img ? ' con-img' : ''}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span aria-hidden="true">${todas ? '🛍️' : '🏷️'}</span>`}</span><span class="ct-n">${esc(todas ? 'Todo' : c)}</span><span class="ct-c">${cant} ${cant === 1 ? 'producto' : 'productos'}</span></button>`;
   return `<div class="ct-h"><h3>${esc(cfg.titulo)}</h3></div><div class="ct-track">${conTodas ? tile('Todas', '', prods.length, true) : ''}${cats.map(c => tile(c, fotoCategoria(c, prods, cfg.fotos), n(c), false)).join('')}</div>`;
 }
+
+// ---- banners de rubro: agrupan categorías en la portada del catálogo ("Seleccioná la categoría") ----
+// tema de color de cada banner (pensados con la psicología del color); "marca" usa el color de la tienda
+export const TEMAS_RB = [['bronce', '🥇 Bronce imperial y dorado ámbar', 'lujo y exclusividad: perfumes, relojes, joyas'], ['magenta', '🔮 Humo magenta y azul hielo', 'moda, noche y tecnología'], ['rosa', '🌸 Rosa seducción y orquídea', 'belleza, cosmética y regalos'], ['esmeralda', '🌿 Esmeralda y verde menta', 'natural, salud y ahorro'], ['marca', '🎨 El color de mi tienda', 'el mismo color de tus botones']];
+const temaRb = t => (TEMAS_RB.some(x => x[0] === t) ? t : 'bronce');
+const txt = (v, n) => String(v || '').trim().slice(0, n);
+// rubros que se muestran (solo con categorías que tienen productos, si se pasan los productos)
+export function rubrosCfg(d, prods) {
+  const r = d && d.rubros; if (!r || !r.activo || !Array.isArray(r.lista)) return null;
+  const hay = prods ? new Set(prods.filter(p => p.activo !== false).map(p => p.categoria)) : null;
+  const lista = r.lista.filter(x => x && x.id && txt(x.titulo, 50) && Array.isArray(x.cats))
+    .map(x => ({ id: String(x.id), titulo: txt(x.titulo, 50), kicker: txt(x.kicker, 60), texto: txt(x.texto, 160), badge: txt(x.badge, 30), tema: temaRb(x.tema), imagen: okUrl(x.imagen) ? x.imagen : '',
+      cats: [...new Set(x.cats.filter(c => typeof c === 'string' && (!hay || hay.has(c))))], suma: !!x.suma }))
+    .filter(x => x.cats.length);
+  return lista.length ? { titulo: txt(r.titulo, 40) || 'Seleccioná la categoría', lista } : null;
+}
+// precio por cantidad "por categoría": las categorías de un rubro que "suman juntas" cuentan como una sola
+// (mismo criterio que el servidor: public.escala_cat)
+export function claveCat(d, cat) {
+  const r = d && d.rubros; cat = cat || '';
+  if (r && r.activo && Array.isArray(r.lista)) { const x = r.lista.find(x => x && x.suma === true && x.id && Array.isArray(x.cats) && x.cats.includes(cat)); if (x) return 'r:' + x.id; }
+  return 'c:' + cat;
+}
+export const rubroDe = (d, id) => { const r = d && d.rubros; return r && Array.isArray(r.lista) ? r.lista.find(x => x && x.id === id) || null : null; };
+// hasta 3 fotos de productos del rubro (una de cada categoría por turno), para cuando el banner no tiene imagen propia
+export function fotosRubro(r, prods, n = 3) {
+  const por = r.cats.map(c => prods.filter(p => p.categoria === c && p.imagen_url && p.activo !== false && !p.agotado)), L = [];
+  for (let i = 0; L.length < n && i < 12; i++) por.forEach(a => { if (L.length < n && a[i]) L.push(a[i].imagen_url); });
+  return L;
+}
+export function rubrosHtml(cfg, prods, total) {
+  const cuenta = r => prods.filter(p => r.cats.includes(p.categoria)).length;
+  const ban = r => {
+    const fotos = r.imagen ? [r.imagen] : fotosRubro(r, prods), n = cuenta(r);
+    const pills = r.cats.slice(0, 3).map(c => `<span>${esc(c)}</span>`).join('') + (r.cats.length > 3 ? `<span>+${r.cats.length - 3}</span>` : '');
+    return `<article class="rb-ban rb-${r.tema}" role="button" tabindex="0" data-act="st-rubro" data-r="${esc(r.id)}" aria-label="${esc(r.titulo)}: ver ${n} ${n === 1 ? 'producto' : 'productos'}">
+      <div class="rb-left">${r.kicker ? `<span class="rb-kick">${esc(r.kicker)}</span>` : ''}<h4>${esc(r.titulo)}</h4>${r.texto ? `<p>${esc(r.texto)}</p>` : ''}<div class="rb-pills">${pills}</div><span class="rb-mas">Ver más →</span></div>
+      <div class="rb-right${fotos.length > 1 ? ' rb-mos' + fotos.length : ''}">${fotos.length ? fotos.map(f => `<img src="${esc(f)}" alt="" loading="lazy">`).join('') : '<span class="rb-vacio" aria-hidden="true">🛍️</span>'}</div>
+      ${r.badge ? `<span class="rb-badge">${esc(r.badge)}</span>` : ''}</article>`;
+  };
+  return `<section class="rb-portada" id="rb-portada"><div class="rb-h"><small>Catálogo</small><h3>${esc(cfg.titulo)}</h3></div><div class="rb-list">${cfg.lista.map(ban).join('')}</div>${total ? `<button type="button" class="rb-todo" data-act="st-rubro" data-r="*">🛍️ Ver todo el catálogo · ${total} ${total === 1 ? 'producto' : 'productos'} →</button>` : ''}</section>`;
+}
+// adentro de un rubro: volver y una píldora por subcategoría (con cuántos productos tiene)
+export function rubroCabHtml(r, prods, actual) {
+  const n = c => prods.filter(p => p.categoria === c).length;
+  const tot = r ? prods.filter(p => r.cats.includes(p.categoria)).length : prods.length;
+  return `<div class="rb-in${r ? ' rb-' + r.tema : ''}"><button type="button" class="rb-volver" data-act="st-rubro" data-r="">← Volver a categorías</button>
+    <div class="rb-in-t"><h3>${esc(r ? r.titulo : 'Todo el catálogo')}</h3><small>${tot} ${tot === 1 ? 'producto' : 'productos'}</small></div>
+    ${r && r.cats.length > 1 ? `<div class="rb-subs" role="group" aria-label="Subcategorías de ${esc(r.titulo)}"><button type="button" class="pill ${actual === 'Todas' ? 'on' : ''}" data-act="st-cat" data-c="Todas">✨ Todo el rubro · ${tot}</button>${r.cats.map(c => `<button type="button" class="pill ${actual === c ? 'on' : ''}" data-act="st-cat" data-c="${esc(c)}">${esc(c)} · ${n(c)}</button>`).join('')}</div>` : ''}</div>`;
+}
+
+// ---- estilo de la tienda (Diseño → Estilo): lo que no está guardado queda como viene ----
+export const lookDe = d => { const l = (d && d.look) || {}; return { modo: l.modo !== false, barra: l.barra !== false, compacto: l.compacto === true, limpia: l.limpia === true }; };
 
 export function beneficiosHtml(d) {
   const L = (d && d.beneficios || []).filter(x => x && x.texto);

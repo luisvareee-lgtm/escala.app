@@ -5,14 +5,14 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P, can, aviso } from './state.js';
 import { redimensionar } from './img.js';
-import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catTilesHtml, fotoCategoria } from './bloques.js';
+import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catTilesHtml, fotoCategoria, rubrosCfg, rubrosHtml, fotosRubro, TEMAS_RB, lookDe } from './bloques.js';
 import { asisSwitch } from './asistente.js';
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
 const E = { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' };
-const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {} };
-export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {} }); };
+const D = { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {}, subRb: null, color: null, tema: null };
+export const resetDis = () => { Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, msg: '', err: '' }); Object.assign(D, { d: null, disp: 'cel', msg: '', err: '', subiendo: null, vtq: {}, subRb: null, color: null, tema: null }); };
 const clon = x => JSON.parse(JSON.stringify(x));
 const lista = () => (E.lista = E.lista || clon(Array.isArray(P.t.envios) ? P.t.envios : []));
 const datos = () => (E.datos = E.datos || Object.assign({}, P.t.datos_checkout || { localidad: 'opcional' }));
@@ -30,8 +30,14 @@ const dis = () => {
   o.vitrinas = (Array.isArray(o.vitrinas) ? o.vitrinas : o.vitrina ? [o.vitrina] : []).slice(0, 4).map(nuevaVitrina); delete o.vitrina;
   o.catfoto = Object.assign({ activo: false, titulo: '', fotos: {} }, o.catfoto || {}); if (!o.catfoto.fotos || typeof o.catfoto.fotos !== 'object') o.catfoto.fotos = {};
   o.propios = Array.isArray(o.comprar) && o.comprar.length > 0; if (!o.propios) o.comprar = [];
+  // banners de rubro (agrupan categorías) y estilo de la tienda
+  const rb = o.rubros && typeof o.rubros === 'object' ? o.rubros : {};
+  o.rubros = { activo: !!rb.activo, titulo: rb.titulo || '', lista: (Array.isArray(rb.lista) ? rb.lista : []).slice(0, 6).map(nuevoRubro) };
+  o.look = Object.assign({}, o.look && typeof o.look === 'object' ? o.look : {});
   return (D.d = o);
 };
+const rid = () => Math.random().toString(36).slice(2, 8);
+const nuevoRubro = x => { const r = Object.assign({ id: '', titulo: '', kicker: '', texto: '', badge: '', tema: 'bronce', imagen: '', cats: [], suma: false }, x || {}); if (!/^[a-z0-9-]{1,12}$/.test(r.id)) r.id = rid(); if (!Array.isArray(r.cats)) r.cats = []; return r; };
 const box = (m, e) => (e ? `<div class="err-box">${esc(e)}</div>` : '') + (m ? `<div class="ok-box">${esc(m)}</div>` : '');
 const idNuevo = n => (n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 14) || 'envio') + '-' + Math.random().toString(36).slice(2, 5);
 const tiendaVista = () => Object.assign({}, P.t, { envios: lista() }, hayPagos() ? { pagos_activos: pagos() } : {});
@@ -120,12 +126,84 @@ function vtEditor(d) {
     <p class="hint">Animaciones suaves que le dan vida a la tienda: los productos aparecen al bajar, la foto se acerca al pasar el mouse, el carrito salta al agregar, las fotos de los banners se mueven despacio y los carruseles pasan solos. Si alguien tiene activado “reducir movimiento” en su celular, no se mueve nada.</p></fieldset>`;
 }
 
+// ---- banners de rubro: agrupan categorías en la portada ("Seleccioná la categoría") ----
+const catsDe = () => { const m = new Map(); (P.prods || []).filter(p => p.activo !== false).forEach(p => m.set(p.categoria, (m.get(p.categoria) || 0) + 1)); return [...m].sort((a, b) => a[0].localeCompare(b[0], 'es')); };
+// a dónde lleva el botón de un banner de portada
+function destinos(d, ir) {
+  const rb = d.rubros && d.rubros.activo ? d.rubros.lista.filter(r => r.titulo.trim()) : [];
+  const op = [['', 'Al tocar: baja a los productos']].concat(rb.map(r => ['r:' + r.id, '🗂️ Rubro: ' + r.titulo]), rb.length ? [['todo', '🛍️ Todo el catálogo']] : [], catsDe().map(([c]) => ['c:' + c, '🏷️ Categoría: ' + c]));
+  if (ir && !op.some(o => o[0] === ir)) op.push([ir, '(ya no existe: elegí otro)']);
+  return op.map(([v, t]) => `<option value="${esc(v)}" ${(ir || '') === v ? 'selected' : ''}>${esc(t)}</option>`).join('');
+}
+function rbUno(r, i, cats, todos) {
+  const usado = c => todos.find((x, j) => j !== i && x.cats.includes(c));
+  const fotos = r.imagen ? [r.imagen] : fotosRubro(r, P.prods || []);
+  const grupoCat = P.t.escala_grupo === 'categoria';
+  return `<div class="dz-rb-ed" id="dz-rb${sfx(i)}"><div class="dz-vt-hd"><b>Rubro ${i + 1}</b><span class="dz-rb-sw rb-${esc(r.tema)}" aria-hidden="true"></span><button type="button" class="btn btn-s btn-sm" data-act="dz-rb-del" data-i="${i}" aria-label="Quitar el rubro ${i + 1}">✕</button></div>
+    <div class="row2"><div class="fg"><label class="flabel" for="dz-rbt${sfx(i)}">Título del rubro</label><input class="fi" id="dz-rbt${sfx(i)}" maxlength="50" value="${esc(r.titulo)}" data-input="dz-rb" data-i="${i}" data-k="titulo" placeholder="Ej: Skincare y cuidado facial"></div>
+    <div class="fg"><label class="flabel" for="dz-rbk${sfx(i)}">Frase de arriba (opcional)</label><input class="fi" id="dz-rbk${sfx(i)}" maxlength="60" value="${esc(r.kicker)}" data-input="dz-rb" data-i="${i}" data-k="kicker" placeholder="Ej: Importación directa · surtido libre"></div></div>
+    <div class="fg"><label class="flabel" for="dz-rbx${sfx(i)}">Descripción corta (opcional)</label><input class="fi" id="dz-rbx${sfx(i)}" maxlength="160" value="${esc(r.texto)}" data-input="dz-rb" data-i="${i}" data-k="texto" placeholder="Ej: Combiná sérums, parches y limpieza facial y desbloqueá el precio supermayorista"></div>
+    <div class="row2"><div class="fg"><label class="flabel" for="dz-rbb${sfx(i)}">Etiqueta en la esquina (opcional)</label><input class="fi" id="dz-rbb${sfx(i)}" maxlength="30" value="${esc(r.badge)}" data-input="dz-rb" data-i="${i}" data-k="badge" placeholder="Ej: Escala mayorista"></div>
+    <div class="fg"><label class="flabel" for="dz-rbc${sfx(i)}">Colores</label><select class="fi" id="dz-rbc${sfx(i)}" data-change="dz-rb" data-i="${i}" data-k="tema">${TEMAS_RB.map(([k, n, u]) => `<option value="${k}" ${r.tema === k ? 'selected' : ''}>${n}${u ? ' · ' + u : ''}</option>`).join('')}</select></div></div>
+    <div class="flabel">Categorías que agrupa <small class="muted">(${r.cats.length} elegidas · quedan como subcategorías, tus productos no cambian)</small></div>
+    <div class="dz-rb-cats" role="group" aria-label="Categorías del rubro ${i + 1}">${cats.map(([c, n]) => { const on = r.cats.includes(c), u = !on && usado(c); return `<label class="chipf${on ? ' on' : ''}${u ? ' usada' : ''}"><input type="checkbox" data-change="dz-rb-cat" data-i="${i}" data-c="${esc(c)}" ${on ? 'checked' : ''}>${esc(c)} <b>${n}</b>${u ? `<small> · en ${esc(u.titulo || 'otro rubro')}</small>` : ''}</label>`; }).join('') || '<span class="muted" style="font-size:.8rem">Cargá productos con categoría para armar tus rubros.</span>'}</div>
+    ${grupoCat && r.cats.length > 1 ? `<label class="chk" style="margin-top:8px"><input type="checkbox" data-change="dz-rb" data-i="${i}" data-k="suma" ${r.suma ? 'checked' : ''}><span>Sus categorías <b>suman juntas</b> para el precio por cantidad (x3 · x6 · x12). Ej: 2 sérums + 1 contorno de ojos = 3 unidades.</span></label>` : ''}
+    <div class="dz-li dz-rb-img"><span class="dz-ban-th">${fotos.length ? fotos.slice(0, 3).map(f => `<img src="${esc(f)}" alt="">`).join('') : 'Sin fotos'}</span><label class="filebtn">🖼️ ${r.imagen ? 'Cambiar imagen' : 'Imagen propia'}<input type="file" accept="image/*" data-change="dz-rb-img" data-i="${i}"></label>${r.imagen ? `<button type="button" class="btn btn-s btn-sm" data-act="dz-rb-noimg" data-i="${i}">Usar fotos de sus productos</button>` : '<small class="muted">Sin imagen propia usamos 3 fotos de sus productos.</small>'}${D.subRb === i ? '<span class="spin"></span>' : ''}</div></div>`;
+}
+function rbEditor(d) {
+  const r = d.rubros, cats = catsDe(), libres = cats.filter(([c]) => !r.lista.some(x => x.cats.includes(c))).length;
+  return `<fieldset class="dz-fs" id="dz-rbs"><legend>🗂️ Banners de rubro <label class="dz-sw"><input type="checkbox" data-change="dz-rb-on" ${r.activo ? 'checked' : ''}> mostrar</label></legend>
+    <p class="hint" style="margin-bottom:8px">Ordená la portada: en lugar de todos los productos juntos, tu cliente ve hasta 6 banners grandes (por ejemplo “Skincare”, “Maquillaje”, “Fragancias”), cada uno con las categorías que agrupa. Al tocar uno ve solo esos productos, con una pastilla por subcategoría.</p>
+    ${r.activo ? `<div class="fg"><label class="flabel" for="dz-rbtt">Título de la portada</label><input class="fi" id="dz-rbtt" maxlength="40" value="${esc(r.titulo)}" data-input="dz-rb-tt" placeholder="Seleccioná la categoría"></div>
+    ${r.lista.map((x, i) => rbUno(x, i, cats, r.lista)).join('')}
+    ${r.lista.length < 6 ? '<button type="button" class="btn btn-s btn-sm" data-act="dz-rb-add">+ Banner de rubro</button>' : ''}
+    ${libres && r.lista.length ? `<p class="hint" style="margin-top:8px">${libres} ${libres === 1 ? 'categoría no está' : 'categorías no están'} en ningún rubro: se ven con “Ver todo el catálogo”.</p>` : ''}` : ''}</fieldset>`;
+}
+// ---- estilo de la tienda y colores (psicología del color) ----
+const PALETAS = [
+  ['#A16207', 'oscuro', 'bronce', '🥇 Lujo y exclusividad', 'El dorado sobre fondo oscuro transmite calidad y precio premium.', 'Perfumes, relojes, joyas, bebidas'],
+  ['#DB2777', 'claro', 'rosa', '🌸 Belleza y cuidado', 'El rosa se asocia con el cuidado personal, la cercanía y el deseo.', 'Cosmética, skincare, maquillaje'],
+  ['#047857', 'claro', 'esmeralda', '🌿 Ahorro y bienestar', 'El verde dice “conviene” y “natural”: ideal para precios mayoristas.', 'Almacén, limpieza, dietética'],
+  ['#2563EB', 'auto', 'magenta', '🛡️ Confianza y tecnología', 'El azul da seguridad: la gente se anima a comprar online.', 'Tecnología, celulares, ferretería'],
+  ['#C2410C', 'claro', 'bronce', '🔥 Ofertas e impulso', 'El naranja da energía y urgencia: invita a comprar ya.', 'Liquidaciones, comida, juguetes'],
+  ['#7C3AED', 'oscuro', 'magenta', '🔮 Moda y creatividad', 'El violeta se ve original y moderno.', 'Ropa, accesorios, regalería']];
+const colorAct = () => D.color || P.t.color || '#1d4ba8';
+const temaAct = () => D.tema || P.t.tema || 'auto';
+const onAc = c => { const h = /^#[0-9a-f]{6}$/i.test(c) ? c : '#1d4ba8', [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#0A0F1F' : '#FFFFFF'; };
+function estiloEditor(d) {
+  const L = lookDe(d), c = colorAct().toLowerCase(), t = temaAct();
+  const sw = (k, tit, txt) => `<label class="chk"><input type="checkbox" data-change="dz-look" data-k="${k}" ${L[k] ? 'checked' : ''}><span><b>${tit}</b> ${txt}</span></label>`;
+  return `<fieldset class="dz-fs" id="dz-estilo"><legend>🎨 Colores y estilo</legend>
+    <p class="hint" style="margin-bottom:8px">Cada color despierta una sensación distinta en quien compra. Elegí el que va con lo que vendés: cambia el color de los botones y el fondo claro u oscuro de la tienda.</p>
+    <div class="dz-pal">${PALETAS.map(([col, tema, , n, txt, ideal]) => `<button type="button" class="dz-pal-b${c === col.toLowerCase() && t === tema ? ' on' : ''}" data-act="dz-pal" data-c="${col}" data-t="${tema}" aria-pressed="${c === col.toLowerCase() && t === tema}"><i style="background:${col}"></i><span><b>${n}</b><small>${txt}</small><small class="dz-pal-i">Ideal: ${ideal} · fondo ${tema === 'auto' ? 'según el celular' : tema}</small></span></button>`).join('')}</div>
+    ${D.color || D.tema ? `<p class="hint" style="margin-top:6px">Color elegido: <b style="color:${esc(colorAct())}">■ ${esc(colorAct())}</b> · fondo ${esc(temaAct())}. Se guarda con “Guardar diseño”. <button type="button" class="btn-link" data-act="dz-pal-no">volver al anterior</button></p>` : ''}
+    <div class="flabel" style="margin-top:12px">Estilo</div>
+    ${sw('modo', '☀️/🌙 Botón claro u oscuro', 'para que cada cliente elija cómo ver la tienda (se recuerda en su celular).')}
+    ${sw('barra', '🏆 Barra del pedido con niveles', '1u · 3u · 6u · 12u+. Al desbloquear un nivel el celular vibra y la barra lo festeja. Se puede minimizar y muestra la compra mínima.')}
+    ${sw('compacto', '📱 Encabezado compacto', 'más lugar para los productos: el buscador queda arriba y se esconde al bajar, “Cómo comprar” y la lista PDF pasan a botones chicos, y suma “Ordenar por precio”.')}
+    ${sw('limpia', '🏷️ Tarjeta de precio limpia', 'en lugar de los 4 precios muestra grande el precio x12 y chico el de 1 unidad. El flyer pasa a un botón 📲 sobre la foto.')}</fieldset>`;
+}
+// vista previa: banners de rubro (los que no tienen título se ven como "Rubro N") y barra del pedido
+function rbPrev(d) {
+  if (!d.rubros || !d.rubros.activo) return '';
+  const pr = prodsAct(), v = { rubros: { activo: true, titulo: d.rubros.titulo, lista: d.rubros.lista.map((r, i) => Object.assign({}, r, { titulo: r.titulo.trim() || 'Rubro ' + (i + 1) })) } };
+  const cfg = rubrosCfg(v, pr);
+  return cfg ? `<div class="dz-rb-prev">${rubrosHtml(cfg, pr, pr.length).replace(/ data-act="[^"]*"/g, '').replace(/ role="button" tabindex="0"/g, '')}</div>` : '<p class="hint dz-rb-prev">Elegí las categorías de cada rubro para verlo acá.</p>';
+}
+function gbPrev(L) {
+  if (!L.barra || P.t.modalidad === 'minorista') return '';
+  return `<div class="dz-gami gami lvl1"><div class="gb-top"><div class="gb-msg">Sumá <b>1 u.</b> más de Producto 1 y desbloqueá el precio Especial · <b>$ 11.500 c/u</b></div><span class="gb-tg">▾ Minimizar</span></div>
+    <div class="gb-track"><div class="gb-rail"><i style="width:55.6%"></i></div>${[[1, 'Inicial', 0], [3, 'Mayorista', 33.33], [6, 'Especial', 66.67], [12, '🏆 Super', 100]].map(([n, nm, x]) => `<span class="gb-cp${n <= 3 ? ' ok' : ''}" style="left:${x}%"><b></b><small>${n}u${n === 12 ? '+' : ''} · ${nm}</small></span>`).join('')}</div>
+    <div class="gb-foot"><span class="gb-tot"><b>5 u.</b> · $ 57.500</span><span class="gb-go">Ver pedido →</span></div></div>`;
+}
+
 const lst = (arr, max, fila, add, l) => `${arr.map(fila).join('')}${arr.length < max ? `<button class="btn btn-s btn-sm" data-act="dz-add" data-l="${l}">${add}</button>` : ''}`;
 function vistaDiseno() {
   const d = dis(), p = d.popup || {}, sec = d.secciones || {}, tv = tiendaVista();
   const vista = Object.assign({}, d, { comprar: d.propios ? d.comprar : undefined });
-  const prev = `<div class="dz-prev ${D.disp}"><div class="dz-frame" style="--ac:${esc(P.t.color)};--on-ac:#fff">${anuncioHtml(vista)}<div class="dz-hdr">${P.t.logo_url ? `<img src="${esc(P.t.logo_url)}" alt="">` : ''}<b>${esc(P.t.nombre)}</b><span>🛒</span></div>${heroHtml(vista)}<div class="dz-ban"><b>${esc(P.t.nombre)}</b><small>${esc(P.t.eslogan || '')}</small></div>${beneficiosHtml(vista)}${comprarCardHtml(vista)}${vtPrev(vista, 'arriba')}${cfPrev(vista)}
-    <div class="dz-grid">${[1, 2, 3, 4].map(i => `<div><i></i><span>Producto ${i}</span><b>$ ${(9800 + i * 1700).toLocaleString('es-AR')}</b></div>`).join('')}</div>${vtPrev(vista, 'abajo')}${testimoniosHtml(vista)}${faqHtml(vista)}</div>
+  const L = lookDe(d), col = colorAct(), rbp = rbPrev(d);
+  const prev = `<div class="dz-prev ${D.disp}"><div class="dz-frame${L.compacto ? ' dz-comp' : ''}" style="--ac:${esc(col)};--on-ac:${onAc(col)}">${anuncioHtml(vista)}<div class="dz-hdr">${P.t.logo_url ? `<img src="${esc(P.t.logo_url)}" alt="">` : ''}<b>${esc(P.t.nombre)}</b><span>${L.modo ? '🌙 ' : ''}${L.compacto ? '📖 📄 ' : ''}🛒</span></div>${heroHtml(vista)}${L.compacto ? '' : `<div class="dz-ban"><b>${esc(P.t.nombre)}</b><small>${esc(P.t.eslogan || '')}</small></div>`}${beneficiosHtml(vista)}${L.compacto ? '' : comprarCardHtml(vista)}${vtPrev(vista, 'arriba')}${rbp || cfPrev(vista)}
+    ${rbp ? '' : `<div class="dz-grid">${[1, 2, 3, 4].map(i => `<div><i></i><span>Producto ${i}</span><b>$ ${(9800 + i * 1700).toLocaleString('es-AR')}</b></div>`).join('')}</div>`}${vtPrev(vista, 'abajo')}${testimoniosHtml(vista)}${faqHtml(vista)}${gbPrev(L)}</div>
     ${p.activo ? `<div class="dz-pop">${popupHtml(vista).replace(/data-act="[^"]*"/g, '')}</div>` : ''}</div>`;
   const sw = (k, txt) => `<label class="dz-sw"><input type="checkbox" data-change="dz-sec" data-k="${k}" ${sec[k] === false ? '' : 'checked'}> ${txt || 'mostrar'}</label>`;
   return `<div class="grid2 dz"><div class="cc"><h3>🖌️ Diseño de la tienda</h3>${box(D.msg, D.err)}
@@ -135,10 +213,12 @@ function vistaDiseno() {
     ${lst(d.banners, 4, (b, i) => `<div class="dz-ban-ed"><div class="dz-ban-th">${b.imagen ? `<img src="${esc(b.imagen)}" alt="">` : '<span>Sin imagen</span>'}</div><div class="dz-ban-f">
       <input class="fi" maxlength="60" value="${esc(b.titulo || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="titulo" aria-label="Título del banner ${i + 1}" placeholder="Título · Ej: Nueva temporada">
       <input class="fi" maxlength="160" value="${esc(b.texto || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="texto" aria-label="Texto del banner ${i + 1}" placeholder="Texto · Ej: Precios por volumen desde 3 unidades">
-      <div class="dz-li"><input class="fi" maxlength="30" value="${esc(b.boton || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="boton" aria-label="Botón" placeholder="Botón (opcional)">
+      <div class="dz-li"><input class="fi" maxlength="30" value="${esc(b.boton || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="boton" aria-label="Botón" placeholder="Botón (opcional)"><select class="fi" data-change="dz-li" data-l="banners" data-i="${i}" data-k="ir" aria-label="Al tocar el botón del banner ${i + 1} lleva a">${destinos(d, b.ir)}</select></div><div class="dz-li">
       <label class="filebtn">🖼️ ${b.imagen ? 'Cambiar' : 'Imagen'}<input type="file" accept="image/*" data-change="dz-img" data-i="${i}"></label>${b.imagen ? `<button class="btn btn-s btn-sm" data-act="dz-noimg" data-i="${i}">Sin imagen</button>` : ''}${D.subiendo === i ? '<span class="spin"></span>' : ''}<button class="btn btn-s btn-sm" data-act="dz-del" data-l="banners" data-i="${i}" aria-label="Quitar banner">✕</button></div></div></div>`, '+ Banner', 'banners')}
     <p class="hint">Imagen ancha (por ejemplo 1600 × 600). La achicamos sola para que cargue rápido.</p></fieldset>
+  ${rbEditor(d)}
   ${vtEditor(d)}
+  ${estiloEditor(d)}
   <fieldset class="dz-fs"><legend>Beneficios (hasta 4) ${sw('beneficios')}</legend>
     ${lst(d.beneficios, 4, (x, i) => `<div class="dz-li"><input class="fi dz-ico" maxlength="4" value="${esc(x.icono || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="icono" aria-label="Ícono" placeholder="🚚"><input class="fi" maxlength="60" value="${esc(x.texto || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="texto" aria-label="Beneficio ${i + 1}" placeholder="Ej: Envíos a todo el país"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="beneficios" data-i="${i}" aria-label="Quitar">✕</button></div>`, '+ Beneficio', 'beneficios')}</fieldset>
   <fieldset class="dz-fs"><legend>📖 Cómo comprar ${sw('comprar')}</legend>
@@ -224,6 +304,25 @@ on('dz-cf-otra', d => {
   cf.fotos[d.c] = L[(i + 1) % L.length].id; P.repintar();
 });
 on('dz-fx', (d, el) => { dis().efectos = el.checked; repPrev(); });
+// banners de rubro
+const rbx = d => dis().rubros.lista[+d.i];
+on('dz-rb-on', (d, el) => { const r = dis().rubros; r.activo = el.checked; if (r.activo && !r.lista.length) r.lista.push(nuevoRubro({ tema: temaRbDef() })); P.repintar(); });
+on('dz-rb-tt', (d, el) => { dis().rubros.titulo = el.value; repPrev(); });
+on('dz-rb-add', () => { const L = dis().rubros.lista; if (L.length < 6) L.push(nuevoRubro({ tema: temaRbDef() })); P.repintar(); });
+on('dz-rb-del', d => { dis().rubros.lista.splice(+d.i, 1); P.repintar(); });
+on('dz-rb', (d, el) => { const r = rbx(d); if (!r) return; if (d.k === 'suma') r.suma = el.checked; else r[d.k] = el.value; if (d.k === 'tema' || (d.k === 'titulo' && el.tagName !== 'INPUT')) P.repintar(); else repPrev(); });
+on('dz-rb-cat', (d, el) => { const r = rbx(d); if (!r) return; r.cats = el.checked ? [...new Set(r.cats.concat(d.c))] : r.cats.filter(c => c !== d.c); if (r.cats.length < 2) r.suma = false; P.repintar(); });
+on('dz-rb-noimg', d => { const r = rbx(d); if (r) r.imagen = ''; P.repintar(); });
+on('dz-rb-img', async (d, el) => {
+  const f = el.files[0], i = +d.i; if (!f) return; D.subRb = i; P.repintar();
+  try { const bl = await redimensionar(f, 1200); const r = dis().rubros.lista[i]; if (r) r.imagen = await api.subirFoto(P.t.id, bl, 'rubro-' + Date.now()); D.err = ''; } catch (e) { D.err = e.message; }
+  D.subRb = null; P.repintar();
+});
+// colores y estilo
+const temaRbDef = () => { const p = PALETAS.find(x => x[0].toLowerCase() === colorAct().toLowerCase()); return p ? p[2] : 'bronce'; };
+on('dz-pal', d => { D.color = d.c; D.tema = d.t; P.repintar(); });
+on('dz-pal-no', () => { D.color = null; D.tema = null; P.repintar(); });
+on('dz-look', (d, el) => { const l = dis().look; l[d.k] = el.checked; repPrev(); });
 on('dz-propios', d => { const o = dis(); o.propios = d.v === '1'; if (o.propios && !o.comprar.length) o.comprar = pasosAuto(tiendaVista()).map(x => ({ ...x })); P.repintar(); });
 on('dz-faq-sug', () => { dis().faq = faqSugeridas(tiendaVista()); P.repintar(); });
 on('dz-noimg', d => { const b = dis().banners[+d.i]; if (b) delete b.imagen; P.repintar(); });
@@ -236,7 +335,8 @@ on('dz-img', async (d, el) => {
 function limpio() {
   const d = dis(), o = {}, s = v => String(v || '').trim();
   const an = d.anuncios.map(s).filter(Boolean); if (an.length) { o.anuncios = an; if (d.anuncio_mov) o.anuncio_mov = true; }
-  const bn = d.banners.map(b => { const y = {}; ['titulo', 'texto', 'boton', 'imagen'].forEach(k => { if (s(b[k])) y[k] = s(b[k]); }); return y; }).filter(y => y.titulo || y.texto || y.imagen); if (bn.length) o.banners = bn;
+  const bn = d.banners.filter(b => s(b.titulo) || s(b.texto) || s(b.imagen));
+  const bo = bn.map(b => { const y = {}; ['titulo', 'texto', 'boton', 'imagen'].forEach(k => { if (s(b[k])) y[k] = s(b[k]); }); return y; }); if (bo.length) o.banners = bo;
   const ben = (d.beneficios || []).filter(x => s(x.texto)).map(x => ({ icono: s(x.icono).slice(0, 4) || '✓', texto: s(x.texto) })); if (ben.length) o.beneficios = ben;
   const tes = (d.testimonios || []).filter(x => s(x.texto)).map(x => { const y = { nombre: s(x.nombre) || 'Cliente', texto: s(x.texto) }; if (s(x.lugar)) y.lugar = s(x.lugar); return y; }); if (tes.length) o.testimonios = tes;
   if (d.propios) { const c = (d.comprar || []).filter(x => s(x.titulo)).map(x => ({ titulo: s(x.titulo), texto: s(x.texto) })); if (c.length) o.comprar = c; }
@@ -256,6 +356,20 @@ function limpio() {
   Object.entries(cf.fotos || {}).forEach(([k, v]) => { if (cats.has(k) && typeof v === 'string') fotos[k.slice(0, 60)] = v; });
   if (cf.activo || s(cf.titulo) || Object.keys(fotos).length) { o.catfoto = { activo: !!cf.activo }; if (s(cf.titulo)) o.catfoto.titulo = s(cf.titulo).slice(0, 40); if (Object.keys(fotos).length) o.catfoto.fotos = fotos; }
   if (d.efectos === false) o.efectos = false;
+  // banners de rubro: solo los que tienen título y categorías
+  const rb = d.rubros || { lista: [] }, catsP = new Set((P.prods || []).map(p => p.categoria));
+  const rl = (rb.lista || []).map(r => {
+    const y = { id: r.id, titulo: s(r.titulo).slice(0, 50), tema: TEMAS_RB.some(t => t[0] === r.tema) ? r.tema : 'bronce', cats: [...new Set((r.cats || []).filter(c => catsP.has(c)))].slice(0, 40).map(c => String(c).slice(0, 60)) };
+    ['kicker', 'texto', 'badge'].forEach((k, j) => { if (s(r[k])) y[k] = s(r[k]).slice(0, [60, 160, 30][j]); });
+    if (s(r.imagen)) y.imagen = s(r.imagen);
+    if (r.suma && y.cats.length > 1) y.suma = true;
+    return y;
+  }).filter(y => y.titulo && y.cats.length).slice(0, 6);
+  if (rb.activo || rl.length || s(rb.titulo)) { o.rubros = { activo: !!rb.activo && rl.length > 0, lista: rl }; if (s(rb.titulo)) o.rubros.titulo = s(rb.titulo).slice(0, 40); }
+  const lk = {}, L = lookDe(d); if (!L.modo) lk.modo = false; if (!L.barra) lk.barra = false; if (L.compacto) lk.compacto = true; if (L.limpia) lk.limpia = true;
+  if (Object.keys(lk).length) o.look = lk;
+  // destino de cada banner de portada (solo si sigue existiendo)
+  if (o.banners) o.banners.forEach((y, i) => { const b = bn[i], ir = s(b && b.ir); if (ir && (ir === 'todo' ? rl.length : ir.startsWith('r:') ? rl.some(r => 'r:' + r.id === ir) : ir.startsWith('c:') && catsP.has(ir.slice(2)))) y.ir = ir.slice(0, 80); });
   return o;
 }
 on('dz-guardar', async () => {
@@ -263,7 +377,20 @@ on('dz-guardar', async () => {
   if (o.popup && o.popup.activo && !(o.popup.titulo || o.popup.texto || o.popup.cupon)) { D.err = 'La ventana de bienvenida necesita un título, un texto o un código.'; D.msg = ''; return P.repintar(); }
   const malVt = (o.vitrinas || []).findIndex(v => v.activo && ((v.modo === 'elegidos' && (v.ids || []).length < 2) || (v.modo === 'categoria' && !v.categoria)));
   if (malVt >= 0) { const v = o.vitrinas[malVt]; D.err = v.modo === 'elegidos' ? `Para el carrusel ${malVt + 1} elegí al menos 2 productos (o usá “Automático”).` : `Elegí la categoría del carrusel ${malVt + 1}.`; D.msg = ''; return P.repintar(); }
-  try { P.t = await api.guardarTienda(P.t.id, { diseno: o }) || P.t; D.d = null; D.err = ''; D.msg = '¡Diseño guardado! Ya lo ven tus clientes.'; toast('Diseño guardado'); }
-  catch (e) { D.err = /Revisá el diseño/.test(e.message) && (o.vitrinas || o.catfoto || o.efectos === false) ? 'Para guardar carruseles, categorías con foto o efectos falta actualizar la base: corré la migración v2.16 en Supabase.' : e.message; D.msg = ''; }
+  const rb = dis().rubros;
+  if (rb.activo) {
+    const mal = rb.lista.findIndex(r => !String(r.titulo || '').trim() || !r.cats.length);
+    if (!rb.lista.length) { D.err = 'Agregá al menos un banner de rubro (o apagá “Banners de rubro”).'; D.msg = ''; return P.repintar(); }
+    if (mal >= 0) { const r = rb.lista[mal]; D.err = !String(r.titulo || '').trim() ? `Ponele un título al rubro ${mal + 1}.` : `Elegí al menos una categoría para el rubro ${mal + 1} (${r.titulo}).`; D.msg = ''; return P.repintar(); }
+  }
+  const cambios = { diseno: o };
+  if (D.color && D.color !== P.t.color) cambios.color = D.color;
+  if (D.tema && D.tema !== P.t.tema) cambios.tema = D.tema;
+  try { P.t = await api.guardarTienda(P.t.id, cambios) || P.t; D.d = null; D.color = null; D.tema = null; D.err = ''; D.msg = '¡Diseño guardado! Ya lo ven tus clientes.'; toast('Diseño guardado'); }
+  catch (e) {
+    const nuevo = o.rubros || o.look || (o.banners || []).some(b => b.ir);
+    D.err = /Revisá el diseño/.test(e.message) && nuevo ? 'Para guardar los banners de rubro, el estilo o a dónde lleva cada banner falta actualizar la base: corré la migración v2.21 (17-migracion_v2.21.sql) en Supabase.'
+      : /Revisá el diseño/.test(e.message) && (o.vitrinas || o.catfoto || o.efectos === false) ? 'Para guardar carruseles, categorías con foto o efectos falta actualizar la base: corré la migración v2.16 en Supabase.' : e.message; D.msg = '';
+  }
   P.repintar();
 });
