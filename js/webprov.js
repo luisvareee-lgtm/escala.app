@@ -569,7 +569,7 @@ export async function traerDeLaWeb(url, opts, leer, avance = () => { }) {
   const leerJson = async (u, extra) => { const r = await leerTexto(u, extra || { accept: 'application/json' }); if (!r) return null; try { return JSON.parse(r.cuerpo); } catch (e) { return null; } };
   avance('Abriendo la web del proveedor…');
   let r0 = await leer(url, { inicio: true });
-  if (!r0 || !r0.ok) throw new Error((r0 && r0.error) || 'No pudimos abrir esa página.');
+  if (!r0 || !r0.ok) { const e = new Error((r0 && r0.error) || 'No pudimos abrir esa página.'); e.bloqueado = !!(r0 && r0.bloqueado); throw e; }
   let base = r0.url || url, enEspanol = false;
   // ¿la web tiene versión en español? (hreflang="es…") → la usamos y no hace falta traducir
   if (!/^es/.test(langDe(r0.cuerpo)) && opts.preferirEs !== false && !(opts.urls && opts.urls.length)) {
@@ -584,7 +584,7 @@ export async function traerDeLaWeb(url, opts, leer, avance = () => { }) {
   else if (det.plataforma === 'Shopify') prods = await shopify(ctx);
   else if (det.plataforma === 'WooCommerce') prods = await woo(ctx);
   if (!prods || !prods.length) prods = await generico(ctx);
-  const comun = { plataforma: det.plataforma, host: new URL(base).host, url: base, lang, enEspanol, monedaDef: ctx.monedaDef, tasasSitio: ctx.tasas };
+  const comun = { plataforma: det.plataforma, host: new URL(base).host, url: base, lang, enEspanol, monedaDef: ctx.monedaDef, tasasSitio: ctx.tasas, titulo: tituloDe(r0.cuerpo) };
   if (prods && prods.elegir) return { ...comun, elegir: true, categorias: prods.categorias, buscador: prods.buscador };
   prods = prods.filter(p => p && p.nombre);
   prods.forEach(p => { if (!p.moneda) p.moneda = ctx.monedaDef; });
@@ -594,6 +594,49 @@ export async function traerDeLaWeb(url, opts, leer, avance = () => { }) {
   }
   const idioma = enEspanol ? 'es' : idiomaDe(prods.slice(0, 200).map(p => p.nombre + ' ' + (p.categoria || '')), lang);
   return { ...comun, productos: prods, idioma, fallas: ctx.fallas, aviso: corte, incompleta: cancelado(), cortado: prods.length >= MAX_PRODUCTOS || (!['Tienda Negocio', 'Shopify', 'WooCommerce'].includes(det.plataforma) && prods.length >= MAX_FICHAS) };
+}
+
+export const tituloDe = html => entidades(((String(html || '').match(/<title[^>]*>([^<]*)/i) || [])[1] || '').replace(/\s+/g, ' ').trim()).slice(0, 90);
+
+/* ---------- copiar y pegar la página (para webs que no dejan leerse desde el servidor) ---------- */
+// Lo que el comercio copia de su navegador (Ctrl+A, Ctrl+C) llega como HTML con las fotos y los enlaces de cada producto.
+const BASURA = /^(ver( m[aá]s| produto| producto| detalles?)?|comprar|agregar( al carrito)?|adicionar|add to cart|carrinho|carrito|orçamento|presupuesto|informações|información|quick view|vista r[aá]pida|in stock|en stock|em estoque|agotado|esgotado|sold out|nuevo|novo|new|oferta|sale|\d+|ref\.? ?\w+|c[oó]d\.? ?\w+)$/i;
+function hostMasComun(html) {
+  const n = new Map();
+  for (const m of String(html || '').matchAll(/(?:href|src)=["'](https?:\/\/[^"'/]+)/gi)) { const h = m[1].toLowerCase(); n.set(h, (n.get(h) || 0) + 1); }
+  return [...n].sort((a, b) => b[1] - a[1]).map(x => x[0]).find(h => !/(google|facebook|whatsapp|wa\.me|instagram|cloudflare|gstatic|jsdelivr|youtube|tiktok)/i.test(h)) || '';
+}
+// Texto sin enlaces (algunas webs no copian el HTML): nombre en un renglón y precio en el mismo o en el siguiente.
+export function productosDeTexto(texto, monedaDef) {
+  const out = [], vistos = new Set(); let nombre = '';
+  for (const l0 of String(texto || '').split(/\r?\n/)) {
+    const l = l0.replace(/\s+/g, ' ').trim(); if (!l) continue;
+    if (/cota[çc][aã]o|cotizaci[oó]n|tipo de cambio|d[oó]lar hoy/i.test(l) || Object.keys(tasasDelSitio(l)).length) { nombre = ''; continue; }   // la cotización no es un producto
+    const pr = elegirPrecio(preciosEnTexto(l), monedaDef);
+    const resto = l.replace(RE_PRECIO, ' ').replace(/\s+/g, ' ').trim();
+    if (pr) {
+      const n = resto.length >= 4 && /[A-Za-zÀ-ÿ]/.test(resto) && !BASURA.test(resto) ? resto : nombre;
+      if (n && !vistos.has(n.toLowerCase())) { vistos.add(n.toLowerCase()); out.push({ nombre: n.slice(0, 200), precio: pr.precio, moneda: pr.moneda, imagen: '', sku: '', marca: '', categoria: '', descripcion: '', agotado: false, url: '', variantes: [] }); }
+      nombre = '';
+    } else if (l.length >= 4 && l.length <= 200 && /[A-Za-zÀ-ÿ一-鿿]/.test(l) && !BASURA.test(l)) nombre = l;
+  }
+  return out;
+}
+// → {host, base, productos, tasas, idioma, como: 'tarjetas' | 'texto'}
+export function productosDePegado(html, texto, urlSugerida) {
+  let base = '';
+  try { if (urlSugerida) { let u = String(urlSugerida).trim(); if (!/^https?:\/\//i.test(u)) u = 'https://' + u; base = new URL(u).toString(); } } catch (e) { base = ''; }
+  const hm = hostMasComun(html);
+  if (hm) base = hm + '/';                     // los enlaces copiados ya vienen completos: mandan ellos
+  if (!base) base = 'https://pegado.local/';
+  const host = new URL(base).host, lang = langDe(html);
+  const plano = texto || textoPlano(html);
+  const monedaDef = monedaPorDefecto(base, lang);
+  let productos = html ? tarjetasDeListado(html, base, monedaDef) : [], como = 'tarjetas';
+  if (!productos.length) { productos = productosDeTexto(plano, monedaDef); como = 'texto'; }
+  productos.forEach(p => { if (!p.moneda) p.moneda = monedaDef; });
+  const idioma = idiomaDe(productos.slice(0, 200).map(p => p.nombre + ' ' + (p.categoria || '')), lang);
+  return { host: host === 'pegado.local' ? 'página pegada' : host, base, productos, tasas: tasasDelSitio(plano.slice(0, 20000)), idioma, como, monedaDef };
 }
 
 // Precios a la moneda de la tabla. tasas = unidades por dólar ({BRL: 5.7, PYG: 7300, …}); cot = pesos por dólar.

@@ -6,7 +6,7 @@ import { P, can, precioArs } from './state.js';
 import { urlTiendaDe } from './marca.js';
 import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, ocr } from './importer.js';
 import { redimensionar } from './img.js';
-import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
+import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, productosDePegado, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
 
 const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
@@ -211,6 +211,16 @@ function vistaElegir() {
     <div class="wel-cats">${E.categorias.map((c, i) => `<label class="chk" style="padding-left:${Math.min(c.nivel || 0, 3) * 18}px"><input type="checkbox" data-change="w-marcar" data-i="${i}" ${E.marcadas.includes(i) ? 'checked' : ''}> ${esc(es[c.nombre] || c.nombre)}${es[c.nombre] && es[c.nombre] !== c.nombre ? ` <small class="muted">(${esc(c.nombre)})</small>` : ''}</label>`).join('')}</div>
     <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-elegido" ${n ? '' : 'disabled'}>Leer lo elegido${n ? ' (' + n + ')' : ''}</button><button class="btn btn-s btn-sm" data-act="w-todo">Leer toda la web (más lento)</button><button class="btn-link" data-act="w-elegir-no">cancelar</button></div></div>`;
 }
+function vistaPegar() {
+  const W = I.web, u = String(W.pegarUrl || W.url || '').trim(), abrir = u ? (/^https?:\/\//i.test(u) ? u : 'https://' + u) : '';
+  return `<details class="lv wp-pegar" id="w-pegar-box" ${W.pegar ? 'open' : ''}><summary data-act="w-pegar-abrir"><b>📋 ¿La web no se deja leer? Copiala y pegala</b></summary>
+    <p class="hint" style="margin:6px 0">Algunas webs se ven bien en tu navegador pero no dejan que las lea un programa (protección anti-robots). Con esto la cargás igual, con fotos y precios:</p>
+    <ol class="hint wp-pasos"><li>Abrí la página del proveedor donde se ven los productos (una categoría o una búsqueda)${abrir ? ` → <a href="${esc(abrir)}" target="_blank" rel="noopener">abrir ${esc(abrir.replace(/^https?:\/\//, '').slice(0, 50))} ↗</a>` : ''}.</li>
+      <li>Bajá hasta el final para que se carguen todos.</li>
+      <li>Apretá <b>Ctrl+A</b> y después <b>Ctrl+C</b> (en el celular: mantené apretado un texto → <b>Seleccionar todo</b> → <b>Copiar</b>).</li>
+      <li>Volvé acá, tocá el recuadro y pegá con <b>Ctrl+V</b> (o mantené apretado → <b>Pegar</b>). Repetí con cada página o categoría: se van sumando.</li></ol>
+    <textarea class="fi wp-area" id="w-pegar" data-asis="w-pegar" rows="2" placeholder="Tocá acá y pegá la página copiada (Ctrl+V)"></textarea></details>`;
+}
 function vistaWeb() {
   const W = I.web, listo = W.acepto && W.url.trim().length > 4, leidas = I.tablas.filter(t => t.web);
   return `${vistaRestaurar()}<details class="card web-prov" ${W.abierto || W.elegir ? 'open' : ''} data-asistente="web" id="web-prov"><summary data-act="w-abrir">🌐 <b>Traer productos desde la web del proveedor</b> <span class="tag ok">nuevo</span>${W.res ? `<br><small class="muted">${esc(W.res)}</small>` : ''}</summary>
@@ -226,6 +236,7 @@ function vistaWeb() {
     <label class="chk web-ok"><input type="checkbox" data-asis="w-acepto" data-change="w-opt" data-k="acepto" ${W.acepto ? 'checked' : ''}><span>Soy cliente o revendedor de este proveedor y <b>tengo su permiso</b> para usar sus fotos y textos en mi tienda.</span></label>
     <button class="btn btn-p" style="margin-top:8px" data-act="w-traer" ${listo && !I.busy ? '' : 'disabled'}>🔎 Buscar productos</button>
     ${vistaElegir()}
+    ${vistaPegar()}
     <details class="hint web-guia"><summary>¿Para qué sirve, cómo se usa y qué tener en cuenta?</summary>
       <p><b>Para qué sirve:</b> cargar en minutos el catálogo de uno o varios proveedores que venden por internet (de Argentina, Paraguay, Brasil, Estados Unidos…), sin tipear nada. Si ya tenés sus productos, actualiza tus costos y te muestra qué subió, qué bajó y qué hay de nuevo.</p>
       <p><b>Cómo se usa:</b> 1) Copiá el enlace de su web: la portada, “Productos”, una categoría o una búsqueda (por ejemplo, la página de una marca). 2) Tildá que tenés su permiso y tocá “Buscar productos”. 3) Si pegaste la portada, elegí las categorías que te interesan o buscá una marca. 4) En el panel del proveedor marcá qué categorías importar, revisá la moneda y el dólar al que le pagás. 5) Revisá la tabla, poné tu ganancia y cargá. Para sumar otro proveedor, pegá otro enlace: lo ya leído no se pierde.</p>
@@ -240,7 +251,7 @@ function vistaWeb() {
         <li><b>Información veraz</b> (Ley 24.240 de Defensa del Consumidor): la foto, la traducción y la descripción tienen que corresponder a lo que entregás. Revisá precios y stock antes de publicar.</li>
         <li><b>Solo páginas públicas:</b> no entramos a catálogos con usuario y contraseña ni saltamos bloqueos o captchas (entrar sin permiso a un sistema restringido es delito: Ley 26.388). Respetamos las reglas del sitio para robots (robots.txt) y leemos despacio para no sobrecargarlo.</li>
       </ul>
-      <p><b>Límites técnicos:</b> si la web pide iniciar sesión, bloquea la lectura automática o muestra los productos de una forma que no podemos leer, te avisamos: en ese caso pedile la lista en Excel o PDF, o subí capturas de su catálogo. Los grandes portales (1688, Alibaba, AliExpress, Temu, Shein, Mercado Libre) no permiten leer su catálogo de forma automática: piden iniciar sesión y sus reglas lo prohíben. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
+      <p><b>Límites técnicos:</b> muchas webs tienen una protección anti-robots: se ven bien en tu navegador pero no dejan que las lea un programa. No la salteamos: en ese caso usá “📋 Copiar y pegar la página” (tu navegador ya la abrió, así que la cargás igual, con fotos y precios). Si la web pide iniciar sesión, pedile al proveedor la lista en Excel o PDF, o subí capturas de su catálogo. Los grandes portales (1688, Alibaba, AliExpress, Temu, Shein, Mercado Libre) no permiten leer su catálogo de forma automática: piden iniciar sesión y sus reglas lo prohíben. Traemos hasta ${MAX_PRODUCTOS} productos por vez (${MAX_FICHAS} en webs que hay que recorrer producto por producto): para más, usá el enlace de cada categoría. Los precios “a consultar” llegan sin costo y los completás en la tabla.</p>
       <p><b>¿Te falta la foto de algún producto?</b> En la ficha del producto tenés “Buscar la foto oficial”, “Traer foto y descripción desde un enlace” y una indicación lista para crear una imagen con IA.</p>
     </details></details>`;
 }
@@ -510,6 +521,45 @@ on('w-traducir', async d => {
   armar(tb); I.busy = false; I.msg = ''; procesar(); refrescar(); guardar();
 });
 
+// suma lo leído (o pegado) al panel de ese proveedor: sin repetir, con su moneda, traducido
+async function sumarAlProveedor(r, pendiente) {
+  const prev = I.tablas.find(t => t.web && t.web.host === r.host);
+  let w;
+  if (prev) { w = prev.web; const ya = new Set(w.prods.map(p => p.url || p.nombre)); r.productos.forEach(p => { if (!ya.has(p.url || p.nombre)) { w.prods.push(p); ya.add(p.url || p.nombre); } }); if (w.idioma === 'es' && r.idioma && r.idioma !== 'es') w.idioma = r.idioma; }
+  else w = { host: r.host, url: r.url, plataforma: r.plataforma, prods: r.productos, idioma: r.idioma, enEspanol: r.enEspanol, tasasSitio: r.tasasSitio || {}, filtro: { cats: null, q: '' } };
+  w.tasasSitio = { ...(w.tasasSitio || {}), ...(r.tasasSitio || {}) };
+  w.tasas = { ...((CAMBIO && CAMBIO.tasas) || {}), ...w.tasasSitio };
+  w.pendiente = pendiente || null;
+  await traducirWeb(w);
+  meter(w);
+  return w;
+}
+// "Copiar y pegar la página": lo que el comercio copió de su navegador
+on('w-pegar-abrir', () => { I.web.pegar = !I.web.pegar; });
+document.addEventListener('paste', e => {
+  if (!e.target || e.target.id !== 'w-pegar') return;
+  e.preventDefault();
+  const cd = e.clipboardData; pegarPagina(cd ? cd.getData('text/html') : '', cd ? cd.getData('text/plain') : '');
+});
+async function pegarPagina(html, texto) {
+  const W = I.web; if (I.busy) return;
+  if (!W.acepto) { I.err = 'Primero tildá que sos cliente o revendedor de este proveedor y tenés su permiso para usar sus fotos y textos.'; refrescar(); return; }
+  if (!String(html || texto || '').trim()) { I.err = 'No llegó nada al pegar. Volvé a la página del proveedor, apretá Ctrl+A y Ctrl+C, y pegá de nuevo.'; refrescar(); return; }
+  if (I.restaurable) await recuperar(false);
+  I.busy = true; I.err = ''; progreso('Leyendo lo que pegaste…'); refrescar();
+  let err = '';
+  try {
+    await cambioRemoto();
+    const p = productosDePegado(html, texto, W.pegarUrl || W.url);
+    if (!p.productos.length) throw new Error('No reconocimos productos en lo que pegaste. Copiá la página donde se ven los productos con su precio (una categoría o una búsqueda), con Ctrl+A y Ctrl+C, y pegala de nuevo.');
+    const w = await sumarAlProveedor({ host: p.host, url: p.base, plataforma: 'copiada del navegador', productos: p.productos, idioma: p.idioma, enEspanol: false, tasasSitio: p.tasas }, null);
+    const sinPrecio = p.productos.filter(x => !(x.precio > 0)).length;
+    W.res = `Pegaste ${p.productos.length} productos de ${p.host}${p.como === 'texto' ? ' (sin fotos: la página se copió solo como texto)' : ''}` + (sinPrecio ? ` · ${sinPrecio} sin precio` : '') + `. Ya van ${w.prods.length}. Podés pegar otra página o categoría: se suman.`;
+    W.pegar = true; W.abierto = true;
+  } catch (e) { err = e.message; }
+  I.busy = false; I.msg = ''; procesar(); I.err = err; refrescar(); guardar();
+  const n = $('#w-pegar'); if (n) n.value = '';
+}
 async function leerWeb(o) {
   const W = I.web; if (I.busy || !W.acepto) return;
   const url = String(o.base || W.url).trim(); if (url.length < 5) return;
@@ -528,21 +578,14 @@ async function leerWeb(o) {
       const de = idiomaDe(r.categorias.map(c => c.nombre), r.lang);
       if (W.traducir && de !== 'es' && NOMBRE_IDIOMA[de]) { try { const m = await traducirLista(r.categorias.map(c => c.nombre), de, (t, l) => api.traducir(t, l), progreso, 'Traduciendo las categorías'); m.forEach((v, k) => { W.elegir.nombresEs[k] = v; }); } catch (e) { } }
     } else {
-      if (!r.productos.length) throw new Error(r.aviso || 'No encontramos productos en esa página. Probá con el enlace de una categoría o de una búsqueda (por ejemplo, la página de una marca). Si la web pide iniciar sesión o no muestra precios, pedile al proveedor la lista en Excel o PDF y subila acá arriba.');
+      if (!r.productos.length) { const e = new Error(r.aviso || `No encontramos productos en esa página${r.titulo ? ' (la web respondió «' + r.titulo + '»)' : ''}. Si en tu navegador se ven bien, usá “Copiar y pegar la página” (abajo). Si no, probá con el enlace de una categoría o de una búsqueda, o pedile al proveedor la lista en Excel o PDF.`); e.bloqueado = true; throw e; }
       W.elegir = null;
-      const prev = I.tablas.find(t => t.web && t.web.host === r.host);
-      let w;
-      if (prev) { w = prev.web; const ya = new Set(w.prods.map(p => p.url || p.nombre)); r.productos.forEach(p => { if (!ya.has(p.url || p.nombre)) { w.prods.push(p); ya.add(p.url || p.nombre); } }); }
-      else w = { host: r.host, url: r.url, plataforma: r.plataforma, prods: r.productos, idioma: r.idioma, enEspanol: r.enEspanol, tasasSitio: r.tasasSitio || {}, filtro: { cats: null, q: '' } };
-      w.tasas = { ...((CAMBIO && CAMBIO.tasas) || {}), ...(w.tasasSitio || {}), ...(r.tasasSitio || {}) };
-      w.pendiente = r.incompleta ? { urls: o.urls || null, todo: !!o.todo, url } : null;
-      await traducirWeb(w);
-      meter(w);
+      await sumarAlProveedor(r, r.incompleta ? { urls: o.urls || null, todo: !!o.todo, url } : null);
       const sinPrecio = r.productos.filter(p => !(p.precio > 0)).length;
       W.res = `Última lectura: ${r.productos.length} productos de ${r.host} (${r.plataforma})` + (r.cortado ? ' · llegamos al máximo por vez: para el resto usá el enlace de cada categoría' : '') + (r.incompleta ? ' · quedó a medias: podés seguir leyendo desde su panel' : '') + (sinPrecio ? ` · ${sinPrecio} sin precio (completalos en la tabla)` : '') + (r.fallas ? ` · ${r.fallas} no se pudieron leer` : '') + (r.aviso ? ' · ' + r.aviso : '') + '.';
       W.url = ''; W.abierto = false;
     }
-  } catch (e) { err = e.message; }
+  } catch (e) { err = e.message; if (e.bloqueado || /anti-robots|Copiar y pegar/.test(err)) { W.pegar = true; W.pegarUrl = url; W.abierto = true; } }
   I.busy = false; I.webBusy = false; I.msg = ''; procesar(); I.err = err; refrescar();      // procesar() limpia el error: va después
   guardar();
   if (!I.err && !W.elegir) { const t = document.querySelector('.wcat:last-of-type') || document.querySelector('.imp-tbl'); if (t) t.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
