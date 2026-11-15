@@ -80,6 +80,10 @@ export const api = {
   adminPrueba: async (slug, accion, dias) => ok(await sb.rpc('admin_prueba', { p_slug: slug, p_accion: accion, p_dias: dias })),
   adminFundador: async (slug, valor) => ok(await sb.rpc('admin_fundador', { p_slug: slug, p_valor: valor })),
   adminConfig: async (cupos, dias, prueba) => ok(await sb.rpc('admin_config', { p_cupos: cupos, p_dias: dias, p_prueba: prueba })),
+  // cobros de planes (v2.23)
+  adminPlan: async (slug, plan, meses, monto, medio, nota) => ok(await sb.rpc('admin_plan', { p_slug: slug, p_plan: plan, p_meses: meses, p_monto: monto, p_medio: medio, p_nota: nota })),
+  adminEstado: async (slug, activa) => ok(await sb.rpc('admin_estado', { p_slug: slug, p_activa: activa })),
+  adminPagos: async () => ok(await sb.rpc('admin_pagos')) || [],
   adminSugEstado: async (id, estado) => { ok(await sb.rpc('admin_sugerencia_estado', { p_id: id, p_estado: estado })); },
   crearTienda: async d => ok(await sb.rpc('crear_tienda', { p_slug: d.slug, p_nombre: d.nombre, p_rubro: d.rubro, p_whatsapp: d.whatsapp, p_modalidad: d.modalidad, p_plan: d.plan })),
   guardarTienda: async (id, cambios) => ok(await sb.from('tenants').update(cambios).eq('id', id).select().maybeSingle()),
@@ -143,6 +147,21 @@ export const api = {
     return b;
   },
   mpPreferencia: (slug, pedido) => llamarFn('/api/mp-preferencia', { slug, pedido }, false),
+  // avisos de pedidos al celular (v2.23)
+  async pushClave() {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/push-clave', { headers: { authorization: 'Bearer ' + ses.access_token } }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.pub) throw new Error(d.error || 'No se pudo preparar el aviso (' + r.status + ')');
+    return d.pub;
+  },
+  pushSuscribir: async (endpoint, p256dh, auth, disp) => ok(await sb.rpc('push_suscribir', { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth, p_dispositivo: disp || null })),
+  pushQuitar: async endpoint => ok(await sb.rpc('push_quitar', { p_endpoint: endpoint })),
+  pushCuantos: async () => ok(await sb.rpc('push_cuantos')) || 0,
+  pushPrueba: () => llamarFn('/api/push-prueba', {}, true),
+  // seguimiento de clientes (v2.23): a quién le escribiste y cuándo
+  segContactos: async () => ok(await sb.from('clientes_seguimiento').select('wsp,contactado_at,veces')) || [],
+  segContactado: async wsp => ok(await sb.rpc('seguimiento_contactado', { p_wsp: wsp })),
 
   // pedidos en vivo (si Realtime está activo en el proyecto; si falla, el panel igual funciona)
   escucharPedidos(tenantId, cb) {

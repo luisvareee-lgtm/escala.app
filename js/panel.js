@@ -24,6 +24,8 @@ import { cierreCard } from './cierre.js';
 import { activarApp, instalarHtml } from './instalar.js';
 import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiarSel } from './productos.js';
 import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundadores.js';
+import { avisosHtml, resetAvisos } from './avisos.js';
+import { seMuestra, vistaSimple, vistaCard, tipVistaHtml } from './vista.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
@@ -31,7 +33,8 @@ export const setSalir = f => { salirFn = f; };
 const urlTienda = () => urlTiendaDe(P.t.slug);
 const TABS_BASE = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
 const TABS_ADMIN = [['admin', '🛡️ Admin']];
-const tabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
+const tabs = () => (P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE).filter(([k]) => seMuestra(k));
+const todasTabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
 export async function mostrarPanel(app) {
@@ -40,10 +43,13 @@ export async function mostrarPanel(app) {
   if (!P.t) return 'sin-tienda';
   activarApp();
   P.esAdmin = await esAdmin(); resetAdmin();
-  Object.assign(P, { tab: 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); P.gastos = [];
+  // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
+  const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
+  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); resetAvisos(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; Q.fly = null;
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
   await cargar();
+  if (qp) { const o = P.pedidos.find(x => x.id === qp); if (o) { P.tab = 'pedidos'; P.modal = { tipo: 'ped', o, items: P.items.filter(i => i.order_id === o.id) }; } }
   if (Q.stop) Q.stop();
   Q.stop = api.escucharPedidos(P.t.id, async () => { toast('🔔 Pedido nuevo'); await recargarPedidos(); if (P.modal || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { Q.pendiente = true; return; } pintar(); });
   pintar();
@@ -57,7 +63,7 @@ async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.al
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: vistaPedidos, resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaAjustes() + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
+  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaCard() + vistaAjustes() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
@@ -66,14 +72,15 @@ function pintar() {
 }
 
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
-const MAS = [['asistente', '🧠', 'Asistente', 'Cobranzas, reposición y ventas en dólares'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
+const MAS = [['asistente', '🧠', 'Asistente', 'Seguimiento de clientes, cobranzas y reposición'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
   const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab) || P.tab === 'admin';
   return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
 }
 function menuMas() {
-  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
+  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.filter(([k]) => seMuestra(k)).map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
     ${P.esAdmin ? '<button data-act="p-tab" data-k="admin"><span class="i">🛡️</span><span>Admin<small>Tiendas, pruebas, fundadores y sugerencias</small></span></button>' : ''}
+    ${vistaSimple() ? '<button data-act="vista-set" data-v="completa" id="mas-vista"><span class="i">🧰</span><span>Ver todas las herramientas<small>Precios inteligentes, resultado, revendedores, carritos…</small></span></button>' : '<button data-act="vista-set" data-v="simple" id="mas-vista"><span class="i">👁️</span><span>Vista simple<small>Solo lo esencial para vender</small></span></button>'}
     <button data-act="p-ayuda"><span class="i">💬</span><span>Ayuda<small>Buscá una solución o escribinos</small></span></button>
     <button data-act="p-sugerir"><span class="i">💡</span><span>Sugerir una mejora<small>Contanos qué te falta</small></span></button>
     <button data-act="p-ver-tienda"><span class="i">👀</span><span>Ver mi tienda<small>Como la ven tus clientes</small></span></button>

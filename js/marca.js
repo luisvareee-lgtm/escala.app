@@ -1,4 +1,4 @@
-// DATOS COMERCIALES DE ESCALA — valores de fábrica.
+// DATOS COMERCIALES DE LA PLATAFORMA (Eskalapp) — valores de fábrica.
 // ⚠️ NO edites este archivo: se reemplaza en cada actualización.
 // Tus datos (WhatsApp de soporte, titular, CUIT, dominio, precios, links de pago) van en  js/config.js,
 // dentro de  window.CONFIG_MARCA = { ... }.  Ese archivo nunca se reemplaza, así que no se pierden. Ejemplo:
@@ -12,7 +12,7 @@
 import * as cfg from './config.js';   // se carga antes para que window.CONFIG_MARCA ya exista
 
 const MARCA_BASE = {
-  NOMBRE: 'Escala.app',
+  NOMBRE: 'Eskalapp',
   // Tu dominio (sin https ni www), ej: 'tumarca.com.ar'. Con esto cada tienda queda en  nombre-de-la-tienda.tumarca.com.ar
   // Vacío = las tiendas siguen en  tu-sitio/t/nombre-de-la-tienda. Primero hacé los pasos de SUBDOMINIOS.md.
   DOMINIO: '',
@@ -26,6 +26,14 @@ const MARCA_BASE = {
   TITULAR: '[Nombre o razón social del titular]',
   CUIT: '[CUIT]',
   JURISDICCION: 'Ciudad Autónoma de Buenos Aires',
+  // Cobro de los planes por transferencia (v2.23). Si cargás el alias o el CBU/CVU, en “Elegí tu plan” aparece
+  // “Pagar por transferencia” con tus datos y el botón para mandarte el comprobante por WhatsApp.
+  PAGO_ALIAS: '',
+  PAGO_CBU: '',
+  PAGO_BANCO: '',
+  PAGO_TITULAR: '',   // vacío = usa TITULAR
+  // Pago anual: cuántos meses se cobran por 12 (10 = dos meses gratis). 0 = no ofrecer pago anual.
+  ANUAL_MESES: 10,
   FECHA_LEGALES: '8 de noviembre de 2026'
 };
 
@@ -34,9 +42,9 @@ const MARCA_BASE = {
 // plan de suscripción (preapproval_plan_id). Si no hay ninguno, “Quiero este plan” abre tu WhatsApp de soporte con el pedido armado.
 const PLANES_BASE = [
   { id: 'base', link: '', nombre: 'Catálogo Base', precio: 9900, para: 'Para empezar a vender por WhatsApp',
-    incluye: ['Productos y pedidos ilimitados', 'Precios por volumen x1 · x3 · x6 · x12', 'Importador inteligente (fotos, chats, Excel, PDF, CSV)', 'Pedidos por etapas, remito y mensajes de WhatsApp', 'Envíos, “Cómo comprar” y diseño de tu tienda', 'Flyers para Estados de WhatsApp e Instagram (tuyos y de tus revendedores)', 'Cobranzas: quién te debe y recordatorios', 'Resultado del negocio: ganancia neta y gastos', 'Catálogo en PDF'] },
+    incluye: ['Productos y pedidos ilimitados', 'Precios por volumen x1 · x3 · x6 · x12', 'Importador inteligente (fotos, chats, Excel, PDF, CSV)', 'Pedidos por etapas, remito y mensajes de WhatsApp', 'Aviso de cada pedido nuevo en tu celular', 'Envíos, “Cómo comprar” y diseño de tu tienda', 'Flyers para Estados de WhatsApp e Instagram (tuyos y de tus revendedores)', 'Cobranzas: quién te debe y recordatorios', 'Resultado del negocio: ganancia neta y gastos', 'Catálogo en PDF'] },
   { id: 'pro', link: '', nombre: 'Mayorista Pro', precio: 29900, destacado: true, para: 'Para mayoristas y revendedores que crecen',
-    incluye: ['Todo lo de Base', 'Minorista + mayorista con código de acceso', 'Dashboard interactivo completo', 'Reposición inteligente: días de stock y qué comprar', 'Ventas y ganancia en dólares', 'Stock automático y “¡Últimas unidades!”', 'Comparador de proveedores y precios de mercado', 'Revendedores con enlace y comisión', 'Carritos abandonados para recontactar'] },
+    incluye: ['Todo lo de Base', 'Minorista + mayorista con código de acceso', 'Dashboard interactivo completo', 'Reposición inteligente: días de stock y qué comprar', 'Ventas y ganancia en dólares', 'Stock automático y “¡Últimas unidades!”', 'Comparador de proveedores y precios de mercado', 'Revendedores con enlace y comisión', 'Seguimiento de clientes: quién dejó de comprar', 'Carritos abandonados para recontactar'] },
   { id: 'api', link: '', nombre: 'Suite Full API', precio: 49900, para: 'Para automatizar y cobrar online',
     incluye: ['Todo lo de Pro', 'Mercado Pago en el carrito (la plata va directo a tu cuenta)', 'Aviso de pedido nuevo por email', 'Webhooks firmados para n8n, Make o tu CRM'] }
 ];

@@ -5,10 +5,11 @@ import { esc, fmt, on, toast, copiar, normWsp, waLink, store } from './util.js';
 import { P, can, aviso } from './state.js';
 import { linea } from './charts.js';
 import { vistaCompras, calcCompra } from './compras.js';
+import { vistaSeguimiento, calcClientes, paraRecuperar, resetSeg } from './seguimiento.js';
 
 const I = { vista: 'cobranzas', abierto: null };
 const CFG = () => Object.assign({ periodo: 60, demora: 7, cubrir: 30 }, store.get('rep:' + (P.t && P.t.id), {}) || {});
-export const resetInt = () => Object.assign(I, { vista: 'cobranzas', abierto: null });
+export const resetInt = () => { Object.assign(I, { vista: 'cobranzas', abierto: null }); resetSeg(); };
 const DIA = 864e5;
 const dias = d => Math.floor((Date.now() - new Date(d)) / DIA);
 const usd = n => 'US$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
@@ -16,10 +17,10 @@ const pct = n => n == null || !isFinite(n) ? '—' : (n > 0 ? '+' : n < 0 ? '−
 
 export function vistaInteligente() {
   // por encargo no tiene depósito: no se muestra Reposición
-  const tabs = [['cobranzas', '💸 Cobranzas'], ['compras', '🛒 Pedido al proveedor'], ...((P.t.modo_stock || 'stock') === 'encargo' ? [] : [['reposicion', '📦 Reposición']]), ['dolares', '💵 En dólares']];
+  const tabs = [['cobranzas', '💸 Cobranzas'], ['clientes', '👥 Seguimiento'], ['compras', '🛒 Pedido al proveedor'], ...((P.t.modo_stock || 'stock') === 'encargo' ? [] : [['reposicion', '📦 Reposición']]), ['dolares', '💵 En dólares']];
   if (!tabs.some(t => t[0] === I.vista)) I.vista = 'cobranzas';
-  const cuerpo = I.vista === 'cobranzas' ? cobranzas() : I.vista === 'compras' ? vistaCompras() : I.vista === 'reposicion' ? reposicion() : dolares();
-  return `<div class="seg" role="tablist" aria-label="Herramientas" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button role="tab" aria-selected="${I.vista === k}" class="${I.vista === k ? 'on' : ''}" data-act="ia-vista" data-k="${k}">${n}</button>`).join('')}</div>${cuerpo}`;
+  const cuerpo = I.vista === 'cobranzas' ? cobranzas() : I.vista === 'clientes' ? vistaSeguimiento() : I.vista === 'compras' ? vistaCompras() : I.vista === 'reposicion' ? reposicion() : dolares();
+  return `<div class="seg seg-ia" role="tablist" aria-label="Herramientas" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button role="tab" aria-selected="${I.vista === k}" class="${I.vista === k ? 'on' : ''}" data-act="ia-vista" data-k="${k}">${n}</button>`).join('')}</div>${cuerpo}`;
 }
 
 /* ================= COBRANZAS ================= */
@@ -151,6 +152,7 @@ export function avisosInteligentes() {
   if (D.total > 0) out.push(`<button class="ia-aviso ${viejo ? 'bad' : ''}" data-act="ia-ir" data-k="cobranzas"><span class="ia-tx">💸 Te deben <b>${fmt(D.total)}</b>${viejo ? ` · ${fmt(viejo)} hace más de 15 días` : ''}</span><span class="ia-go">Cobrar →</span></button>`);
   if ((P.t.modo_stock || 'stock') !== 'stock') { const C = calcCompra(), u = C.grupos.reduce((a, g) => a + g.unidades, 0); if (u) out.push(`<button class="ia-aviso warn" data-act="ia-ir" data-k="compras"><span class="ia-tx">🛒 Tenés <b>${u} ${u === 1 ? 'unidad' : 'unidades'}</b> para encargar de ${C.ped.length} ${C.ped.length === 1 ? 'pedido' : 'pedidos'}</span><span class="ia-go">Armar pedido →</span></button>`); }
   if (can('stock') && (P.t.modo_stock || 'stock') !== 'encargo') { const R = calcReposicion(CFG()), n = R.filas.filter(f => f.est === 'ya' || f.est === 'agotado').length; if (n) out.push(`<button class="ia-aviso warn" data-act="ia-ir" data-k="reposicion"><span class="ia-tx">📦 <b>${n}</b> ${n === 1 ? 'producto se acaba' : 'productos se acaban'} antes de que llegue la compra</span><span class="ia-go">Reponer →</span></button>`); }
+  if (can('seguimiento')) { const n = paraRecuperar(calcClientes(P.pedidos), 30).length; if (n) out.push(`<button class="ia-aviso" data-act="ia-ir" data-k="clientes"><span class="ia-tx">👥 <b>${n}</b> ${n === 1 ? 'cliente no te compra' : 'clientes no te compran'} hace más de 30 días</span><span class="ia-go">Escribirles →</span></button>`); }
   return out.length ? `<div class="ia-avisos">${out.join('')}</div>` : '';
 }
 on('ia-ir', d => { I.vista = d.k; P.tab = 'asistente'; P.modal = null; P.repintar(); window.scrollTo(0, 0); });

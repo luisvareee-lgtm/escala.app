@@ -123,7 +123,7 @@ export function modalMasivo(m) {
     precio: `${radio('pr_modo', [['pct', 'Subir o bajar el costo un %'], ['usd', 'Poner el mismo costo en USD'], ['margen', 'Poner un margen propio %'], ['general', 'Volver al margen general']], 'pct')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-pct">% (negativo para bajar)</label><input class="fi" id="mz-pct" name="pr_pct" type="number" step="any" placeholder="Ej: 10 o -5" data-input="mz-prev"></div>
       <div class="fg"><label class="flabel" for="mz-val">Costo USD o margen %</label><input class="fi" id="mz-val" name="pr_val" type="number" step="any" min="0" placeholder="Ej: 12,50 o 45" data-input="mz-prev"></div></div>
-      <div class="hint">En Escala el precio sale del costo en USD, la cotización y el margen: así siguen al dólar cuando lo cambiás.</div><div class="mz-prev" id="mz-prev"></div>`,
+      <div class="hint">Acá el precio sale del costo en USD, la cotización y el margen: así siguen al dólar cuando lo cambiás.</div><div class="mz-prev" id="mz-prev"></div>`,
     stock: `${radio('st_modo', [['fijar', 'Poner este stock'], ['sumar', 'Sumar o restar'], ['sin_control', 'Sin control de stock']], 'fijar')}
       <div class="fg"><label class="flabel" for="mz-st">Cantidad</label><input class="fi" id="mz-st" name="st_val" type="number" step="1" placeholder="Ej: 10 (o -2 para restar)"></div>`,
     nombre: `${radio('nm_modo', [['prefijo', 'Agregar al principio'], ['sufijo', 'Agregar al final'], ['reemplazar', 'Reemplazar un texto']], 'sufijo')}
