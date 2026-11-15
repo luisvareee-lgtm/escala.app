@@ -78,9 +78,14 @@ function windows1252(bytes) {
   for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + 8192), b => b >= 0x80 && b < 0xa0 ? CP1252.charCodeAt(b - 0x80) : b));
   return s;
 }
+// Páginas de verificación anti-robots (Cloudflare, Imunify360, SiteGround, Incapsula, DataDome, PerimeterX…): la web
+// se ve bien en un navegador, pero a un programa le muestra esto en lugar de los productos. No lo salteamos.
+const VERIFICACION = /<title>\s*(?:Just a moment|Attention Required|Access denied|Acceso denegado|Acesso negado|Checking your browser|One moment, please|Please wait|DDoS protection|Security check|Bot verification|Verificando|Verifying you are human)|cf-chl-|challenge-platform|cf_chl_opt|imunify360|bot-protection|sgcaptcha|captcha-delivery\.com|_Incapsula_Resource|px-captcha|perimeterx/i;
+const PEGAR = 'Abrila en tu navegador y usá “Copiar y pegar”: copiá la página (Ctrl+A y Ctrl+C) y pegala en el recuadro 📋 Pegar, debajo de esta sección. Se carga igual, con fotos y precios.';
+const tituloDe = t => ((String(t).match(/<title[^>]*>([^<]*)/i) || [])[1] || '').replace(/\s+/g, ' ').trim().slice(0, 90);
 const AVISOS = {
   401: 'Esa página pide iniciar sesión. Pedile al proveedor la lista en Excel o PDF y subila acá arriba.',
-  403: 'El sitio del proveedor no permite la lectura automática (bloqueo o protección anti-robots). Pedile la lista en Excel o PDF, o subí las fotos de su catálogo.',
+  403: 'La web del proveedor no deja que la leamos desde nuestro servidor (tiene una protección anti-robots). ' + PEGAR,
   404: 'Esa página no existe. Revisá el enlace.',
   429: 'El sitio del proveedor pidió que vayamos más despacio. Esperá unos minutos y probá de nuevo.',
 };
@@ -126,7 +131,8 @@ export async function onRequestPost({ request, env }) {
   if (!r.ok) {
     const aviso = AVISOS[r.status] || (r.status >= 500 ? 'El sitio del proveedor tiene un problema ahora. Probá más tarde.' : `El sitio respondió con un error (${r.status}).`);
     if (tipo === 'imagen') return json({ error: aviso, status: r.status }, 502);
-    return json({ ok: false, status: r.status, url: actual, error: aviso, desafio: /cf-mitigated|challenge/i.test(r.headers.get('cf-mitigated') || '') || r.status === 403 });
+    const bloqueado = [403, 429, 503].includes(r.status) || /challenge/i.test(r.headers.get('cf-mitigated') || '');
+    return json({ ok: false, status: r.status, url: actual, error: bloqueado && r.status !== 403 && r.status !== 429 ? 'La web del proveedor no deja que la leamos desde nuestro servidor. ' + PEGAR : aviso, bloqueado });
   }
   if (tipo === 'imagen') {
     if (!/^image\/(png|jpe?g|webp|gif|avif)/i.test(ct)) return json({ error: 'Ese enlace no es una foto (JPG, PNG o WebP).' }, 415);
@@ -137,5 +143,10 @@ export async function onRequestPost({ request, env }) {
   if (!TIPOS_TEXTO.test(ct) && ct) return json({ ok: false, status: r.status, url: actual, ct, error: /^image\//i.test(ct) ? 'Ese enlace es una foto, no una página.' : 'Ese enlace no es una página web ni un catálogo.' , esImagen: /^image\//i.test(ct) });
   const bytes = await leerHasta(r, MAX_TEXTO);
   if (!bytes) return json({ ok: false, status: r.status, url: actual, error: 'La página es demasiado grande para leerla de una vez. Probá con el enlace de una categoría.' });
-  return json({ ok: true, status: r.status, url: actual, ct: ct.split(';')[0], cuerpo: decodificar(bytes, ct) });
+  const cuerpo = decodificar(bytes, ct);
+  if (/html/i.test(ct) && VERIFICACION.test(cuerpo.slice(0, 30000)) && (cuerpo.match(/<a\s/gi) || []).length < 25) {
+    const tit = tituloDe(cuerpo);
+    return json({ ok: false, status: r.status, url: actual, bloqueado: true, titulo: tit, error: `La web del proveedor no deja que la leamos desde nuestro servidor: en lugar de los productos muestra una verificación anti-robots${tit ? ' («' + tit + '»)' : ''}. ` + PEGAR });
+  }
+  return json({ ok: true, status: r.status, url: actual, ct: ct.split(';')[0], cuerpo });
 }
