@@ -1,4 +1,5 @@
-// Portada: por qué elegir la plataforma, la barra del pedido en vivo, simuladores (precios por volumen y costo mensual), planes, preguntas y legales.
+// Portada (v2.28: encabezado fijo, titular con el dolor y el resultado, perfiles, barra que se muestra sola, capturas reales,
+// testimonios desde config.js y un solo botón en toda la página): por qué elegir la plataforma, la barra del pedido en vivo, simuladores (precios por volumen y costo mensual), planes, preguntas y legales.
 import { esc, fmt, on, $ } from './util.js';
 import { MARCA, PLANES, REFERENCIA } from './marca.js';
 import { demoHtml } from './demo.js';
@@ -6,13 +7,22 @@ import { cuposHtml, cargarCupos } from './fundadores.js';
 import { ilus } from './ilus.js';
 
 const SIM = { costo: 10, dolar: 1200, m1: 50, m12: 20, ventas: 3000000 };
-const LP = { anual: false };
+const LP = { anual: false, perfil: 'mayorista' };
+const CTA = 'Crear mi tienda gratis', MICRO = '7 días gratis · sin tarjeta · sin permanencia';
 // íconos del título (trazo, toman el color del texto)
 const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICO = {
   lista: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'),
   margen: svg('<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>'),
   tienda: svg('<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/><path d="M10 20v-5h4v5"/>'),
+  dolar: svg('<path d="M12 2v20"/><path d="M17 6.5c-1-1.5-2.8-2.3-5-2.3-2.8 0-5 1.5-5 3.8 0 5.200 10 2.500 10 7.800 0 2.300-2.200 3.900-5 3.900-2.400 0-4.300-.900-5.300-2.600"/>'),
+  escalones: svg('<path d="M4 20V14h4v6"/><path d="M10 20V9h4v11"/><path d="M16 20V4h4v16"/><path d="M2 20h20"/>'),
+  sync: svg('<path d="M20 11a8 8 0 0 0-14.500-4.500L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.500 4.500L21 15"/><path d="M21 20v-5h-5"/>'),
+  cero: svg('<circle cx="12" cy="12" r="9"/><path d="M5.600 18.400 18.400 5.600"/>'),
+  infinito: svg('<path d="M7 8a4 4 0 1 0 0 8c2.500 0 3.500-2 5-4s2.500-4 5-4a4 4 0 1 1 0 8c-2.500 0-3.500-2-5-4S9.500 8 7 8z"/>'),
+  candado: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0"/>'),
+  chat: svg('<path d="M21 12a8 8 0 0 1-11.800 7L4 20l1.100-4.600A8 8 0 1 1 21 12z"/>'),
+  ok: svg('<path d="M5 12.500 10 17.500 19 7"/>'),
 };
 const ANUAL = (() => { const n = Number(MARCA.ANUAL_MESES); return n > 0 && n < 12 ? n : 0; })();
 
@@ -42,36 +52,74 @@ function gbHtml() {
       <div class="lp-gb-acc">${acc}</div></div></div>
     <div class="dz-gami lp-gami lvl${Math.max(0, n)}" id="lp-gami">${gbBarra(false)}</div></div>`;
 }
-on('lp-gb', d => {
+function gbPaso(d, usuario) {
   const antes = GB.q ? nivelDe(GB.q) : -1;
-  GB.q = d.d === '0' ? 0 : Math.max(0, Math.min(24, GB.q + Number(d.d)));
+  GB.q = d === '0' ? 0 : Math.max(0, Math.min(24, GB.q + Number(d)));
   const n = GB.q ? nivelDe(GB.q) : -1, subio = n > antes && n >= 1, box = $('#lp-gb');
-  if (!box) return;
+  if (!box) return false;
   box.innerHTML = gbHtml();
-  const cb = $('#lp-gami'); if (!cb) return;
+  const cb = $('#lp-gami'); if (!cb) return false;
   if (subio) {
     cb.innerHTML = gbBarra(true);
-    try { if (navigator.vibrate) navigator.vibrate(n >= 3 ? [65, 35, 130] : [45, 25, 70]); } catch (e) { }
+    if (usuario) { try { if (navigator.vibrate) navigator.vibrate(n >= 3 ? [65, 35, 130] : [45, 25, 70]); } catch (e) { } }
     cb.classList.remove('gb-shake'); void cb.offsetWidth; cb.classList.add('gb-shake');
     setTimeout(() => { const x = cb.querySelector('.gb-pill'); if (x) x.remove(); }, 2400);
   }
-});
-const planesLanding = () => `<div class="lp-planes">${PLANES.map(p => { const pr = LP.anual && ANUAL ? p.precio * ANUAL : p.precio; return `<div class="lp-plan${p.destacado ? ' on glow' : ''}">${p.destacado ? '<span class="tag">Más elegido</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(pr)}<small>${LP.anual && ANUAL ? '/año' : '/mes'}</small></div>${LP.anual && ANUAL ? `<p class="pl-ahorro">Equivale a ${fmt(pr / 12)}/mes · ahorrás ${fmt(p.precio * 12 - pr)}</p>` : ''}
-      <ul>${p.incluye.map(x => `<li>${esc(x)}</li>`).join('')}</ul><a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">Empezar gratis</a></div>`; }).join('')}</div>`;
+  return true;
+}
+// La barra se muestra sola una vez (1 → 12 unidades) cuando entra en pantalla y vuelve a 0 para que la pruebe el visitante.
+// No corre si el sistema pide menos movimiento, y cualquier toque la corta.
+const AUTO = { t: null, io: null, hecho: false };
+function autoParar() { clearTimeout(AUTO.t); AUTO.t = null; if (AUTO.io) { AUTO.io.disconnect(); AUTO.io = null; } const b = $('#lp-gb'); if (b) b.classList.remove('auto'); }
+function autoBarra() {
+  autoParar(); AUTO.hecho = false;
+  const box = $('#lp-gb');
+  let quieto = false; try { quieto = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { }
+  if (!box || quieto || typeof IntersectionObserver === 'undefined') return;
+  const paso = () => {
+    if (!$('#lp-gb')) return autoParar();
+    if (GB.q >= 12) { AUTO.t = setTimeout(() => { if ($('#lp-gb')) { gbPaso('0', false); const m = $('#lp-gb-msg'); if (m) m.innerHTML = 'Ahora probalo vos: tocá <b>+ Agregar</b>'; } autoParar(); }, 2600); return; }
+    gbPaso('1', false); const b = $('#lp-gb'); if (b) b.classList.add('auto');
+    AUTO.t = setTimeout(paso, [3, 6, 12].includes(GB.q) ? 1300 : 420);
+  };
+  AUTO.io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && !AUTO.hecho) { AUTO.hecho = true; AUTO.io.disconnect(); AUTO.io = null; AUTO.t = setTimeout(paso, 900); } }, { threshold: 0.6 });
+  AUTO.io.observe(box);
+}
+on('lp-gb', d => { const corria = !!AUTO.t; AUTO.hecho = true; autoParar(); if (corria && d.d !== '0') GB.q = 0; gbPaso(d.d, true); });
+const lista = L => L.length <= 7 ? `<ul>${L.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : `<ul>${L.slice(0, 6).map(x => `<li>${esc(x)}</li>`).join('')}</ul><details class="lp-plan-mas"><summary>Ver ${L.length - 6} más</summary><ul>${L.slice(6).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
+const planesLanding = () => `<div class="lp-planes">${PLANES.map(p => { const pr = LP.anual && ANUAL ? p.precio * ANUAL : p.precio; return `<div class="lp-plan${p.destacado ? ' on glow' : ''}">${p.destacado ? '<span class="tag">Recomendado</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(pr)}<small>${LP.anual && ANUAL ? '/año' : '/mes'}</small></div>${LP.anual && ANUAL ? `<p class="pl-ahorro">Equivale a ${fmt(pr / 12)}/mes · ahorrás ${fmt(p.precio * 12 - pr)}</p>` : ''}
+      ${lista(p.incluye)}<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">${CTA}</a><small class="lp-plan-nota">7 días gratis · sin tarjeta</small></div>`; }).join('')}</div>`;
 on('lp-periodo', d => { LP.anual = d.v === 'anual'; const b = $('#lp-planes-in'), s = $('#lp-periodo'); if (b) b.innerHTML = planesLanding(); if (s) s.querySelectorAll('button').forEach(x => { const on = (x.dataset.v === 'anual') === LP.anual; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); }); });
 const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mismo cálculo que la base de datos
 
 const PORQUE = [
-  ['💲', 'Tus costos reales, no un precio a ojo', 'Cargás el costo (en dólares o pesos) y tus márgenes: la app calcula el precio de cada escalón. Cambia el dólar y se actualiza todo el catálogo. Nunca vendés por debajo de tu margen mínimo.'],
-  ['📶', 'Escalones de precio, no un solo precio mayorista', 'x1 · x3 · x6 · x12 en todos los planes, por producto, por categoría o por todo el carrito. Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido le festeja cada nivel.'],
-  ['♾️', 'Sin límites y 0% por venta', 'Productos, pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: pagás un abono fijo, mensual o anual.'],
-  ['🔄', 'Lista viva: precios al día en un minuto', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
-  ['💰', 'Por menor y por mayor con el mismo enlace', 'El público ve el precio final. Tus revendedores entran con un código a la lista por cantidad y ven a cuánto revender cada producto y cuánto ganan.'],
-  ['📥', 'Lee tus datos como vengan', 'Fotos del proveedor con el precio escrito, capturas de canales, el chat de WhatsApp exportado, Excel, PDF o el CSV de tu tienda actual. Revisás y publicás con tu margen.'],
-  ['📸', 'Flyers y catálogo PDF en un toque', 'Elegís de 1 a 4 productos y sale la imagen vertical lista para tus Estados, con tu marca. Tus revendedores arman la suya en marca blanca, con su precio. Y tu lista completa, en PDF.'],
-  ['🔔', 'Cada pedido, al instante en tu celular', 'Te llega un aviso como un mensaje, con el total y el cliente, aunque tengas el panel cerrado. El pedido entra ordenado: etapas, remito y mensajes de WhatsApp listos.'],
-  ['🧠', 'Un asistente que cuida tu plata y tus clientes', 'Quién te debe y hace cuánto, quién dejó de comprarte (con el WhatsApp listo para escribirle), qué se te acaba antes de que llegue la compra y cuánto ganaste de verdad.']
+  ['dolar', 'Tu costo y el dólar mandan', 'Cargás el costo (en dólares o pesos) y tus márgenes: la app calcula cada precio. Cambia el dólar, cambiás un número y se actualiza todo el catálogo. Nunca vendés por debajo de tu margen mínimo.'],
+  ['escalones', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, en todos los planes. Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
+  ['sync', 'Lista viva, en vez de un PDF', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
+  ['cero', '0% de comisión por venta', 'Productos, pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: pagás un abono fijo, mensual o anual.']
 ];
+const MAS = [
+  ['Por menor y por mayor con el mismo enlace', 'El público ve el precio final. Tus revendedores entran con un código a la lista por cantidad y ven a cuánto revender cada producto y cuánto ganan.'],
+  ['Lee tus datos como vengan', 'Fotos del proveedor con el precio escrito, capturas de canales, el chat de WhatsApp exportado, Excel, PDF o el CSV de tu tienda actual. Revisás y publicás con tu margen.'],
+  ['Flyers y catálogo PDF en un toque', 'Elegís de 1 a 4 productos y sale la imagen vertical lista para tus Estados, con tu marca. Tus revendedores arman la suya en marca blanca, con su precio. Y tu lista completa, en PDF.'],
+  ['Cada pedido, al instante en tu celular', 'Te llega un aviso como un mensaje, con el total y el cliente, aunque tengas el panel cerrado. El pedido entra ordenado: etapas, remito y mensajes de WhatsApp listos.'],
+  ['Un asistente que cuida tu plata y tus clientes', 'Quién te debe y hace cuánto, quién dejó de comprarte (con el WhatsApp listo para escribirle), qué se te acaba antes de que llegue la compra y cuánto ganaste de verdad.'],
+  ['Promociones y cupones', '3x2, 2da unidad al 50 %, “2 x $”, descuento por monto con barra de progreso y cupones para tu público. Las herramientas se adaptan a lo que vendés: talles en ropa, tonos en cosmética.']
+];
+// ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado.
+const PERFILES = {
+  mayorista: ['Soy mayorista', 'Dejá de mandar el PDF. Tus clientes entran a tu tienda, ven el precio según cuánto llevan y te mandan el pedido armado por WhatsApp.',
+    ['Precios x1 · x3 · x6 · x12 automáticos, con tu compra mínima', 'La barra del pedido los empuja a llevar más', 'Cambia el proveedor: actualizás toda la lista en un minuto']],
+  importador: ['Soy importador', 'Cargás tus costos en dólares y tu margen. Cambia el dólar, cambiás un solo número y se recalcula toda tu lista.',
+    ['Costo en dólares, precios en pesos siempre al día', 'Margen mínimo protegido: nunca vendés por debajo', 'Ventas y ganancia también en dólares']],
+  marca: ['Tengo revendedores', 'Tu público ve el precio final y tus revendedores entran con un código a su lista por cantidad, con flyers listos para publicar.',
+    ['Lista mayorista con código de acceso', 'Flyers en marca blanca: cada revendedor publica con su precio', 'Enlace propio y comisión para cada revendedor']],
+  nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
+    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', `Desde ${fmt(PLANES[0].precio)} por mes, sin comisión por venta`]]
+};
+const perfilHtml = () => { const [, sub, pts] = PERFILES[LP.perfil] || PERFILES.mayorista; return `<p class="lp-bajada">${sub}</p><ul class="lp-pts">${pts.map(x => `<li><i>${ICO.ok}</i>${x}</li>`).join('')}</ul>`; };
+on('lp-perfil', d => { if (!PERFILES[d.k]) return; LP.perfil = d.k; const b = $('#lp-perfil-in'); if (b) b.innerHTML = perfilHtml(); document.querySelectorAll('[data-act=lp-perfil]').forEach(x => { const on_ = x.dataset.k === d.k; x.classList.toggle('on', on_); x.setAttribute('aria-pressed', on_); }); });
+on('lp-ir', d => { const e = document.getElementById(d.k); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 const FAQ = [
   ['¿Necesito saber de computación?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
   ['¿Me cobran comisión por cada venta?', 'No. Pagás solo el abono mensual. Si cobrás con Mercado Pago, la plata entra directo a tu cuenta y solo aplica la comisión de Mercado Pago.'],
@@ -121,49 +169,77 @@ function simCosto() {
     <p class="hint">Referencia: precio público (pago mensual) del plan de una plataforma líder que incluye listas mayoristas, y su costo por transacción al cobrar con otros medios de pago, a ${esc(REFERENCIA.fecha)}. No incluye las comisiones del medio de pago, que se pagan en cualquier plataforma.</p>`;
 }
 
+const wspSoporte = () => MARCA.SOPORTE_WSP ? `https://api.whatsapp.com/send?phone=${esc(MARCA.SOPORTE_WSP)}&text=${encodeURIComponent('Hola, tengo una consulta sobre ' + MARCA.NOMBRE)}` : '';
+const titularReal = () => MARCA.TITULAR && !/^\[/.test(MARCA.TITULAR) ? MARCA.TITULAR : '';
+// Testimonios reales: se cargan en js/config.js → CONFIG_MARCA.TESTIMONIOS = [{ nombre, rubro, texto, url }]. Sin datos, la sección no aparece.
+const testimonios = () => (Array.isArray(MARCA.TESTIMONIOS) ? MARCA.TESTIMONIOS : []).filter(t => t && t.nombre && t.texto).slice(0, 3);
+const urlOk = u => /^https:\/\//.test(String(u || ''));
+let FIJO = null;
 export function inicio(app) {
   const N = esc(MARCA.NOMBRE); GB.q = 0;
-  app.innerHTML = `<div class="lp">
-  <section class="lp-hero"><div class="tag">Para comercios, revendedores y mayoristas</div>
-    <h1 class="lp-flujo"><span class="fl-n"><i>${ICO.lista}</i>Subí la lista de tu proveedor</span><span class="fl-a" aria-hidden="true"><b></b></span><span class="fl-n"><i>${ICO.margen}</i>Calculá tu margen</span><span class="fl-a" aria-hidden="true"><b></b></span><span class="fl-n fl-fin"><i>${ICO.tienda}</i>¡Listo, tenés tu tienda con tus precios!</span></h1>
-    <p>${N} lee la lista, calcula tus precios con tu ganancia por unidad, por cantidad o las dos y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
-    ${demoHtml()}
-    <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
-    ${cuposHtml()}
-    <ul class="lp-pills"><li>🔄 Lista nueva → precios al día</li><li>📶 x1 · x3 · x6 · x12</li><li>0% por venta</li><li>♾️ Sin límites</li><li>💬 Pedidos a tu WhatsApp</li><li>🔔 Aviso al celular</li><li>📸 Flyers para tus Estados</li></ul></section>
+  const T = testimonios(), wsp = wspSoporte(), tit = titularReal();
+  const cta = (cl = 'btn-p') => `<a class="btn ${cl}" href="#/registro">${CTA}</a>`;
+  app.innerHTML = `<div class="lp-top" id="lp-top"><div class="lp-top-in"><a class="lp-logo" href="#/" aria-label="${N}"><img src="/favicon.svg" alt="" width="28" height="28">${N}</a>
+    <nav class="lp-nav" aria-label="Secciones"><button type="button" data-act="lp-ir" data-k="probar">Cómo funciona</button><button type="button" data-act="lp-ir" data-k="comparar">Comparar</button><button type="button" data-act="lp-ir" data-k="planes">Planes</button><button type="button" data-act="lp-ir" data-k="faq">Preguntas</button></nav>
+    <span class="lp-top-acc"><a class="lp-in" href="#/login">Ingresar</a><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></span></div></div>
+  <div class="lp">
+  <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para mayoristas, importadores y marcas con revendedores</div>
+    <h1>Tu lista mayorista, siempre al día. <span>Sin PDF y sin comisión por venta.</span></h1>
+    <div class="lp-perfil" role="group" aria-label="¿Cuál es tu caso?">${Object.entries(PERFILES).map(([k, v]) => `<button type="button" data-act="lp-perfil" data-k="${k}" class="${LP.perfil === k ? 'on' : ''}" aria-pressed="${LP.perfil === k}">${v[0]}</button>`).join('')}</div>
+    <div id="lp-perfil-in">${perfilHtml()}</div>
+    <div class="lp-cta" id="lp-cta">${cta()}<button type="button" class="btn btn-s" data-act="lp-ir" data-k="probar">Probar con mi lista</button></div>
+    <p class="lp-micro">${MICRO}</p>
+    ${cuposHtml()}</div>
+    <div class="lp-hero-demo"><p class="lp-demo-tit">Así compra tu cliente: cada escalón baja el precio</p><div id="lp-gb">${gbHtml()}</div></div></section>
 
-  <section class="lp-sec lp-gb-sec"><h2>Así compra tu cliente: cada escalón se festeja</h2><p class="lp-sub">Tocá “+ Agregar” y mirá cómo baja el precio por unidad. En tu tienda mayorista pasa lo mismo con cada producto: la barra le muestra cuánto le falta para el próximo precio, y al llegar el celular vibra.</p>
-    <div id="lp-gb">${gbHtml()}</div></section>
+  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Sin límites</b>de productos ni pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Hecho en Argentina</b>en pesos y con ayuda en español</li></ul>
 
-  <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${i}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div></section>
+  <section class="lp-sec" id="probar"><h2>Probalo con tu lista, sin registrarte</h2><p class="lp-sub">${N} lee la lista de tu proveedor, calcula tus precios con tu ganancia y te arma la tienda para recibir pedidos por WhatsApp.</p>
+    <ol class="lp-pasos"><li><i>${ICO.lista}</i><b>Subí la lista de tu proveedor</b></li><li><i>${ICO.margen}</i><b>Poné tu margen</b></li><li><i>${ICO.tienda}</i><b>Listo: tu tienda con tus precios</b></li></ol>
+    ${demoHtml()}</section>
 
-  <section class="lp-sec"><h2>Compará antes de elegir</h2><p class="lp-sub">Lo que cambia entre vender con ${N}, con una plataforma de tiendas tradicional o solo por WhatsApp.</p>
-    <div class="lp-vsw"><table class="lp-vs"><thead><tr><th></th><th class="on">${N}</th><th>Plataforma tradicional</th><th>Solo WhatsApp y planilla</th></tr></thead><tbody>${VS.map(r => `<tr><td>${r[0]}</td><td class="on">${r[1]}</td><td>${r[2]}</td><td class="no">${r[3]}</td></tr>`).join('')}</tbody></table></div>
-    <p class="hint" style="margin-top:8px">Comparación general con los planes y condiciones publicados por plataformas líderes a ${esc(REFERENCIA.fecha)}. Cada una tiene sus particularidades.</p></section>
-
-  <section class="lp-sec lp-sim"><h2>Simulá tus precios por volumen</h2><p class="lp-sub">Probá con un producto tuyo: así se ve tu lista sin hacer una sola cuenta.</p>
+  <section class="lp-sec"><h2>¿Por qué elegir ${N}?</h2><div class="lp-grid lp-grid4">${PORQUE.map(([i, t, d]) => `<div class="lp-card"><span class="i" aria-hidden="true">${ICO[i]}</span><b>${t}</b><p>${d}</p></div>`).join('')}</div>
+    <details class="lp-mas"><summary>Ver todo lo que incluye</summary><ul>${MAS.map(([t, d]) => `<li><b>${t}</b>${d}</li>`).join('')}</ul></details>
+    <details class="lp-mas lp-sim" id="lp-simular"><summary>Simulá tus precios con un producto tuyo</summary>
     <div class="lp-form"><label>Costo en dólares<input class="fi" type="number" min="0.1" step="0.1" value="${SIM.costo}" data-input="lp-sim" data-k="costo"></label>
       <label>Dólar $<input class="fi" type="number" min="1" step="1" value="${SIM.dolar}" data-input="lp-sim" data-k="dolar"></label>
       <label>Ganancia x1 %<input class="fi" type="number" min="0" max="500" value="${SIM.m1}" data-input="lp-sim" data-k="m1"></label>
       <label>Ganancia x12 %<input class="fi" type="number" min="0" max="500" value="${SIM.m12}" data-input="lp-sim" data-k="m12"></label></div>
-    <div id="lp-sim1">${simPrecios()}</div></section>
+    <div id="lp-sim1">${simPrecios()}</div></details></section>
 
-  <section class="lp-sec lp-sim"><h2>¿Cuánto te cuesta vender online?</h2><p class="lp-sub">Las plataformas tradicionales cobran el abono más un porcentaje de cada venta. Nosotros, solo el abono.</p>
-    <label class="lp-range">Vendés por mes: <b id="lp-v">${fmt(SIM.ventas)}</b><input type="range" min="500000" max="30000000" step="500000" value="${SIM.ventas}" data-input="lp-ventas" aria-label="Ventas por mes"></label>
-    <div id="lp-sim2">${simCosto()}</div></section>
+  <section class="lp-sec lp-ver"><h2>Así se ve por dentro</h2><p class="lp-sub">Tu panel a la izquierda y tu tienda como la ve tu cliente. Capturas de una tienda de ejemplo.</p>
+    <div class="lp-caps"><figure class="lp-cap-pc"><div class="lp-cap-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="/captura-panel.jpg" alt="El panel de ${N}: la tienda se edita viendo al costado cómo queda" loading="lazy" width="1400" height="875"><figcaption>El panel: editás y ves al costado cómo queda tu tienda.</figcaption></figure>
+      <figure class="lp-cap-cel"><img src="/captura-tienda.jpg" alt="El carrito de una tienda con las barras de envío gratis y descuento" loading="lazy" width="390" height="760"><figcaption>La tienda en el celular de tu cliente.</figcaption></figure></div>
+    ${urlOk(MARCA.DEMO_URL) ? `<a class="btn btn-s lp-mid" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Mirá una tienda funcionando</a>` : ''}</section>
 
-  <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento en pesos. Probá 7 días con todo desbloqueado.</p>
+  <section class="lp-sec" id="comparar"><h2>Compará antes de elegir</h2><p class="lp-sub">Las plataformas tradicionales cobran el abono más un porcentaje de cada venta. Nosotros, solo el abono.</p>
+    <div class="lp-sim lp-costo"><label class="lp-range">Vendés por mes: <b id="lp-v">${fmt(SIM.ventas)}</b><input type="range" min="500000" max="30000000" step="500000" value="${SIM.ventas}" data-input="lp-ventas" aria-label="Ventas por mes"></label>
+    <div id="lp-sim2">${simCosto()}</div></div>
+    <div class="lp-vsw"><table class="lp-vs"><thead><tr><th></th><th class="on">${N}</th><th>Plataforma tradicional</th><th>Solo WhatsApp y planilla</th></tr></thead><tbody>${VS.map(r => `<tr><td>${r[0]}</td><td class="on">${r[1]}</td><td>${r[2]}</td><td class="no">${r[3]}</td></tr>`).join('')}</tbody></table></div>
+    <p class="hint" style="margin-top:8px">Comparación general con los planes y condiciones publicados por plataformas líderes a ${esc(REFERENCIA.fecha)}. Cada una tiene sus particularidades.</p></section>
+
+  ${T.length ? `<section class="lp-sec" id="opiniones"><h2>Lo que dicen los que ya venden con ${N}</h2><div class="lp-testi">${T.map(t => `<figure><blockquote>“${esc(t.texto)}”</blockquote><figcaption><b>${esc(t.nombre)}</b>${t.rubro ? `<span>${esc(t.rubro)}</span>` : ''}${urlOk(t.url) ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">Ver su tienda →</a>` : ''}</figcaption></figure>`).join('')}</div></section>` : ''}
+
+  <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento en pesos. Probá 7 días con todo desbloqueado, sin tarjeta.</p>
     ${ANUAL ? `<div class="seg pl-periodo" id="lp-periodo" role="group" aria-label="Forma de pago"><button class="${LP.anual ? '' : 'on'}" data-act="lp-periodo" data-v="mes" aria-pressed="${!LP.anual}">Mensual</button><button class="${LP.anual ? 'on' : ''}" data-act="lp-periodo" data-v="anual" aria-pressed="${LP.anual}">Anual · ${12 - ANUAL === 1 ? '1 mes gratis' : (12 - ANUAL) + ' meses gratis'}</button></div>` : ''}
     <div id="lp-planes-in">${planesLanding()}</div>
     <ul class="lp-gar">${GAR.map(([t, d]) => `<li><b>${t}</b>${d}</li>`).join('')}</ul></section>
 
-  <section class="lp-sec"><h2>Así arrancás</h2><ol class="home-steps"><li>Creás tu cuenta con email y contraseña.</li><li>Ponés el nombre de tu negocio y tu WhatsApp: te armamos la tienda con productos de ejemplo.</li><li>Una guía te lleva paso a paso: tu logo, tu alias, tu lista de precios y tus envíos.</li><li>Compartís tu enlace y los pedidos te llegan al WhatsApp.</li></ol>
-    <a class="btn btn-p lp-mid" href="#/registro">Empezar ahora</a></section>
+  <section class="lp-sec"><h2>Así arrancás</h2><ol class="home-steps"><li>Creás tu cuenta con email y contraseña.</li><li>Ponés el nombre de tu negocio y tu WhatsApp: te armamos la tienda con productos de ejemplo.</li><li>Una guía te lleva paso a paso: tu logo, tu alias, tu lista de precios y tus envíos.</li><li>Compartís tu enlace y los pedidos te llegan al WhatsApp.</li></ol></section>
 
-  <section class="lp-sec"><h2>Preguntas frecuentes</h2><div class="st-faq-l">${FAQ.map(([p, r]) => `<details><summary>${p}</summary><p>${r}</p></details>`).join('')}</div></section>
+  <section class="lp-sec" id="faq"><h2>Preguntas frecuentes</h2><div class="st-faq-l">${FAQ.map(([p, r]) => `<details><summary>${p}</summary><p>${r}</p></details>`).join('')}</div>
+    ${wsp ? `<p class="lp-duda">¿Te quedó una duda? <a href="${wsp}" target="_blank" rel="noopener">Escribinos por WhatsApp</a> y te respondemos.</p>` : ''}</section>
 
-  <footer class="lp-foot"><b>${N}</b><nav><a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a>${MARCA.SOPORTE_WSP ? `<a href="https://api.whatsapp.com/send?phone=${esc(MARCA.SOPORTE_WSP)}&text=${encodeURIComponent('Hola, tengo una consulta sobre ' + MARCA.NOMBRE)}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}</nav></footer></div>`;
-  cargarCupos();
+  <section class="lp-final"><h2>Armá tu tienda mayorista hoy</h2><p>En unos minutos tenés tu lista online, con tus precios por cantidad y los pedidos llegando a tu WhatsApp.</p>${cta('btn-inv')}<small>${MICRO}</small></section>
+
+  <footer class="lp-foot"><div><b class="lp-logo"><img src="/favicon.svg" alt="" width="22" height="22">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
+    <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
+  <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b>7 días gratis · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
+  cargarCupos(); autoBarra();
+  // en el celular, el botón queda fijo abajo cuando el del encabezado ya no se ve
+  if (FIJO) { FIJO.disconnect(); FIJO = null; }
+  const c = $('#lp-cta'), f = $('#lp-fijo');
+  if (c && f && typeof IntersectionObserver !== 'undefined') { FIJO = new IntersectionObserver(es => { const e = es[es.length - 1]; f.hidden = e.isIntersecting || e.boundingClientRect.top > 0; }); FIJO.observe(c); }
 }
 on('lp-sim', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; SIM[d.k] = v; const b = $('#lp-sim1'); if (b) b.innerHTML = simPrecios(); });
 on('lp-ventas', (d, el) => { SIM.ventas = Number(el.value); const b = $('#lp-sim2'), t = $('#lp-v'); if (t) t.textContent = fmt(SIM.ventas); if (b) b.innerHTML = simCosto(); });

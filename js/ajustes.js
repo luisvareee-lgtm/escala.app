@@ -46,7 +46,7 @@ on('aj-guardar-estilo', async () => {
 
 
 function integraciones() {
-  if (!can('webhook')) return `<div class="cc"><h3>🔌 Integraciones ${aviso('webhook')}</h3><p class="hint">Mercado Pago en el carrito, webhooks para n8n / WhatsApp API y aviso de pedidos nuevos por email están en el plan Full API. Durante la prueba gratis las tenés desbloqueadas.</p></div>`;
+  if (!can('webhook')) return `<div class="cc"><h3>🔌 Integraciones ${aviso('webhook')}</h3><p class="hint">Mercado Pago en el carrito, webhooks para n8n / WhatsApp API y aviso de pedidos nuevos por email están en el plan Suite Automatización. Durante la prueba gratis las tenés desbloqueadas.</p></div>`;
   if (S.integ === undefined) { S.integ = null; const fin = () => { const el = $('#integ-box'); if (el) el.outerHTML = integraciones(); }; api.estadoIntegraciones().then(x => { S.integ = x; fin(); }).catch(e => { S.integ = { error: e.message }; fin(); }); }
   const g = S.integ;
   if (!g) return '<div class="cc" id="integ-box"><h3>🔌 Integraciones</h3><p class="hint"><span class="spin"></span> Cargando…</p></div>';
@@ -96,7 +96,7 @@ export function vistaAjustes() {
   const dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
   const lock = f => can(f) ? '' : ' disabled';
   const plan = `<div class="cc"><h3>📦 Tu plan: ${esc(PLAN_NOMBRE[t.plan])}</h3>${dias > 0 ? `<p class="ok-box">${pruebaFrase(t)}</p>` : ''}
-  <p class="hint">Productos ilimitados y 0% de comisión por venta en todos los planes.</p><div class="tblw"><table class="tbl"><tr><th>Herramienta</th><th>Base</th><th>Pro</th><th>Full API</th></tr>${[['Catálogo ilimitado, escalas x1/x3/x6/x12, importador, carrito, pedidos, catálogo PDF, actualización masiva', 1, 1, 1], ['Dashboard, bimonetario USD/ARS, Meta Pixel, stock crítico y automático, carritos abandonados', 0, 1, 1], ['Modo híbrido, sub-revendedores, comparador de proveedores, referencia de mercado', 0, 1, 1], ['Mercado Pago en el carrito, webhooks firmados y aviso de pedidos por email', 0, 0, 1]].map(r => `<tr><td>${r[0]}</td>${r.slice(1).map(x => `<td>${x ? '✅' : '—'}</td>`).join('')}</tr>`).join('')}</table></div><button class="btn btn-p btn-sm" style="margin-top:10px;width:auto" data-act="p-planes">Ver precios y cambiar de plan</button></div>${datosHtml()}`;
+  <p class="hint">Productos ilimitados y 0% de comisión por venta en todos los planes.</p><div class="tblw"><table class="tbl"><tr><th>Herramienta</th><th>Base</th><th>Pro</th><th>Automatización</th></tr>${[['Catálogo ilimitado, escalas x1/x3/x6/x12, importador, carrito, pedidos, catálogo PDF, actualización masiva', 1, 1, 1], ['Dashboard, bimonetario USD/ARS, Meta Pixel, stock crítico y automático, carritos abandonados', 0, 1, 1], ['Modo híbrido, sub-revendedores, comparador de proveedores, referencia de mercado', 0, 1, 1], ['Mercado Pago en el carrito, webhooks firmados y aviso de pedidos por email', 0, 0, 1]].map(r => `<tr><td>${r[0]}</td>${r.slice(1).map(x => `<td>${x ? '✅' : '—'}</td>`).join('')}</tr>`).join('')}</table></div><button class="btn btn-p btn-sm" style="margin-top:10px;width:auto" data-act="p-planes">Ver precios y cambiar de plan</button></div>${datosHtml()}`;
   return `<div id="aj-m">${msgs()}</div><div class="grid2"><form data-submit="p-guardar" class="cc" id="aj" data-asistente="ajustes">
   <h3>⚙️ Datos y precios</h3>${asisSwitch()}
   <div class="fg"><label class="flabel">WhatsApp (con 549…)</label><input class="fi" name="whatsapp" value="${esc(t.whatsapp)}" inputmode="numeric" required></div>

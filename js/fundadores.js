@@ -164,7 +164,7 @@ function cobrosHtml(L) {
   const mes = new Date().toLocaleDateString('es-AR', { month: 'long' });
   return `<div class="cc adm" id="adm-cobros"><h3>💰 Cobros</h3>
     <div class="adm-kpis">
-      <div><b>${P2.length}</b><span>pagando${P2.length ? ` · Pro ${pro} · Full API ${api}${base ? ` · Base ${base}` : ''}` : ''}</span></div>
+      <div><b>${P2.length}</b><span>pagando${P2.length ? ` · Pro ${pro} · Automatización ${api}${base ? ` · Base ${base}` : ''}` : ''}</span></div>
       <div><b>${fmt(mrr)}</b><span>facturación mensual estimada</span></div>
       <div><b>${fmt(este)}</b><span>cobrado en ${esc(mes)}${ant ? ` · mes pasado ${fmt(ant)}` : ''}</span></div>
       <button type="button" class="adm-kpi-btn${v5 ? ' warn' : ''}" data-act="ad-f" data-k="vencen"><b>${v5}</b><span>vencen en 5 días</span></button>
@@ -183,7 +183,7 @@ function planForm(x) {
   const f = AD.pf || {}, plan = f.plan || (x.plan !== 'base' ? x.plan : 'pro'), meses = f.meses != null ? f.meses : 1, h = hastaPrevio(x, plan, meses), s = esc(x.slug);
   const op = (v, t, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${t}</option>`;
   return `<form class="adm-cfg adm-plan" data-submit="ad-plan" data-s="${s}"><b>💳 Activar o renovar el plan de ${esc(x.nombre)}</b>
-    <label>Plan<select class="fi" name="plan" data-change="ad-pf" data-k="plan">${op('pro', 'Mayorista Pro', plan)}${op('api', 'Suite Full API', plan)}${op('base', 'Catálogo Base', plan)}</select></label>
+    <label>Plan<select class="fi" name="plan" data-change="ad-pf" data-k="plan">${op('pro', 'Mayorista Pro', plan)}${op('api', 'Suite Automatización', plan)}${op('base', 'Catálogo Base', plan)}</select></label>
     <label>Período<select class="fi" name="meses" data-change="ad-pf" data-k="meses">${op(1, '1 mes', meses)}${op(3, '3 meses', meses)}${op(6, '6 meses', meses)}${op(12, ANUAL ? `12 meses (anual: paga ${ANUAL})` : '12 meses', meses)}${op(0, 'Sin vencimiento', meses)}</select></label>
     <label>Monto cobrado ($)<input class="fi" name="monto" type="number" min="0" step="1" value="${Math.round(montoDe(plan, meses))}" required></label>
     <label>Medio<select class="fi" name="medio">${op('transferencia', 'Transferencia', 'transferencia')}${op('efectivo', 'Efectivo', '')}${op('mercadopago', 'Mercado Pago', '')}${op('otro', 'Otro', '')}</select></label>
