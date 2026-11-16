@@ -294,8 +294,21 @@ export async function ocr(f, progreso = () => { }) {
   progreso('Leyendo el texto de la imagen… (la primera vez tarda un poco más)');
   if (!_ocrWorker) _ocrWorker = await T.createWorker('spa');          // un solo lector para todas las fotos: mucho más rápido
   const r = await _ocrWorker.recognize(f);
-  _ultOcr = { palabras: (String(r.data.text || '').match(/[\p{L}\p{N}]{2,}/gu) || []).length };
+  // cuántas palabras leyó con seguridad (si el lector no da la seguridad, cuenta todo el texto)
+  const L = lineasOcr(r.data);
+  _ultOcr = { palabras: L ? L.reduce((a, l) => a + l.words.filter(w => Number(w.confidence) >= 60 && /[\p{L}\p{N}]{2,}/u.test(String(w.text || ''))).length, 0)
+                          : (String(r.data.text || '').match(/[\p{L}\p{N}]{2,}/gu) || []).length };
   return textoConfiable(r.data);
+}
+function lineasOcr(d) {
+  if (!d) return null;
+  const conPal = x => Array.isArray(x) && x.some(l => l && Array.isArray(l.words));
+  if (conPal(d.lines)) return d.lines;
+  if (Array.isArray(d.blocks)) {   // tesseract.js más nuevo: bloques → párrafos → renglones
+    const ls = []; d.blocks.forEach(b => (b && b.paragraphs || []).forEach(p => (p && p.lines || []).forEach(l => ls.push(l))));
+    if (conPal(ls)) return ls;
+  }
+  return null;
 }
 let _ultOcr = { palabras: 0 };
 export const infoOcr = () => _ultOcr;   // cuánto texto había en la última foto (aunque no se haya podido leer)
@@ -303,12 +316,7 @@ export const infoOcr = () => _ultOcr;   // cuánto texto había en la última fo
 // ropa…) el lector "ve" letras sueltas en las texturas ("Pa Y", "E", "%"): con esto no se confunden con un nombre o un precio.
 export function textoConfiable(d) {
   if (!d) return '';
-  const conPal = x => Array.isArray(x) && x.some(l => l && Array.isArray(l.words));
-  let L = conPal(d.lines) ? d.lines : null;
-  if (!L && Array.isArray(d.blocks)) {   // tesseract.js más nuevo: bloques → párrafos → renglones
-    const ls = []; d.blocks.forEach(b => (b && b.paragraphs || []).forEach(p => (p && p.lines || []).forEach(l => ls.push(l))));
-    if (conPal(ls)) L = ls;
-  }
+  const L = lineasOcr(d);
   if (!L) return d.text || '';
   return L.map(l => l.words.filter(w => {
     const t = String(w.text || '').trim(), c = Number(w.confidence);
@@ -346,6 +354,24 @@ export const nombreDeArchivo = n => {
   const b = String(n || '').replace(/\.[a-z0-9]+$/i, '').replace(/[_-]+/g, ' ').trim();
   return /^(img|image|imagen|photo|foto|whatsapp|wa|screenshot|captura|\d+|pxl|dsc)\b/i.test(b) || /\b(wa\d{3,}|\d{8})\b/i.test(b) ? '' : b.slice(0, 120);
 };
+
+// Nombre y precio escritos en el NOMBRE DEL ARCHIVO ("ZAPATILLA NIKE - PRECIO 70000.jpg", "Buzo canguro $25.000.png").
+// Los nombres automáticos (WhatsApp Image…, IMG_1234, Captura…) no se usan.
+export function deArchivoNombre(n, cotizacion, sinSimbolo = 'ars') {
+  const cot = Number(cotizacion) > 0 ? Number(cotizacion) : 1;
+  const b = String(n || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!b || !nombreDeArchivo(b)) return null;
+  const m = b.match(/(?:precio|valor|\$|us\$|u\$s|usd)\s*:?\s*\$?\s*(\d{1,3}(?:[.,]\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(usd|us\$|u\$s)?\s*$/i)
+         || b.match(/(?:^|[\s-])(\d{1,3}(?:[.,]\d{3})+|\d{3,})\s*$/);
+  let precio = 0;
+  if (m) { const t = m[1]; precio = /^\d{1,3}([.,]\d{3})+(,\d{1,2})?$/.test(t) ? Number(t.replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.')) : Number(t.replace(',', '.')); }
+  const usd = !!m && (/(us\$|u\$s|usd)/i.test(m[0]) || (sinSimbolo === 'usd' && !/\$/.test(m[0])));
+  let nombre = (m ? b.slice(0, m.index) : b).replace(/\b(precio|valor)\b/ig, ' ').replace(/[\s\-–:|$]+$/, '').replace(/\s+/g, ' ').trim();
+  if ((nombre.match(/\p{L}/gu) || []).length < 3) nombre = '';
+  if (nombre && nombre === nombre.toUpperCase()) nombre = nombre.toLowerCase().replace(/(^|\s)(\p{L})/gu, (x, a, c) => a + c.toUpperCase());   // "ZAPATILLA NIKE" → "Zapatilla Nike"
+  if (!nombre && !(precio > 0)) return null;
+  return { nombre: nombre.slice(0, 120), costo_usd: precio > 0 ? (usd ? precio : Math.round(precio / cot * 10000) / 10000) : null, precio_ars: precio > 0 && !usd ? precio : (precio > 0 ? Math.round(precio * cot) : null) };
+}
 
 /* ---------- 7) CHAT DE WHATSAPP CON FOTOS: cada foto + su texto = un producto ---------- */
 const CAB = /^\s*\[?(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*(?:[ap]\.?\s?m\.?)?\]?\s*(?:-\s*)?([^:]{1,60}):\s?(.*)$/i;

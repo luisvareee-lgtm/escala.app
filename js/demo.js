@@ -3,7 +3,7 @@
 // Al crear la cuenta, el panel le ofrece cargar esos mismos productos.
 import { esc, fmt, on, $, store, toast } from './util.js';
 import { abrirFlyer } from './flyer.js';
-import { leerArchivo, parsearLista, detectarTabla, tablaAProductos, deTextoDeFoto, infoOcr } from './importer.js';
+import { leerArchivo, parsearLista, detectarTabla, tablaAProductos, deTextoDeFoto, infoOcr, deArchivoNombre } from './importer.js';
 import { ilus } from './ilus.js';
 import { redimensionar } from './img.js';
 
@@ -40,8 +40,11 @@ async function deArchivo(f, pre = '') {
     const L = deTexto(r.texto).filter(creible); if (L.length > 1) return L;
     const d = L[0] || limpio([deTextoDeFoto(r.texto, DM.dolar, 'ars')]).filter(creible)[0], foto = await miniatura(f);
     if (d) return [{ ...d, foto }];
-    if (infoOcr().palabras >= 8) return [];   // mucho texto que no se pudo leer: era una lista borrosa, no una foto de producto
-    return foto ? [{ nombre: '', costo: 0, categoria: '', foto, falta: true }] : [];
+    // el nombre del archivo: "ZAPATILLA NIKE - PRECIO 70000.jpg" → nombre y costo
+    const an = deArchivoNombre(f.name, DM.dolar, 'ars'), dn = an ? limpio([an]).filter(creible)[0] : null;
+    if (dn && foto) return [{ ...dn, foto }];
+    if (infoOcr().palabras >= 8) return [];   // mucho texto legible pero sin precios: era una lista borrosa, no una foto de producto
+    return foto ? [{ nombre: (an && an.nombre) || '', costo: 0, categoria: '', foto, falta: true }] : [];
   }
   if (r.tipo === 'productos') return limpio(r.items.map(i => parsearLista(i.leyenda || '', DM.dolar, 'General', 'ars')[0]).filter(Boolean));
   return deTexto(r.texto || '');
