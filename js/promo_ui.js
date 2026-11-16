@@ -3,6 +3,7 @@
 import { esc, fmt, on, $ } from './util.js';
 import { P } from './state.js';
 import { TIPOS, ATAJOS, promoOk, promoTxt, promoDesc, promoDeProducto } from './promo.js';
+import { sumanTxt } from './talles.js';
 
 // Se ve cuando la base ya tiene Promociones (v2.26) y la tienda le vende al público (en una mayorista no aplica).
 export const hayPromo = () => !!P.t && P.t.modalidad !== 'mayorista' && Array.isArray(P.promos);
@@ -36,7 +37,7 @@ export function promoSecHtml(p) {
   const de = r && !propia ? `<div class="pr-de">🎁 <b>${esc(promoTxt(r.regla))}</b> · viene de la promo de ${esc(r.alcance === 'tienda' ? 'toda la tienda' : r.alcance === 'categoria' ? 'la categoría ' + r.categoria : 'varios productos')}. Se edita en Tienda → 🎁 Promociones. Si le ponés una propia acá abajo, le gana.</div>` : '';
   return `<details class="pm-sec" id="pm-pr"${r ? ' open' : ''}><summary>🎁 Promo por cantidad${r ? ` · ${esc(promoTxt(r.regla))}` : ''}</summary>
     ${de}${camposPromo(x, false)}
-    <div class="hint">Se cuentan todas las unidades de este producto: los talles y los colores se suman (un 38 y un 40 son 2). La tienda la muestra en la tarjeta y en la ficha, y el pedido la descuenta solo. Dejá los casilleros vacíos para no tener promo propia.</div></details>`;
+    <div class="hint">Se cuentan todas las unidades de este producto: ${sumanTxt()}. La tienda la muestra en la tarjeta y en la ficha, y el pedido la descuenta solo. Dejá los casilleros vacíos para no tener promo propia.</div></details>`;
 }
 // Lo que se escribió en el formulario: la promo, null (sin promo) o un error para mostrar.
 export function promoDe(fd) {

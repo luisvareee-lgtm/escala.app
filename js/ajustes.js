@@ -9,6 +9,7 @@ import { pruebaFrase } from './fundadores.js';
 import { vistaSimple, avanzadas } from './vista.js';
 import { MARCA } from './marca.js';
 import { previaSync } from './vista_previa.js';
+import { RUBROS, inferirRubro } from './rubro.js';
 
 const S = { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' };
 export const resetAj = () => Object.assign(S, { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' });
@@ -99,6 +100,7 @@ export function vistaAjustes() {
   return `<div id="aj-m">${msgs()}</div><div class="grid2"><form data-submit="p-guardar" class="cc" id="aj" data-asistente="ajustes">
   <h3>⚙️ Datos y precios</h3>${asisSwitch()}
   <div class="fg"><label class="flabel">WhatsApp (con 549…)</label><input class="fi" name="whatsapp" value="${esc(t.whatsapp)}" inputmode="numeric" required></div>
+  ${rubroCampo(t)}
   <div class="fg"><label class="flabel" for="aj-ms">¿Cómo trabajás con la mercadería?</label><select class="fi" id="aj-ms" name="modo_stock">${[['stock', 'Tengo stock'], ['encargo', 'Por encargo (compro después de recibir el pedido)'], ['mixto', 'Las dos (algunos productos por encargo)']].map(([k, n]) => `<option value="${k}" ${(t.modo_stock || 'stock') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
   <div class="fg"><label class="flabel" for="aj-dem">Demora de los productos por encargo (días)</label><input class="fi" id="aj-dem" name="demora_encargo" type="number" min="1" max="120" value="${Number(t.demora_encargo || 7)}"><div class="hint">Tu cliente lo ve antes de comprar: “por encargo · llega en N días”.</div></div>
   <div class="fg"><label class="flabel">Modalidad</label><select class="fi" name="modalidad">${['minorista', 'mayorista', 'hibrido'].map(m => `<option value="${m}" ${t.modalidad === m ? 'selected' : ''}>${{ minorista: 'Minorista', mayorista: 'Mayorista', hibrido: 'Híbrido (minorista + acceso mayorista)' }[m]}</option>`).join('')}</select>${aviso('hibrido')}</div>
@@ -108,3 +110,15 @@ export function vistaAjustes() {
   <button class="btn btn-p" type="submit" id="aj-go">Guardar cambios</button></form>
   <div><form data-submit="p-codigo" class="cc" data-asistente="ajustes"${vistaSimple() && t.modalidad !== 'hibrido' && !t.codigo_hash ? ' hidden' : ''}><h3>🔑 Accesos mayoristas</h3><p class="hint" style="margin:4px 0 8px">Para el modo híbrido: tus revendedores ingresan este código para ver la lista mayorista. Sin código, el acceso es libre. El código se guarda protegido (no se puede leer ni desde el panel).</p><div id="cod-m"></div><input class="fi" name="codigo" placeholder="Nuevo código (mín. 6 letras/números)" autocomplete="off" style="margin-bottom:8px"><button class="btn btn-s" type="submit">${t.codigo_hash ? 'Cambiar código' : 'Activar código'}</button>${t.codigo_hash ? '<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-codigo-off">Quitar código</button>' : ''}</form>${vistaSimple() ? avanzadas(integraciones(), '🔌 Integraciones (Mercado Pago, webhooks, email)') : integraciones()}${plan}</div></div>`;
 }
+
+// v2.27: ¿Qué vendés? Decide las herramientas (talles en ropa, tonos en cosmética, sabores en almacén) y las promos sugeridas.
+function rubroCampo(t) {
+  const r = RUBROS[t.rubro] ? t.rubro : 'otro', inf = r === 'otro' ? inferirRubro(P.prods) : null;
+  return `<div class="fg"><label class="flabel" for="aj-rub">¿Qué vendés?</label><select class="fi" id="aj-rub" name="rubro">${Object.entries(RUBROS).map(([k, n]) => `<option value="${k}" ${r === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <div class="hint">Adapta tus herramientas: talles en ropa, tonos en cosmética, sabores en almacén, y las promos que te sugerimos.</div>
+    ${inf ? `<div class="aj-sug">💡 Por tus productos parece <b>${esc(RUBROS[inf])}</b>. <button type="button" class="btn btn-s btn-sm" data-act="aj-rubro" data-k="${inf}">Usar ${esc(RUBROS[inf])}</button></div>` : ''}</div>`;
+}
+on('aj-rubro', async d => {
+  if (!RUBROS[d.k]) return;
+  try { P.t = await api.guardarTienda(P.t.id, { rubro: d.k }) || P.t; toast(`Listo: tu tienda es de ${RUBROS[d.k]}`); P.repintar(); } catch (e) { toast(e.message); }
+});

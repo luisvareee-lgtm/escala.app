@@ -28,7 +28,8 @@ import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiar
 import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundadores.js';
 import { avisosHtml, resetAvisos } from './avisos.js';
 import { seMuestra, vistaSimple, vistaCard, tipVistaHtml } from './vista.js';
-import { initTalles, tallesHtml, tallesDatos, presetsHtml, parseVars, resumenTalles, guiaCardHtml } from './talles.js';
+import { initTalles, tallesHtml, tallesDatos, presetsHtml, parseVars, resumenTalles, guiaCardHtml, campoVar } from './talles.js';
+import { RUBROS } from './rubro.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
@@ -189,7 +190,7 @@ function modal() {
     <div class="row2"><div class="fg"><label class="flabel">Se vende por</label><select class="fi" name="unidad" data-change="p-uni">${UNIDADES_P.map(([k, n]) => `<option value="${k}" ${(p.unidad || 'unidad') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="fg" id="p-cont" ${['pack', 'bulto', 'caja', 'display'].includes(p.unidad) ? '' : 'hidden'}><label class="flabel">Unidades que trae</label><input class="fi" name="contenido" type="number" min="1" max="100000" value="${p.contenido || ''}" placeholder="Ej: 12"></div></div>
     ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" name="precio_unico" ${p.precio_unico ? 'checked' : ''}> Precio único (sin descuento por cantidad x3 · x6 · x12)</label></div>` : ''}
-    <div class="fg tl-box"><label class="flabel" for="p-vars">Variantes o talles (separados por coma)</label><input class="fi" id="p-vars" name="variantes" value="${esc(m.vars.join(', '))}" data-input="p-vars" placeholder="Ej: S, M, L, XL · 38, 39, 40 · Rojo, Azul">${presetsHtml()}<div id="p-tl">${tallesHtml(m)}</div></div>
+    <div class="fg tl-box"><label class="flabel" for="p-vars">${esc(campoVar().campo)} (separados por coma)</label><input class="fi" id="p-vars" name="variantes" value="${esc(m.vars.join(', '))}" data-input="p-vars" placeholder="${esc(campoVar().ej)}"><div id="p-pre">${presetsHtml(m.vars)}</div><div id="p-tl">${tallesHtml(m)}</div></div>
     <div class="fg"><span class="flabel">Foto</span><div id="foto-box">${fotoHtml(foto)}</div></div>
     <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"${(m.combo || []).length ? ' disabled title="El stock de un combo sale de lo que trae"' : porT ? ' disabled title="Se calcula solo: es la suma de los talles"' : ''}></div></div>
     <div class="fg"><label class="flabel">Margen propio % para este producto (vacío = el general)</label><input class="fi" name="margen_propio" type="number" min="0" max="900" step="any" value="${p.margen_override != null ? Math.round(Number(p.margen_override) * 10000) / 100 : ''}" data-input="p-prev" placeholder="General: ${Math.round(Number(P.t.margen_1) * 100)}%"></div>
@@ -362,6 +363,7 @@ on('p-guardar', async (d, f) => {
   const fd = new FormData(f), b = $('#aj-go'); b.disabled = true;
   const m = n => Number(fd.get('m' + n)) / 100;
   const c = { whatsapp: String(fd.get('whatsapp')).replace(/\D/g, ''), modalidad: fd.get('modalidad'), cotizacion_usd: Number(fd.get('cotizacion_usd')), compra_minima: Number(fd.get('compra_minima') || 0), gastos_fijos: Number(fd.get('gastos_fijos') || 0), margen_piso: Number(fd.get('margen_piso') || 0) / 100, alias_cobro: fd.get('alias_cobro').trim() || null, margen_1: m(1), margen_3: m(3), margen_6: m(6), margen_12: m(12) };
+  if (RUBROS[fd.get('rubro')]) c.rubro = fd.get('rubro');
   if (fd.has('escala_grupo')) c.escala_grupo = ['categoria', 'carrito'].includes(fd.get('escala_grupo')) ? fd.get('escala_grupo') : 'producto';
   c.modo_stock = fd.get('modo_stock') || 'stock'; c.demora_encargo = Math.max(1, Math.min(120, Math.floor(Number(fd.get('demora_encargo')) || 7)));
   if (can('pixel')) c.pixel_id = (fd.get('pixel_id') || '').trim() || null;

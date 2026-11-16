@@ -9,6 +9,7 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P } from './state.js';
 import { hayPromo, camposPromo, promoDe, promoChip } from './promo_ui.js';
+import { campoVar, palTienda, sumanTxt } from './talles.js';
 
 const PQ = { q: '', cat: '', ver: 'todos', orden: 'nuevos', dias: 30, pag: 0, por: 50, sel: new Set(), vistas: null, vistasDias: null, cargando: false, sinVistas: false, desde: null };
 let H = { precioDe: () => 0, flyerDe: () => { }, fila: () => '', abrirCombo: () => { } };
@@ -121,18 +122,18 @@ export function modalMasivo(m) {
       <div class="fg"><label class="flabel" for="mz-ofh">Hasta el (incluido)</label><input class="fi" id="mz-ofh" name="of_hasta" type="date" value="${proxDomingo()}"></div></div>
       <div class="fg"><label class="flabel" for="mz-ofd">Desde el (vacío = ya)</label><input class="fi" id="mz-ofd" name="of_desde" type="date"></div>
       <div class="hint">La tienda muestra el precio tachado, la etiqueta -% y el carrusel “Ofertas” si lo activaste. Al terminar vuelve sola al precio normal.</div><div class="mz-prev" id="mz-prev-of"></div>`,
-    promo: `${camposPromo(null, true)}<div class="hint">Se cuentan todas las unidades de cada producto (los talles se suman). Los combos elegidos quedan igual: ya tienen su descuento.</div>`,
+    promo: `${camposPromo(null, true)}<div class="hint">Se cuentan todas las unidades de cada producto (${sumanTxt().replace(/ \(.*\)$/, '')}). Los combos elegidos quedan igual: ya tienen su descuento.</div>`,
     precio: `${radio('pr_modo', [['pct', 'Subir o bajar el costo un %'], ['usd', 'Poner el mismo costo en USD'], ['margen', 'Poner un margen propio %'], ['general', 'Volver al margen general']], 'pct')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-pct">% (negativo para bajar)</label><input class="fi" id="mz-pct" name="pr_pct" type="number" step="any" placeholder="Ej: 10 o -5" data-input="mz-prev"></div>
       <div class="fg"><label class="flabel" for="mz-val">Costo USD o margen %</label><input class="fi" id="mz-val" name="pr_val" type="number" step="any" min="0" placeholder="Ej: 12,50 o 45" data-input="mz-prev"></div></div>
       <div class="hint">Acá el precio sale del costo en USD, la cotización y el margen: así siguen al dólar cuando lo cambiás.</div><div class="mz-prev" id="mz-prev"></div>`,
-    stock: `${radio('st_modo', [['fijar', 'Poner este stock'], ['sumar', 'Sumar o restar'], ['sin_control', 'Sin control de stock']], 'fijar')}<p class="hint">Los productos con stock por talle no cambian acá: su stock se carga talle por talle, editando cada producto.</p>
+    stock: `${radio('st_modo', [['fijar', 'Poner este stock'], ['sumar', 'Sumar o restar'], ['sin_control', 'Sin control de stock']], 'fijar')}<p class="hint">Los productos con stock por ${palTienda().w} no cambian acá: su stock se carga ${palTienda().w} por ${palTienda().w}, editando cada producto.</p>
       <div class="fg"><label class="flabel" for="mz-st">Cantidad</label><input class="fi" id="mz-st" name="st_val" type="number" step="1" placeholder="Ej: 10 (o -2 para restar)"></div>`,
     nombre: `${radio('nm_modo', [['prefijo', 'Agregar al principio'], ['sufijo', 'Agregar al final'], ['reemplazar', 'Reemplazar un texto']], 'sufijo')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-nt">Texto a agregar / buscar</label><input class="fi" id="mz-nt" name="nm_txt" maxlength="60" placeholder="Ej: x 12 u."></div>
       <div class="fg"><label class="flabel" for="mz-np">Reemplazar por (vacío = borrarlo)</label><input class="fi" id="mz-np" name="nm_poner" maxlength="60"></div></div>`,
     variantes: `${radio('vr_modo', [['agregar', 'Agregar'], ['quitar', 'Quitar'], ['fijar', 'Reemplazar todas'], ['ninguna', 'Sin variantes']], 'agregar')}
-      <div class="fg"><label class="flabel" for="mz-vr">Variantes o talles, separados por coma</label><input class="fi" id="mz-vr" name="vr_vals" maxlength="600" placeholder="Ej: S, M, L, XL"></div>`,
+      <div class="fg"><label class="flabel" for="mz-vr">${esc(campoVar().campo)}, separados por coma</label><input class="fi" id="mz-vr" name="vr_vals" maxlength="600" placeholder="${esc(campoVar().ej)}"></div>`,
     categoria: `<div class="fg"><label class="flabel" for="mz-cat">Pasar a la categoría</label><input class="fi" id="mz-cat" name="cat" maxlength="60" list="mz-cats" placeholder="Elegí una o escribí una nueva"><datalist id="mz-cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>`,
     marca: `<div class="fg"><label class="flabel" for="mz-marca">Marca (vacío = sin marca)</label><input class="fi" id="mz-marca" name="marca" maxlength="60" list="mz-marcas"><datalist id="mz-marcas">${marcas.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>`,
     activo: radio('vis', [['1', 'Sí, que se vean'], ['0', 'No, ocultarlos']], '1'),
@@ -142,7 +143,7 @@ export function modalMasivo(m) {
   const abiertas = new Set(m.s ? [m.s] : []);
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal mz" role="dialog" aria-modal="true" aria-labelledby="mz-t"><div class="view-title" id="mz-t">Editar ${n} ${n === 1 ? 'producto' : 'productos'}</div><div id="mz-m"></div>
     <p class="hint" style="margin:-4px 0 10px">Tildá lo que querés cambiar. Lo demás queda como está.</p>
-    <form data-submit="mz-aplicar">${secs.map(([k, tt]) => `<div class="mz-sec${abiertas.has(k) ? ' on' : ''}" id="mz-s-${k}"><label class="mz-h"><input type="checkbox" name="on_${k}" data-change="mz-on" data-s="${k}" ${abiertas.has(k) ? 'checked' : ''}> <b>${tt}</b></label><div class="mz-b" ${abiertas.has(k) ? '' : 'hidden'}>${cuerpo[k]}</div></div>`).join('')}
+    <form data-submit="mz-aplicar">${secs.map(([k, tt]) => `<div class="mz-sec${abiertas.has(k) ? ' on' : ''}" id="mz-s-${k}"><label class="mz-h"><input type="checkbox" name="on_${k}" data-change="mz-on" data-s="${k}" ${abiertas.has(k) ? 'checked' : ''}> <b>${k === 'variantes' ? (campoVar().talles ? '👕 ' : '🎨 ') + esc(campoVar().campo) : tt}</b></label><div class="mz-b" ${abiertas.has(k) ? '' : 'hidden'}>${cuerpo[k]}</div></div>`).join('')}
     <button class="btn btn-p" type="submit" id="mz-go">Aplicar a ${n} ${n === 1 ? 'producto' : 'productos'}</button><button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cancelar</button></form></div></div>`;
 }
 export function modalBorrar() {
@@ -217,7 +218,7 @@ function cambiosDe(f) {
   }
   if (fd.get('on_variantes')) {
     const m = fd.get('vr_modo'), vals = [...new Set(String(fd.get('vr_vals') || '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 20);
-    if (m !== 'ninguna' && !vals.length) err('Escribí las variantes o talles, separados por coma.');
+    if (m !== 'ninguna' && !vals.length) err(`Escribí ${campoVar().campo.toLowerCase()}, separados por coma.`);
     c.variantes = { modo: m, valores: m === 'ninguna' ? [] : vals };
   }
   if (fd.get('on_categoria')) { const v = String(fd.get('cat') || '').trim(); if (!v) err('Escribí la categoría.'); c.categoria = v.slice(0, 60); }

@@ -7,6 +7,7 @@ import { urlTiendaDe } from './marca.js';
 import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, montoOk, montoTxt, montoEscalon, montoDesc, cuponTxt, cuponDesc, vigente, promoDeProducto } from './promo.js';
 import { camposPromo, promoDe, alCambiarPromo, usarPrecioRef } from './promo_ui.js';
 import { previaRecargar } from './vista_previa.js';
+import { rubroDe, RUBROS } from './rubro.js';
 
 let precioDe = () => 0;   // precio al público de un producto (lo da el panel)
 export const usarPrecioPromo = fn => { precioDe = fn; };
@@ -15,7 +16,7 @@ const TARJETAS = {
   ult2: ['½', '2da unidad con descuento', '50 % off en la 2da, 70 % off en la 2da…', { tipo: 'ult', desde: 2, valor: 50 }],
   nx: ['💲', 'Precio fijo por cantidad', '"2 x $96.000": cada 2, ese precio.', { tipo: 'nx', desde: 2, valor: 0 }],
   cupon: ['🎟️', 'Cupón de descuento', 'Un código: % off, $ off o envío gratis. Con mínimo, fechas y usos.'],
-  monto: ['📈', 'Descuento por monto', '"Superando $100.000: 10 % off en todo". Con barra de progreso.'],
+  monto: ['📈', 'Descuento por monto', '"Superando $100.000: 10 % off en todo". El carrito muestra la barra: "te faltan $X".'],
   pct: ['🔢', '% off llevando varias', '"Llevando 3: 15 % off en cada una".', { tipo: 'pct', desde: 3, valor: 15 }],
   montou: ['➖', '$ menos llevando varias', '"Llevando 2: $5.000 menos cada una".', { tipo: 'monto', desde: 2, valor: 5000 }],
   oferta: ['🏷️', 'Oferta con fechas', 'Un % off por producto hasta una fecha: se pone en Productos.'],
@@ -44,15 +45,28 @@ function alcanceTxt(r) {
 export const alcanceDe = alcanceTxt;
 const tarjeta = k => { const [i, t, d] = TARJETAS[k]; return `<div class="ph-card"><span class="ph-ico" aria-hidden="true">${i}</span><span class="ph-tx"><b>${t}</b><small>${d}</small></span><button type="button" class="btn btn-s btn-sm" data-act="ph-nueva" data-k="${k}">${k === 'oferta' || k === 'envio' ? 'Ir' : k === 'monto' && montoActual() ? 'Editar' : 'Crear'}</button></div>`; };
 const montoActual = () => (P.promos || []).find(r => r.tipo === 'monto');
+const TODAS = ['ult3', 'ult2', 'nx', 'cupon', 'monto', 'pct', 'montou', 'oferta', 'envio'];
+const SUGERIDAS = {
+  cosmetica: ['ult2', 'ult3', 'monto', 'cupon'], indumentaria: ['ult3', 'ult2', 'nx', 'cupon'],
+  alimentos: ['nx', 'pct', 'monto', 'cupon'], kiosco: ['nx', 'ult3', 'pct', 'cupon'], gastronomia: ['nx', 'ult3', 'cupon', 'monto'],
+  hogar: ['monto', 'ult2', 'pct', 'cupon'], electro: ['monto', 'cupon', 'ult2', 'montou'], autopartes: ['monto', 'pct', 'cupon', 'nx'],
+  otro: ['ult3', 'ult2', 'nx', 'cupon'],
+};
+// tienda mayorista: las promos por cantidad y la barra de descuento por monto son para vender al público (híbrida)
+const candado = () => `<div class="ph-lock"><p><b>🔒 3x2, 2x1, 2da al 50 %, "2 x $" y la barra de descuento por monto</b> son para vender al público. Tu tienda es mayorista: tu descuento ya son los precios x1 · x3 · x6 · x12.</p>
+  <p>Si también le vendés al público, pasala a <b>Híbrida</b>: el público ve tu precio minorista con todas estas promos y tus revendedores entran con su código a la lista mayorista (con tu mínimo de compra).</p>
+  <button type="button" class="btn btn-s btn-sm" data-act="ph-a-ajustes">Cambiar la modalidad en Ajustes</button></div>`;
+on('ph-a-ajustes', () => { P.tab = 'ajustes'; P.modal = null; P.repintar(); setTimeout(() => { const s = document.querySelector('#aj [name=modalidad]'); if (s) { s.scrollIntoView({ block: 'center' }); s.focus(); } }, 60); });
 
 export function vistaPromos() {
   if (!Array.isArray(P.promos)) return `<div class="tt-uno"><div class="cc"><h3>🎁 Promociones</h3><div class="err-box">Para usar Promociones falta correr la migración v2.26 (21-migracion_v2.26.sql) en Supabase.</div></div></div>`;
-  const may = P.t.modalidad === 'mayorista';
-  const prim = may ? ['cupon', 'oferta'] : ['ult3', 'ult2', 'nx', 'cupon'], mas = may ? ['envio'] : ['monto', 'pct', 'montou', 'oferta', 'envio'];
-  return `<div class="tt-uno"><div class="cc ph"><h3>🎁 Crear una promoción</h3>
+  const may = P.t.modalidad === 'mayorista', r = rubroDe(P.t, P.prods);
+  // v2.27: las más usadas en tu rubro van primero; el resto, en "Más opciones"
+  const prim = may ? ['cupon', 'oferta', 'envio'] : (SUGERIDAS[r] || SUGERIDAS.otro), mas = may ? [] : TODAS.filter(k => !prim.includes(k));
+  return `<div class="tt-uno"><div class="cc ph"><h3>🎁 Crear una promoción</h3>${!may && r !== 'otro' ? `<p class="ph-sug">✨ Las que más usan las tiendas de ${esc(RUBROS[r])}</p>` : ''}
     <div class="ph-cards">${prim.map(tarjeta).join('')}</div>
-    <details class="ph-mas"><summary>Más opciones</summary><div class="ph-cards">${mas.map(tarjeta).join('')}</div></details>
-    ${may ? '<p class="hint">Tu tienda vende por mayor: las promos por cantidad y el descuento por monto son para tiendas minoristas o híbridas (en la lista mayorista mandan los precios x3 · x6 · x12).</p>' : '<p class="hint">Las promos por cantidad y las ofertas se suman. Un pedido usa un solo descuento general: el cupón o el descuento por monto, el que más le conviene al cliente.</p>'}</div>
+    ${mas.length ? `<details class="ph-mas"><summary>Más opciones</summary><div class="ph-cards">${mas.map(tarjeta).join('')}</div></details>` : ''}
+    ${may ? candado() : '<p class="hint">Las promos por cantidad y las ofertas se suman. Un pedido usa un solo descuento general: el cupón o el descuento por monto, el que más le conviene al cliente.</p>'}</div>
     <div class="cc"><h3>Tus promociones</h3>${listaHtml()}</div></div>`;
 }
 function fila({ id, k, ico, txt, det, on_, extra }) {

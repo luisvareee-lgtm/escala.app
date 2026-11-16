@@ -7,7 +7,7 @@ import { cuposHtml, cargarCupos } from './fundadores.js';
 // si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
 const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
-const RUBROS = { cosmetica: 'Cosmética', indumentaria: 'Ropa y calzado', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
+import { RUBROS } from './rubro.js';   // la misma lista que usan las herramientas según el rubro
 export { RUBROS };
 let irPanel = () => { };
 export const setIrPanel = f => { irPanel = f; };
