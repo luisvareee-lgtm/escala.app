@@ -7,7 +7,7 @@ export async function onRequestPost({ request, env }) {
   if (!uid) return json({ error: 'Iniciá sesión de nuevo.' }, 401);
   const t = await rpc(env, 'svc_tenant_por_owner', { p_owner: uid }).catch(() => null);
   if (!t) return json({ error: 'No tenés una tienda.' }, 404);
-  if (!t.plan_ok) return json({ error: 'Los webhooks están disponibles en el plan Full API.' }, 403);
+  if (!t.plan_ok) return json({ error: 'Los webhooks están disponibles en el plan Suite Automatización.' }, 403);
   if (!t.webhook_url) return json({ error: 'Primero guardá la URL del webhook.' }, 400);
   const r = await enviarWebhook(t.webhook_url, t.secret, 'prueba', {
     evento: 'prueba', mensaje: 'Si ves esto, tu webhook de Eskalapp funciona.', tienda: { slug: t.slug, nombre: t.nombre },
