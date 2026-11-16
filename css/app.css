@@ -1367,3 +1367,33 @@ details.card > summary { cursor: pointer; }
 .dm-foto-in{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--bd2);border-radius:10px;padding:8px;cursor:pointer;font-size:.8rem;color:var(--ac)}
 .dm-foto-in:hover{border-color:var(--ac)}
 .dm-foto-in img,.dm-foto-in>span{width:52px;height:52px;border-radius:8px;object-fit:cover;flex:none;display:grid;place-items:center;background:var(--bg3);font-size:1.4rem}
+
+/* ===== v2.25 · promo por cantidad y combos con talles ===== */
+.promo-chip{margin-top:4px;display:inline-flex;align-items:center;gap:4px;max-width:100%;font-size:.72rem;font-weight:800;color:var(--red);background:color-mix(in srgb,var(--red) 10%,transparent);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);border-radius:99px;padding:2px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* el recuadro rojo de la ficha (mismo rojo en claro y en oscuro: el texto blanco se lee en los dos) */
+.promo-box{margin:10px 0;border-radius:14px;overflow:hidden;background:#D92D43;color:#fff;box-shadow:0 6px 18px -8px rgba(217,45,67,.6)}
+.promo-box .pb-h{padding:10px 14px;font-weight:800;font-size:.95rem;border-bottom:1px solid rgba(255,255,255,.25)}
+.promo-box .pb-r{display:flex;align-items:center;gap:10px;padding:10px 14px}
+.promo-box .pb-n{flex:0 0 30px;height:30px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center;font-weight:800}
+.promo-box .pb-t{flex:1;min-width:0;font-weight:600;line-height:1.25}
+.promo-box .pb-t small{display:block;font-weight:500;opacity:.92;font-size:.76rem;margin-top:2px}
+.promo-box .pb-v{font-size:1.05rem;font-weight:900;white-space:nowrap}
+.promo-box .pb-s,.promo-box .pb-ok{padding:0 14px 10px;font-size:.78rem;opacity:.95}
+.promo-box .pb-ok{font-weight:700}
+.cpromo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:-2px 0 8px;padding:8px 12px;border-radius:var(--r);background:color-mix(in srgb,var(--red) 9%,var(--bg2));border:1px dashed color-mix(in srgb,var(--red) 45%,transparent);font-size:.8rem;font-weight:700;color:var(--red)}
+.cpromo span{min-width:0}
+.cpromo small{display:block;font-weight:500;color:var(--t2);margin-top:2px}
+.cpromo b{white-space:nowrap}
+.cpromo.off{color:var(--t2);background:var(--bg2);border-color:var(--bd2)}
+.ct-box{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.ct-row{border:1.5px solid var(--bd);border-radius:12px;padding:8px 10px;background:var(--bg)}
+.ct-n{display:block;font-size:.8rem;font-weight:700;margin-bottom:6px}
+.ct-n small{color:var(--t3);font-weight:600}
+.ct-row .vars{display:flex;flex-wrap:wrap;gap:6px}
+/* panel */
+.pr-at{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.pr-at .pill{font-size:.74rem;padding:4px 10px}
+.pr-prev{margin:2px 0 8px;padding:8px 10px;border-radius:10px;background:var(--bg2);border:1px solid var(--bd);font-size:.82rem;line-height:1.45}
+.pr-warn{color:var(--amber);font-weight:700}
+.pr-modo{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.ped-promo span:first-child{color:var(--red);font-weight:600}
