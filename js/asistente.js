@@ -7,7 +7,7 @@ const CLAVE = 'escala:asistente';
 export const asisOn = () => store.get(CLAVE, true) !== false;
 export const asisSwitch = () => `<label class="asis-sw"><input type="checkbox" data-change="asis-on" ${asisOn() ? 'checked' : ''}> 💡 Ayuda en cada campo: qué poner y para qué sirve</label>`;
 
-const precio = (usd, cot, m) => Math.ceil(usd * cot * (1 + m) / 10) * 10;
+const precio = (usd, cot, m) => Math.ceil(Math.round(usd * cot * (1 + m)) / 10) * 10;   // igual que precio_ars en la base
 const num = v => { const n = Number(String(v || '').replace(',', '.')); return isFinite(n) ? n : 0; };
 const margen = n => c => {
   const cot = num(c.val('cotizacion_usd')) || 1000, m = num(c.el.value) / 100;

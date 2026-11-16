@@ -4,7 +4,7 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, waLink } from './util.js';
 import { P, can, precioArs } from './state.js';
 import { urlTiendaDe } from './marca.js';
-import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, deArchivoNombre, ocr } from './importer.js';
+import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, deArchivoNombre, nombreCreible, ocr } from './importer.js';
 import { redimensionar } from './img.js';
 import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, queSePego, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
@@ -64,9 +64,12 @@ function procesar() {
     let d = null;
     if (f.leyenda) { const l = parsearLista(f.leyenda, c, 'General', I.opts.moneda).find(x => x.costo_usd > 0); if (l) d = { nombre: l.nombre, costo_usd: l.costo_usd, precio_ars: l.precio_ars, inferido: l.inferido }; else d = { ...deTextoDeFoto(f.leyenda, c, I.opts.moneda) }; }
     const dOcr = f.texto ? deTextoDeFoto(f.texto, c, I.opts.moneda) : null;
+    if (dOcr && !nombreCreible(dOcr.nombre)) dOcr.nombre = '';   // manchas de la foto leídas como letras ("au Eo"): no es un nombre
+    const dArch = deArchivoNombre(f.archivo, c, I.opts.moneda);   // "ZAPATILLA NIKE - PRECIO 70000.jpg"
+    // el nombre del archivo dice "precio …": se escribió a propósito, así que gana a lo que se lea en la foto
+    if (!d && dArch && dArch.explicito) d = { nombre: dArch.nombre || (dOcr && dOcr.nombre) || '', costo_usd: dArch.costo_usd, precio_ars: dArch.precio_ars };
     if (!d) d = dOcr || { nombre: '', costo_usd: null, precio_ars: null };
     if (!(d.costo_usd > 0) && dOcr && dOcr.costo_usd > 0) Object.assign(d, { costo_usd: dOcr.costo_usd, precio_ars: dOcr.precio_ars, inferido: dOcr.inferido });
-    const dArch = deArchivoNombre(f.archivo, c, I.opts.moneda);   // "ZAPATILLA NIKE - PRECIO 70000.jpg"
     if (!(d.costo_usd > 0) && dArch && dArch.costo_usd > 0) Object.assign(d, { costo_usd: dArch.costo_usd, precio_ars: dArch.precio_ars });
     if (!d.nombre) d.nombre = (dOcr && dOcr.nombre) || (dArch && dArch.nombre) || nombreDeArchivo(f.archivo) || '';
     out.push(ajuste({ ...d, uid: f.uid, foto: f.foto, fotoUrl: f.url, captura: !!f.captura, categoria: 'General', variantes: [], fuente: f.fuente || 'foto', revisar: true }));
@@ -90,7 +93,7 @@ function procesar() {
   I.items = items.length ? items : null;
 }
 const listos = () => (I.items || []).filter(x => x.incluir && x.costo_usd > 0 && (x.nombre || '').trim());
-const pv = costoUsd => Math.ceil(Number(costoUsd) * cot() * (1 + Number(I.pub.margen) / 100) / 10) * 10;
+const pv = costoUsd => precioArs(costoUsd, cot(), Number(I.pub.margen) / 100);
 const etiquetaUnidad = (u, n) => { const b = (UNIDADES.find(x => x[0] === u) || ['', 'Unidad'])[1]; return CON_CONTENIDO.includes(u) && n ? `${b} x${n}` : b; };
 
 /* ---------- LISTA VIVA: qué cambió respecto del catálogo ---------- */

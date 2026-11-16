@@ -10,4 +10,6 @@ export const can = f => RANK[planEf(P.t)] >= (MIN[f] ?? 9);
 export const PLAN_NOMBRE = { base: 'Catálogo Base', pro: 'Mayorista Pro', api: 'Suite Full API' };
 export const aviso = f => can(f) ? '' : ' <span class="tag warn">🔒 ' + (MIN[f] >= 2 ? 'Full API' : 'Pro') + '</span>';
 // mismo cálculo que la base de datos (solo para mostrar; el pedido siempre lo calcula el servidor)
-export const precioArs = (costo, cot, margen) => Math.ceil(Number(costo) * Number(cot) * (1 + Number(margen)) / 10) * 10;
+// precio de venta en pesos enteros, redondeado hacia arriba a la decena. El round() saca los centavos que deja pasar
+// un costo en pesos a dólares y de vuelta ($70.000 → 70.000,04): si no, quedaba $105.010 en vez de $105.000.
+export const precioArs = (costo, cot, margen) => Math.ceil(Math.round(Number(costo) * Number(cot) * (1 + Number(margen))) / 10) * 10;

@@ -38,9 +38,9 @@ function extraerPrecio(txt, cot) {
     const v = num(m[1]);
     // "$ 7,5" con dólar a $1000: ningún producto cuesta 7 pesos → casi seguro son dólares (se avisa en la vista previa)
     if (/^\s*\$/.test(m[0]) && v < cot / 20) return { usd: v, tok: m[0], inferido: true };
-    return { usd: Math.round(v / cot * 100) / 100, tok: m[0], ars: v };
+    return { usd: Math.round(v / cot * 10000) / 10000, tok: m[0], ars: v };
   }
-  if ((m = txt.match(new RegExp('([\\d.,]+)\\s*' + ARS.source, 'i')))) return { usd: Math.round(num(m[1]) / cot * 100) / 100, tok: m[0], ars: num(m[1]) };
+  if ((m = txt.match(new RegExp('([\\d.,]+)\\s*' + ARS.source, 'i')))) return { usd: Math.round(num(m[1]) / cot * 10000) / 10000, tok: m[0], ars: num(m[1]) };
   return null;
 }
 export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', sinSimbolo = 'usd') {
@@ -48,7 +48,7 @@ export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', si
   let t = String(texto || '');
   if (pareceChat(t)) t = limpiarChat(t);
   t = t.replace(/💲/g, ' ');
-  const bare = n => sinSimbolo === 'ars' ? Math.round(n / cot * 100) / 100 : n;
+  const bare = n => sinSimbolo === 'ars' ? Math.round(n / cot * 10000) / 10000 : n;   // 4 decimales (como la base): $25.000 sigue siendo $25.000
   const out = []; let cat = categoriaDefecto, huerfano = null;
   for (let raw of t.split(/\r?\n/)) {
     let l = raw.replace(EMOJI, ' ').replace(/[*_~`]+/g, '').replace(/\s+/g, ' ').trim();
@@ -320,6 +320,7 @@ export function textoConfiable(d) {
   if (!L) return d.text || '';
   return L.map(l => l.words.filter(w => {
     const t = String(w.text || '').trim(), c = Number(w.confidence);
+    if (/^[$€]+$/.test(t)) return c >= 35;           // el "$" suelto antes del precio
     if (!/[\p{L}\p{N}]/u.test(t)) return false;
     return /\d/.test(t) ? c >= 35 : c >= 55 && (t.match(/\p{L}/gu) || []).length >= (t.length > 2 ? 2 : 1);
   }).map(w => String(w.text).trim()).join(' ')).filter(l => /[\p{L}\p{N}]/u.test(l)).join('\n');
@@ -340,7 +341,7 @@ export function deTextoDeFoto(texto, cotizacion, sinSimbolo = 'ars') {
   if (!precio) {
     const nums = lineas.join(' ').match(/\b\d{1,3}(?:[.,]\d{3})+(?:,\d{1,2})?\b|\b\d{3,7}\b/g) || [];
     const vals = nums.map(num).filter(v => v >= 100 && v < 100000000 && !(v >= 1900 && v <= 2100));
-    if (vals.length) { const v = Math.max(...vals); precio = sinSimbolo === 'usd' ? { usd: v } : { usd: Math.round(v / cot * 100) / 100, ars: v }; precio.inferido = true; }
+    if (vals.length) { const v = Math.max(...vals); precio = sinSimbolo === 'usd' ? { usd: v } : { usd: Math.round(v / cot * 10000) / 10000, ars: v }; precio.inferido = true; }
   }
   // nombre: la línea con más letras que no sea un precio ni una palabra de relleno
   const cands = lineas.filter(l => !extraerPrecio(l, cot) && !NO_NOMBRE.test(l) && (l.match(/[a-záéíóúñ]/gi) || []).length >= 4 && !/^[\d\W]+$/.test(l))
@@ -370,8 +371,12 @@ export function deArchivoNombre(n, cotizacion, sinSimbolo = 'ars') {
   if ((nombre.match(/\p{L}/gu) || []).length < 3) nombre = '';
   if (nombre && nombre === nombre.toUpperCase()) nombre = nombre.toLowerCase().replace(/(^|\s)(\p{L})/gu, (x, a, c) => a + c.toUpperCase());   // "ZAPATILLA NIKE" → "Zapatilla Nike"
   if (!nombre && !(precio > 0)) return null;
-  return { nombre: nombre.slice(0, 120), costo_usd: precio > 0 ? (usd ? precio : Math.round(precio / cot * 10000) / 10000) : null, precio_ars: precio > 0 && !usd ? precio : (precio > 0 ? Math.round(precio * cot) : null) };
+  // explicito: el nombre dice "precio …", "$ …" o "usd …" (alguien lo escribió a propósito: vale más que lo que se lea en la foto)
+  const explicito = precio > 0 && /(precio|valor|\$|usd)/i.test(m[0]);
+  return { nombre: nombre.slice(0, 120), costo_usd: precio > 0 ? (usd ? precio : Math.round(precio / cot * 10000) / 10000) : null, precio_ars: precio > 0 && !usd ? precio : (precio > 0 ? Math.round(precio * cot) : null), explicito };
 }
+// ¿Parece un nombre de producto? "au Eo" o "Pa Y frost de as la el" son manchas de la foto leídas como letras.
+export const nombreCreible = n => { const w = String(n || '').match(/\p{L}+/gu) || [], l = w.filter(x => x.length >= 3); return l.length >= 1 && l.length * 3 >= w.length; };
 
 /* ---------- 7) CHAT DE WHATSAPP CON FOTOS: cada foto + su texto = un producto ---------- */
 const CAB = /^\s*\[?(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4}),?\s+(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*(?:[ap]\.?\s?m\.?)?\]?\s*(?:-\s*)?([^:]{1,60}):\s?(.*)$/i;
