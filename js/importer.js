@@ -294,7 +294,27 @@ export async function ocr(f, progreso = () => { }) {
   progreso('Leyendo el texto de la imagen… (la primera vez tarda un poco más)');
   if (!_ocrWorker) _ocrWorker = await T.createWorker('spa');          // un solo lector para todas las fotos: mucho más rápido
   const r = await _ocrWorker.recognize(f);
-  return r.data.text || '';
+  _ultOcr = { palabras: (String(r.data.text || '').match(/[\p{L}\p{N}]{2,}/gu) || []).length };
+  return textoConfiable(r.data);
+}
+let _ultOcr = { palabras: 0 };
+export const infoOcr = () => _ultOcr;   // cuánto texto había en la última foto (aunque no se haya podido leer)
+// Se queda solo con las palabras que el lector leyó con seguridad. En una foto de producto sin texto (zapatillas,
+// ropa…) el lector "ve" letras sueltas en las texturas ("Pa Y", "E", "%"): con esto no se confunden con un nombre o un precio.
+export function textoConfiable(d) {
+  if (!d) return '';
+  const conPal = x => Array.isArray(x) && x.some(l => l && Array.isArray(l.words));
+  let L = conPal(d.lines) ? d.lines : null;
+  if (!L && Array.isArray(d.blocks)) {   // tesseract.js más nuevo: bloques → párrafos → renglones
+    const ls = []; d.blocks.forEach(b => (b && b.paragraphs || []).forEach(p => (p && p.lines || []).forEach(l => ls.push(l))));
+    if (conPal(ls)) L = ls;
+  }
+  if (!L) return d.text || '';
+  return L.map(l => l.words.filter(w => {
+    const t = String(w.text || '').trim(), c = Number(w.confidence);
+    if (!/[\p{L}\p{N}]/u.test(t)) return false;
+    return /\d/.test(t) ? c >= 35 : c >= 55 && (t.match(/\p{L}/gu) || []).length >= (t.length > 2 ? 2 : 1);
+  }).map(w => String(w.text).trim()).join(' ')).filter(l => /[\p{L}\p{N}]/u.test(l)).join('\n');
 }
 
 /* ---------- 6) FOTO DE PROVEEDOR = UN PRODUCTO ---------- */

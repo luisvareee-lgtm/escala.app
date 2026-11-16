@@ -92,7 +92,12 @@ on('p-menu', () => { P.modal = { tipo: 'mas' }; pintar(); });
 on('dm-descartar', () => { descartarDemo(); pintar(); });
 on('dm-cargar', async (d, b) => {
   b.disabled = true;
-  try { const f = filasDemo(P.t); if (f.length) await api.insertarProductos(f); descartarDemo(); P.prods = await api.misProductos(); toast(f.length + ' productos cargados'); P.tab = 'productos'; pintar(); }
+  try {
+    b.textContent = 'Cargando…';
+    const f = await filasDemo(P.t, (bl, n) => api.subirFoto(P.t.id, bl, n)); if (f.length) await api.insertarProductos(f);
+    descartarDemo(); P.prods = await api.misProductos(); const oc = f.filter(x => !x.activo).length;
+    toast(f.length + ' productos cargados' + (oc ? ` · ${oc} ocultos para completar` : '')); P.tab = 'productos'; pintar();
+  }
   catch (e) { b.disabled = false; toast(e.message); }
 });
 on('p-ver-tienda', () => { window.open(urlTienda(), '_blank', 'noopener'); });
