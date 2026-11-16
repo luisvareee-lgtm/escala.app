@@ -4,6 +4,7 @@
 import { esc, fmt, on, $, store } from './util.js';
 import { abrirFlyer } from './flyer.js';
 import { leerArchivo, parsearLista, detectarTabla, tablaAProductos, deTextoDeFoto } from './importer.js';
+import { ilus } from './ilus.js';
 
 const K = 'demo:prods';
 const DM = { items: null, busy: false, msg: '', err: '', aviso: '', m1: 50, m12: 20, dolar: 1200, fuente: '', modo: 'mayor', edit: -1 };   // modo: mayor | menor | dos
@@ -70,7 +71,7 @@ function salida() {
   if (DM.busy) return `<div class="dm-scan" id="dm-scan" role="status"><div class="dm-doc" aria-hidden="true">${[82, 64, 90, 56, 74, 68].map(w => `<i style="width:${w}%"></i>`).join('')}<span class="dm-laser"></span></div>
     <div class="dm-scan-tx"><b>${DM.modo === 'menor' ? 'Analizando costos y calculando tu precio por unidad…' : 'Analizando costos y calculando escalas x1, x3, x6, x12…'}</b><div class="hint" id="dm-prog">${esc(DM.msg || 'Leyendo tu lista…')}</div></div></div>`;
   if (DM.err) return `<div class="err-box" style="margin-top:10px">${esc(DM.err)}</div><div class="dm-salidas" id="dm-salidas"><b>No pasa nada, tenés otras formas:</b><div class="lv-acc"><button class="btn btn-s btn-sm" data-act="dm-pegar">📋 Pegar el texto de la lista</button>${aMano('✍️ Cargar un producto a mano')}</div><p class="hint">Las fotos se leen mejor de frente, con buena luz y el precio nítido. Un Excel o un PDF con texto se leen casi siempre.</p></div>`;
-  const L = DM.items; if (!L) return `<div class="dm-idle" aria-hidden="true">${antesDespues(MUESTRA, MUESTRA.map(x => tarjeta(x, -1)).join(''), false)}</div>`;
+  const L = DM.items; if (!L) return `<div class="dm-idle" aria-hidden="true">${antesDespues(MUESTRA, MUESTRA.map((x, k) => tarjeta(x, -1 - k)).join(''), false)}</div>`;
   return `<div class="dm-res"><div class="dm-h"><b>✅ ${DM.fuente === 'lo que cargaste' ? 'Cargaste' : 'Leímos'} ${L.length} ${L.length === 1 ? 'producto' : 'productos'}${DM.fuente && DM.fuente !== 'lo que cargaste' ? ' de ' + esc(DM.fuente) : ''}. Así quedaría tu tienda${DM.modo === 'menor' ? ' minorista' : DM.modo === 'dos' ? ' (por menor y por mayor)' : ''}:</b>
       <div class="dm-m"><label>${DM.modo === 'menor' ? 'Tu ganancia' : 'Tu ganancia x1'} <input class="fi" type="number" min="0" max="500" value="${DM.m1}" data-input="dm-m" data-k="m1" aria-label="Ganancia por unidad en porcentaje">%</label>${DM.modo === 'menor' ? '' : `<label>x12 <input class="fi" type="number" min="0" max="500" value="${DM.m12}" data-input="dm-m" data-k="m12" aria-label="Ganancia llevando 12 en porcentaje">%</label>`}</div></div>
     ${DM.aviso ? `<div class="warn-box" id="dm-aviso">${esc(DM.aviso)}</div>` : ''}
@@ -79,12 +80,17 @@ function salida() {
     <a class="btn btn-p dm-cta" href="#/registro" data-act="dm-guardar">Guardar mi tienda gratis con ${L.length === 1 ? 'este producto' : 'estos ' + L.length + ' productos'} →</a>
     <p class="hint">Después podés corregir nombres y costos, sumar fotos y recibir pedidos por WhatsApp. 7 días gratis, sin tarjeta.</p></div>`;
 }
+// Tarjeta como la ve el cliente en la tienda: foto (acá, un dibujo de ejemplo), precio grande y "+ Agregar".
 function tarjeta(x, i) {
-  const t = tiers(x.costo), cls = i >= 0 ? 'dm-card' : 'dm-card0';
+  const t = tiers(x.costo), cls = i >= 0 ? 'dm-card' : 'dm-card0', n = i >= 0 ? i : -1 - i;
   if (i >= 0 && DM.edit === i) return `<div class="dm-card dm-ed" style="--i:0"><label>Nombre<input class="fi" id="dm-e-n" maxlength="120" value="${esc(x.nombre)}" placeholder="Ej: Perfume X 100ml"></label><label>Tu costo ($)<input class="fi" id="dm-e-c" inputmode="numeric" value="${x.costo || ''}" placeholder="Ej: 12500"></label><div class="lv-acc"><button class="btn btn-p btn-sm" data-act="dm-e-ok" data-i="${i}">Listo</button><button class="btn btn-s btn-sm" data-act="dm-e-quitar" data-i="${i}">Quitar</button></div></div>`;
-  const precios = DM.modo === 'menor' ? `<div class="dm-t dm-t1"><span><i>Precio</i>${fmt(t[1])}</span></div>`
-    : `${DM.modo === 'dos' ? `<div class="dm-t dm-t1"><span><i>Por unidad</i>${fmt(t[1])}</span></div>` : ''}<div class="dm-t">${(DM.modo === 'dos' ? [3, 6, 12] : [1, 3, 6, 12]).map(n => `<span><i>x${n}${n === 12 ? '+' : ''}</i>${fmt(t[n])}</span>`).join('')}</div>`;
-  return `<div class="${cls}" style="--i:${Math.max(0, i)}">${i >= 0 ? `<button class="dm-edit" data-act="dm-editar" data-i="${i}" aria-label="Corregir ${esc(x.nombre)}">✏️</button>` : ''}<b>${esc(x.nombre)}</b><small>Tu costo: ${fmt(x.costo)}</small>${precios}<em>Ganás ${fmt(t[1] - x.costo)} por unidad</em>${i >= 0 ? `<button class="dm-fly" data-act="dm-flyer" data-i="${i}">📸 Ver en Flyer</button>` : ''}</div>`;
+  const may = DM.modo === 'mayor', dos = DM.modo === 'dos', off = (may || dos) && t[1] > t[12] ? Math.round((1 - t[12] / t[1]) * 100) : 0;
+  const precio = may ? `<div class="dmc-p"><strong>${fmt(t[12])}</strong><small>c/u llevando 12+</small></div><div class="dmc-1">Por unidad ${fmt(t[1])}</div>`
+    : dos ? `<div class="dmc-p"><strong>${fmt(t[1])}</strong><small>precio al público</small></div><div class="dmc-1">Por mayor, con código: desde ${fmt(t[12])}</div>`
+    : `<div class="dmc-p"><strong>${fmt(t[1])}</strong></div>`;
+  return `<div class="${cls} dmc" style="--i:${Math.max(0, i)}"><div class="dmc-img">${ilus(x.nombre, n)}${off ? `<span class="dmc-off">−${off}% x12</span>` : ''}${i >= 0 ? `<button class="dm-edit" data-act="dm-editar" data-i="${i}" aria-label="Corregir ${esc(x.nombre)}">✏️</button>` : ''}</div>
+    <div class="dmc-b"><b class="dmc-n">${esc(x.nombre)}</b>${precio}<small class="dmc-c">Tu costo: ${fmt(x.costo)}</small><em class="dmc-g">Ganás ${fmt(t[1] - x.costo)} por unidad</em>
+      <span class="dmc-add" aria-hidden="true">+ Agregar</span>${i >= 0 ? `<button class="dm-fly" data-act="dm-flyer" data-i="${i}">📸 Ver en flyer</button>` : ''}</div></div>`;
 }
 const grilla = () => DM.items.slice(0, 6).map(tarjeta).join('');
 const pintar = () => { const o = $('#dm-out'); if (o) o.innerHTML = salida(); const p = $('#dm-pasos'); if (p) p.innerHTML = pasosHtml(); const m = $('#dm-modo'); if (m) m.innerHTML = '<span>¿Cómo vendés?</span>' + modoHtml(); };

@@ -3,9 +3,17 @@ import { esc, fmt, on, $ } from './util.js';
 import { MARCA, PLANES, REFERENCIA } from './marca.js';
 import { demoHtml } from './demo.js';
 import { cuposHtml, cargarCupos } from './fundadores.js';
+import { ilus } from './ilus.js';
 
 const SIM = { costo: 10, dolar: 1200, m1: 50, m12: 20, ventas: 3000000 };
 const LP = { anual: false };
+// íconos del título (trazo, toman el color del texto)
+const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICO = {
+  lista: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'),
+  margen: svg('<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>'),
+  tienda: svg('<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/><path d="M10 20v-5h4v5"/>'),
+};
 const ANUAL = (() => { const n = Number(MARCA.ANUAL_MESES); return n > 0 && n < 12 ? n : 0; })();
 
 /* ---------- La barra del pedido, en vivo (la misma que ven los clientes en la tienda mayorista) ---------- */
@@ -25,10 +33,13 @@ function gbBarra(subio) {
     <div class="gb-foot"><span class="gb-tot"><b>${q} u.</b> · ${fmt(pUnit(q) * q)}</span>${ahorro > 0 ? `<span class="gb-mc ok">ahorrás ${fmt(ahorro)}</span>` : ''}<span class="gb-go">Ver pedido →</span></div>${subio ? '<span class="gb-pill" role="status">¡Nivel desbloqueado!</span>' : ''}`;
 }
 function gbHtml() {
-  const q = GB.q, n = q ? nivelDe(q) : -1;
-  return `<div class="lp-gb-box"><div class="lp-gb-prod"><div class="lp-gb-img" aria-hidden="true">🧴</div><div class="lp-gb-info"><b>Sérum facial vitamina C · 30 ml</b>
+  const q = GB.q, n = q ? nivelDe(q) : -1, off = Math.round((1 - GBP[12] / GBP[1]) * 100);
+  const acc = !q ? `<button type="button" class="btn btn-p lp-gb-add" data-act="lp-gb" data-d="1">+ Agregar al pedido</button>`
+    : `<div class="lp-gb-step" role="group" aria-label="Cantidad"><button type="button" data-act="lp-gb" data-d="-1" aria-label="Quitar uno">−</button><span id="lp-gb-q" aria-live="polite">${q} u.</span><button type="button" data-act="lp-gb" data-d="1" aria-label="Sumar uno" ${q >= 24 ? 'disabled' : ''}>+</button></div>${q >= 12 ? '<button type="button" class="linkb" data-act="lp-gb" data-d="0">Empezar de nuevo</button>' : '<span class="lp-gb-tip">Tocá <b>+</b> para sumar</span>'}`;
+  return `<div class="lp-gb-box"><div class="lp-gb-prod"><div class="lp-gb-img">${ilus('Sérum facial vitamina C', 0)}<span class="dmc-off">−${off}% x12</span></div><div class="lp-gb-info"><b>Sérum facial vitamina C · 30 ml</b>
+      <div class="lp-gb-pu"><strong>${fmt(pUnit(q))}</strong><small>${q ? 'c/u con ' + q + ' u.' : 'por unidad'}</small></div>
       <div class="lp-gb-tiers" aria-label="Precio por cantidad">${NIV.map(([m], i) => `<span class="${i === n ? 'on' : ''}"><small>x${m}${m === 12 ? '+' : ''}</small>${fmt(GBP[m])}</span>`).join('')}</div>
-      <div class="lp-gb-acc"><button type="button" class="qbtn" data-act="lp-gb" data-d="-1" aria-label="Quitar uno" ${q ? '' : 'disabled'}>−</button><span class="qnum" id="lp-gb-q">${q}</span><button type="button" class="btn btn-p btn-sm" data-act="lp-gb" data-d="1" ${q >= 24 ? 'disabled' : ''}>+ Agregar</button>${q >= 12 ? '<button type="button" class="linkb" data-act="lp-gb" data-d="0">Empezar de nuevo</button>' : ''}</div></div></div>
+      <div class="lp-gb-acc">${acc}</div></div></div>
     <div class="dz-gami lp-gami lvl${Math.max(0, n)}" id="lp-gami">${gbBarra(false)}</div></div>`;
 }
 on('lp-gb', d => {
@@ -66,6 +77,7 @@ const FAQ = [
   ['¿Me cobran comisión por cada venta?', 'No. Pagás solo el abono mensual. Si cobrás con Mercado Pago, la plata entra directo a tu cuenta y solo aplica la comisión de Mercado Pago.'],
   ['¿Cuántos productos y pedidos puedo tener?', 'Todos los que quieras, en todos los planes.'],
   ['¿Puedo vender por menor y por mayor con el mismo enlace?', 'Sí. El público ve el precio final y tus revendedores entran con un código a la lista por cantidad (plan Mayorista Pro).'],
+  ['¿Sirve para ropa y calzado?', 'Sí. Cargás los talles con un toque (XS a XXL, 35 al 45, niños o jean) y el stock de cada uno: tu cliente elige el talle con un botón, los que se agotan aparecen tachados y nadie puede pedir más de lo que tenés. Puede llevar varios talles del mismo modelo y todos suman para el precio por cantidad. Y le mostrás tu guía de talles.'],
   ['¿Cómo cargo mi lista de precios?', 'Subís lo que te manda el proveedor: fotos, capturas, el chat de WhatsApp, un Excel, un PDF o el CSV de tu tienda actual. La app lee nombre y costo, vos revisás y elegís cómo publicarlo.'],
   ['¿Cómo me llegan los pedidos?', 'Tu cliente arma el carrito y te manda el ticket por WhatsApp con el detalle, el total, el envío y tu alias. Además te llega un aviso al celular apenas entra, y en el panel lo seguís por etapas.'],
   ['¿Qué pasa cuando terminan los 7 días gratis?', 'Elegís el plan que te sirva para seguir: tus productos, pedidos y configuración quedan como estaban. No pedimos tarjeta para la prueba.'],
@@ -113,8 +125,8 @@ export function inicio(app) {
   const N = esc(MARCA.NOMBRE); GB.q = 0;
   app.innerHTML = `<div class="lp">
   <section class="lp-hero"><div class="tag">Para comercios, revendedores y mayoristas</div>
-    <h1>Subí la lista de tu proveedor, calculá tu margen y ¡en un minuto tenés tu tienda con tus precios!</h1>
-    <p>${N} lee la lista, calcula tus precios con tu ganancia (por unidad, por cantidad o las dos) y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
+    <h1 class="lp-flujo"><span class="fl-n"><i>${ICO.lista}</i>Subí la lista de tu proveedor</span><span class="fl-a" aria-hidden="true"><b></b></span><span class="fl-n"><i>${ICO.margen}</i>Calculá tu margen</span><span class="fl-a" aria-hidden="true"><b></b></span><span class="fl-n fl-fin"><i>${ICO.tienda}</i>¡Listo, tenés tu tienda con tus precios!</span></h1>
+    <p>${N} lee la lista, calcula tus precios con tu ganancia por unidad, por cantidad o las dos y te arma el catálogo para recibir pedidos por WhatsApp. Cuando el proveedor cambia los precios, actualizás todo de una vez. 0% de comisión por venta.</p>
     ${demoHtml()}
     <div class="lp-cta"><a class="btn btn-s" href="#/registro">Crear mi tienda gratis</a>${MARCA.DEMO_URL ? `<a class="btn btn-s" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Ver una tienda de ejemplo</a>` : ''}<a class="btn btn-s" href="#/login">Ya tengo cuenta</a></div>
     ${cuposHtml()}

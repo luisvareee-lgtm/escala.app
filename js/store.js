@@ -409,7 +409,7 @@ function pintarGrid() {
   const verCat = S.cat === 'Todas' && cats.length > 2 && !L.limpia && !separar;   // la etiqueta de categoría solo suma si hay varias
   let previa = null;
   g.innerHTML = lista.slice(0, S.limite).map(p => {
-    const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = S.sel[p.id] || 0, vars = p.variantes || [];
+    const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = selVar(p), vars = p.variantes || [];
     const div = separar && p.categoria !== previa ? `<div class="pg-div"><b>${esc(p.categoria)}</b><span>${lista.filter(x => x.categoria === p.categoria).length} productos</span></div>` : ''; previa = p.categoria;
     const hl = n => qe > 0 && ((n === 12 && qe >= 12) || (n === 6 && qe >= 6 && qe < 12) || (n === 3 && qe >= 3 && qe < 6) || (n === 1 && qe < 3)) ? 'hl' : '';
     const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
@@ -427,11 +427,21 @@ function pintarGrid() {
     const rv = fxOn() && typeof IntersectionObserver !== 'undefined' && !(S.vistos && S.vistos.has(p.id)) ? ' rv' : '';
     const flyIco = flyOn() && L.limpia ? `<button type="button" class="fly-ico${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}" aria-label="${enFly ? 'Quitar del flyer' : 'Elegir para un flyer para vender'}" title="Flyer para vender">${enFly ? '✓' : '📲'}</button>` : '';
     return `${div}<div class="pcard${qty ? ' in-cart' : ''}${rv}${L.limpia ? ' limpia' : ''}" data-id="${p.id}"><div class="pimg${p.imagen_url ? ' con-img' : ' noimg'}" data-act="st-ver" data-id="${p.id}" role="button" tabindex="0" aria-label="Ver ${esc(p.nombre)}" style="cursor:pointer;${p.imagen_url ? cssImg(p.imagen_url) : 'background:linear-gradient(145deg,var(--acs),transparent 70%),var(--bg2)'}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}" loading="lazy">` : ''}${comboTxt(p) ? '<span class="badge badge-cat badge-cb">🧩 Combo</span>' : verCat ? `<span class="badge badge-cat">${esc(p.categoria)}</span>` : ''}${ofPct(p) ? `<span class="badge badge-of">-${ofPct(p)}%</span>` : ''}${qty ? `<span class="badge badge-qty">${qty} u</span>` : ''}${p.agotado ? '<span class="badge badge-out">Sin stock</span>' : p.a_pedido && S.tienda.modo_stock === 'mixto' ? `<span class="badge badge-enc">Por encargo · llega en ${+p.demora_dias} días</span>` : p.ultimas ? `<span class="badge badge-low">¡Últimas ${+p.ultimas}!</span>` : ''}${p.imagen_url ? '' : `<div class="pimg-emoji">${esc(p.emoji)}</div>`}${flyIco}</div>
-      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${gamiOn() ? '' : escalaHtml(p, true)}${ganHtml(p)}<div class="pqty">${ctrl}</div>${flyOn() && !L.limpia ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
+      <div class="pbody"><div class="pname" data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</div>${vars.length ? `<div class="vars" role="group" aria-label="Variante">${chipsVar(p, vi)}</div>` : ''}${vars.length > 1 && !p.agotado ? `<button class="mx-link" data-act="st-ver" data-id="${p.id}" data-mx="1">▦ Cargar varias opciones a la vez</button>` : ''}${precio}${gamiOn() ? '' : escalaHtml(p, true)}${ganHtml(p)}<div class="pqty">${ctrl}</div>${flyOn() && !L.limpia ? `<button class="fly-btn${enFly ? ' on' : ''}" data-act="fly-sel" data-id="${p.id}" aria-pressed="${enFly}">${enFly ? '✓ En tu flyer' : '📸 Crear Flyer para Vender'}</button>` : ''}</div></div>`;
   }).join('');
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
   revelar();
 }
+/* ---------- talles sin stock (ropa y calzado) ---------- */
+const agotSet = p => new Set(Array.isArray(p.talles_agotados) ? p.talles_agotados : []);
+const varAgot = (p, v) => agotSet(p).has(v);
+function selVar(p) {
+  const v = p.variantes || [], s = S.sel[p.id], ag = agotSet(p);
+  if (s != null && v[s] !== undefined && !ag.has(v[s])) return s;
+  const i = v.findIndex(x => !ag.has(x)); return i < 0 ? 0 : i;
+}
+const chipsVar = (p, vi) => (p.variantes || []).map((v, i) => { const ag = varAgot(p, v); return `<button class="vchip ${vi === i && !ag ? 'on' : ''}${ag ? ' agot' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}"${ag ? ` disabled aria-disabled="true" title="Sin stock" aria-label="${esc(v)} sin stock"` : ''}>${esc(v)}</button>`; }).join('');
+const guiaHtml = p => (p.variantes || []).length && S.tienda.guia_talles ? `<details class="guia-t"><summary>📏 Guía de talles</summary><div class="guia-t-in">${esc(S.tienda.guia_talles)}</div></details>` : '';
 /* ---------- barra del pedido con niveles (1u · 3u · 6u · 12u+): vibra, se sacude y avisa al desbloquear uno ---------- */
 const NIVELES = [[1, 'Inicial'], [3, 'Mayorista'], [6, 'Especial'], [12, '🏆 Super']];
 const gamiOn = () => lookDe(S.tienda.diseno).barra && vista() === 'may' && !!S.tienda.escalas_activas;
@@ -589,15 +599,16 @@ on('st-ir', d => ir(d.v));
 on('st-q', (d, el) => { S.q = el.value; S.limite = 60; pintarGrid(); });
 on('st-cat', d => { S.cat = d.c; S.limite = 60; pintarGrid(); });
 on('st-mas', () => { S.limite += 60; pintarGrid(); });
-on('st-var', d => { S.sel[d.id] = +d.i; pintarGrid(); pintarDet(); });
+on('st-var', d => { const p = prod(d.id); if (p && varAgot(p, (p.variantes || [])[+d.i])) return toast('Ese talle no tiene stock'); S.sel[d.id] = +d.i; pintarGrid(); pintarDet(); });
 on('st-add', (d, b) => {
   const p = prod(d.id); if (!p || p.agotado) return;
-  const vr = (p.variantes || [])[S.sel[p.id] || 0] || '';
+  const vr = (p.variantes || [])[selVar(p)] || '';
+  if (vr && varAgot(p, vr)) return toast('Ese talle no tiene stock');
   const ex = S.cart.find(l => l.id === p.id && l.vr === vr); ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1 }); S.foco = p.id;
   guardarCarrito(); evento('AddToCart', { content_name: p.nombre }); marcarAct('c', p.id); refrescar(); golpe(b);
 });
 on('st-dec', d => {
-  const p = prod(d.id), vr = (p.variantes || [])[S.sel[p.id] || 0] || '';
+  const p = prod(d.id), vr = (p.variantes || [])[selVar(p)] || '';
   const l = S.cart.find(x => x.id === d.id && x.vr === vr) || S.cart.find(x => x.id === d.id); if (!l) return;
   l.qty--; if (l.qty < 1) S.cart = S.cart.filter(x => x !== l); S.foco = d.id; guardarCarrito(); refrescar();
 });
@@ -609,15 +620,15 @@ function pintarVitrina() { document.querySelectorAll('section.vt .vt-card').forE
 function pintarDet() {
   const r = $('#pdet-root'); if (!r) return;
   const p = S.det && prod(S.det); if (!p) { r.innerHTML = ''; return; }
-  const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = S.sel[p.id] || 0, vars = p.variantes || [], matriz = vars.length > 1 && !p.agotado;
+  const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = selVar(p), vars = p.variantes || [], matriz = vars.length > 1 && !p.agotado;
   const precios = t && S.tienda.escalas_activas && !t.unico ? `${porUnidad(p)}<div class="ptiers" style="margin:10px 0">${[1, 3, 6, 12].map(n => `<div class="ptier"><div class="ptier-q">x${n}${n === 12 ? '+' : ''}</div><div class="ptier-p">${fmt(t[n])}</div>${n > 1 && t[1] ? `<div class="ptier-s">-${Math.round((1 - t[n] / t[1]) * 100)}%</div>` : ''}</div>`).join('')}</div>${escNota(p)}` : `<div class="retail-price" style="margin:8px 0">${fmt(t ? t[1] : p.precio_1)}</div>${porUnidad(p)}${t && t.unico ? '<div class="flat-note">precio mayorista único: el mismo para cualquier cantidad</div>' : ''}`;
   r.innerHTML = `<div class="modal-bg" data-act="st-det-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(p.nombre)}">
     <div class="pdet-img${p.imagen_url ? ' con-img' : ' noimg'}"${p.imagen_url ? ` style="${cssImg(p.imagen_url)}"` : ''}>${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">` : esc(p.emoji)}</div>
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
     ${p.descripcion ? `<div class="pdet-desc">${esc(p.descripcion)}</div>` : ''}
     ${precios}${p.precio_lista && (!t || t.unico || vista() === 'min') ? `<div class="was-l">Antes ${comboTxt(p) ? '(comprando cada uno por separado)' : ''} <s>${fmt(p.precio_lista)}</s></div>` : ''}${ofertaNota(p)}${p.a_pedido ? `<div class="enc-note">📦 Por encargo: llega en ${+p.demora_dias} días desde que confirmás el pedido.</div>` : ''}
-    ${matriz ? `<div class="flabel" style="margin-top:10px">Elegí cuántas de cada una${tramos(p) && !tramos(p).unico ? ' <small class="muted">(todas suman para el precio por cantidad)</small>' : ''}</div><div class="mx" id="mx">${vars.map((v, i) => { const n = qtyVar(p.id, v); return `<div class="mx-row${n ? ' on' : ''}"><span class="mx-n">${esc(v)}</span><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="-1" aria-label="Quitar uno de ${esc(v)}" ${n ? '' : 'disabled'}>−</button><input class="fi mx-q" inputmode="numeric" data-change="st-vset" data-id="${p.id}" data-i="${i}" value="${n}" aria-label="Cantidad de ${esc(v)}"><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="1" aria-label="Agregar uno de ${esc(v)}">+</button></div>`; }).join('')}</div><div class="mx-tot">${qty ? `<b>${qty} u.</b> en total · ${fmt(unidad(p, qe))} c/u · <b>${fmt(unidad(p, qe) * qty)}</b>` : 'Todavía no sumaste ninguna.'}</div>`
-      : vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${vars.map((v, i) => `<button class="vchip ${vi === i ? 'on' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}">${esc(v)}</button>`).join('')}</div>` : ''}
+    ${matriz ? `<div class="flabel" style="margin-top:10px">Elegí cuántas de cada una${tramos(p) && !tramos(p).unico ? ' <small class="muted">(todas suman para el precio por cantidad)</small>' : ''}</div><div class="mx" id="mx">${vars.map((v, i) => { const n = qtyVar(p.id, v); if (varAgot(p, v) && !n) return `<div class="mx-row agot"><span class="mx-n">${esc(v)}</span><span class="mx-sin">Sin stock</span></div>`; return `<div class="mx-row${n ? ' on' : ''}"><span class="mx-n">${esc(v)}</span><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="-1" aria-label="Quitar uno de ${esc(v)}" ${n ? '' : 'disabled'}>−</button><input class="fi mx-q" inputmode="numeric" data-change="st-vset" data-id="${p.id}" data-i="${i}" value="${n}" aria-label="Cantidad de ${esc(v)}"><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="1" aria-label="Agregar uno de ${esc(v)}">+</button></div>`; }).join('')}</div><div class="mx-tot">${qty ? `<b>${qty} u.</b> en total · ${fmt(unidad(p, qe))} c/u · <b>${fmt(unidad(p, qe) * qty)}</b>` : 'Todavía no sumaste ninguna.'}</div>`
+      : vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${chipsVar(p, vi)}</div>` : ''}${guiaHtml(p)}
     ${escalaHtml(p)}${ganQty(p) || ganHtml(p)}
     ${p.agotado ? '<button class="btn btn-s" disabled>Sin stock</button>' : matriz ? '' : `<div style="display:flex;gap:8px;align-items:center">${qty ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>` : ''}<button class="btn btn-p" style="flex:1" data-act="st-add" data-id="${p.id}">${qty ? '+ Agregar otro' : '+ Agregar al carrito'}</button></div>`}
     ${flyOn() ? `<button class="btn btn-s" style="margin-top:8px" data-act="fly-uno" data-id="${p.id}">📸 Crear Flyer para Vender</button>` : ''}
@@ -629,6 +640,7 @@ on('st-ver', d => { marcarAct('v', d.id); S.det = d.id; pintarDet(); if (d.mx) {
 const qtyVar = (id, vr) => { const l = S.cart.find(x => x.id === id && x.vr === vr); return l ? l.qty : 0; };
 function setVar(id, i, n) {
   const p = prod(id); if (!p || p.agotado) return; const vr = (p.variantes || [])[+i]; if (vr === undefined) return;
+  if (varAgot(p, vr) && Number(n) > qtyVar(id, vr)) return toast('Ese talle no tiene stock');
   n = Math.max(0, Math.min(9999, Math.round(Number(n) || 0)));
   const l = S.cart.find(x => x.id === id && x.vr === vr), antes = l ? l.qty : 0;
   if (!n) S.cart = S.cart.filter(x => x !== l); else if (l) l.qty = n; else S.cart.push({ id, vr, qty: n });
