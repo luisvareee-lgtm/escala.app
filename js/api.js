@@ -97,6 +97,7 @@ export const api = {
   // edición y borrado masivo (todo junto en la base: o se aplica a todos o a ninguno)
   editarMasivo: async (ids, cambios) => ok(await sb.rpc('editar_productos_masivo', { p_ids: ids, p_cambios: cambios })),
   borrarMasivo: async ids => ok(await sb.rpc('borrar_productos', { p_ids: ids })),
+  promoMasivo: async (ids, promo) => ok(await sb.rpc('poner_promo', { p_ids: ids, p_promo: promo })),   // v2.25 (null = quitar)
   statsVistas: async dias => ok(await sb.rpc('estadisticas_vistas', { p_dias: dias })) || [],
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),

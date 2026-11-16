@@ -8,6 +8,7 @@
 import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P } from './state.js';
+import { hayPromo, camposPromo, promoDe } from './promo_ui.js';
 
 const PQ = { q: '', cat: '', ver: 'todos', orden: 'nuevos', dias: 30, pag: 0, por: 50, sel: new Set(), vistas: null, vistasDias: null, cargando: false, sinVistas: false, desde: null };
 let H = { precioDe: () => 0, flyerDe: () => { }, fila: () => '', abrirCombo: () => { } };
@@ -16,7 +17,7 @@ export const busq = () => PQ.q;
 export function resetProd() { Object.assign(PQ, { q: '', cat: '', ver: 'todos', orden: 'nuevos', pag: 0, sel: new Set(), vistas: null, vistasDias: null, cargando: false, sinVistas: false, desde: null }); }
 export const limpiarSel = () => PQ.sel.clear();
 
-const VER = [['todos', 'Todos'], ['visibles', 'Visibles en la tienda'], ['ocultos', 'Ocultos'], ['sin_stock', 'Sin stock'], ['encargo', 'Por encargo'], ['sin_foto', 'Sin foto'], ['ofertas', 'En oferta'], ['combos', 'Combos'], ['sin_ventas', 'Sin ventas en el período'], ['sin_visitas', 'Sin visitas en el período']];
+const VER = [['todos', 'Todos'], ['visibles', 'Visibles en la tienda'], ['ocultos', 'Ocultos'], ['sin_stock', 'Sin stock'], ['encargo', 'Por encargo'], ['sin_foto', 'Sin foto'], ['ofertas', 'En oferta'], ['promos', 'Con promo por cantidad'], ['combos', 'Combos'], ['sin_ventas', 'Sin ventas en el período'], ['sin_visitas', 'Sin visitas en el período']];
 const ORDEN = [['nuevos', 'Nuevos ingresos'], ['vendidos', 'Más vendidos'], ['populares', 'Más populares (visitas + al carrito)'], ['visitas', 'Más visitados'], ['nombre', 'Nombre A–Z'], ['precio_menor', 'Precio: menor a mayor'], ['precio_mayor', 'Precio: mayor a menor'], ['stock', 'Menos stock primero']];
 const DIAS = [[7, 'Últimos 7 días'], [30, 'Últimos 30 días'], [90, 'Últimos 90 días'], [365, 'Últimos 12 meses']];
 const POR = [25, 50, 100];
@@ -52,7 +53,7 @@ function filtrados() {
     && (!q || [p.nombre, p.categoria, p.sku, p.marca].join(' ').toLowerCase().includes(q)));
   const f = { visibles: p => p.activo, ocultos: p => !p.activo, sin_stock: sinStock, encargo: p => t.modo_stock === 'encargo' || (t.modo_stock === 'mixto' && p.a_pedido),
     sin_foto: p => !p.imagen_url, sin_ventas: p => !numDe(p.id).vend, sin_visitas: p => !numDe(p.id).vis,
-    ofertas: p => Number(p.oferta_pct) > 0 && (!p.oferta_hasta || new Date(p.oferta_hasta) > new Date()), combos: p => Array.isArray(p.combo) && p.combo.length > 0 }[PQ.ver];
+    ofertas: p => Number(p.oferta_pct) > 0 && (!p.oferta_hasta || new Date(p.oferta_hasta) > new Date()), combos: p => Array.isArray(p.combo) && p.combo.length > 0, promos: p => !!p.promo }[PQ.ver];
   if (f) L = L.filter(f);
   const by = {
     nuevos: (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')),
@@ -109,17 +110,18 @@ function barraSel() {
 /* ---------- modal de edición masiva ---------- */
 const v216 = () => (P.prods || []).some(p => 'oferta_pct' in p);
 const proxDomingo = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7)); return d.toLocaleDateString('sv'); };
-const SECC = [['oferta', '🏷️ Oferta con fechas'], ['precio', '💲 Precio'], ['stock', '📦 Stock'], ['nombre', '✏️ Nombre'], ['variantes', '👕 Variantes / talles'], ['categoria', '🗂 Categoría'], ['marca', '🏷️ Marca'], ['activo', '👁 Visible en la tienda'], ['a_pedido', '🚚 Por encargo'], ['precio_unico', '🔢 Precio único']];
+const SECC = [['oferta', '🏷️ Oferta con fechas'], ['promo', '🎁 Promo por cantidad'], ['precio', '💲 Precio'], ['stock', '📦 Stock'], ['nombre', '✏️ Nombre'], ['variantes', '👕 Variantes / talles'], ['categoria', '🗂 Categoría'], ['marca', '🏷️ Marca'], ['activo', '👁 Visible en la tienda'], ['a_pedido', '🚚 Por encargo'], ['precio_unico', '🔢 Precio único']];
 const radio = (n, L, v) => L.map(([k, t]) => `<label class="mz-r"><input type="radio" name="${n}" value="${k}" ${k === v ? 'checked' : ''} data-change="mz-prev"> ${t}</label>`).join('');
 export function modalMasivo(m) {
   const n = PQ.sel.size, t = P.t, cats = [...new Set((P.prods || []).map(p => p.categoria))].sort(), marcas = [...new Set((P.prods || []).map(p => p.marca).filter(Boolean))].sort();
-  const secs = SECC.filter(([k]) => (k !== 'a_pedido' || t.modo_stock === 'mixto') && (k !== 'precio_unico' || t.modalidad !== 'minorista') && (k !== 'oferta' || v216()));
+  const secs = SECC.filter(([k]) => (k !== 'a_pedido' || t.modo_stock === 'mixto') && (k !== 'precio_unico' || t.modalidad !== 'minorista') && (k !== 'oferta' || v216()) && (k !== 'promo' || hayPromo()));
   const cuerpo = {
     oferta: `${radio('of_modo', [['poner', 'Poner en oferta'], ['quitar', 'Quitar la oferta']], 'poner')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-ofp">Descuento %</label><input class="fi" id="mz-ofp" name="of_pct" type="number" min="1" max="90" step="any" placeholder="Ej: 15" data-input="mz-prev"></div>
       <div class="fg"><label class="flabel" for="mz-ofh">Hasta el (incluido)</label><input class="fi" id="mz-ofh" name="of_hasta" type="date" value="${proxDomingo()}"></div></div>
       <div class="fg"><label class="flabel" for="mz-ofd">Desde el (vacío = ya)</label><input class="fi" id="mz-ofd" name="of_desde" type="date"></div>
       <div class="hint">La tienda muestra el precio tachado, la etiqueta -% y el carrusel “Ofertas” si lo activaste. Al terminar vuelve sola al precio normal.</div><div class="mz-prev" id="mz-prev-of"></div>`,
+    promo: `${camposPromo(null, true)}<div class="hint">Se cuentan todas las unidades de cada producto (los talles se suman). Los combos elegidos quedan igual: ya tienen su descuento.</div>`,
     precio: `${radio('pr_modo', [['pct', 'Subir o bajar el costo un %'], ['usd', 'Poner el mismo costo en USD'], ['margen', 'Poner un margen propio %'], ['general', 'Volver al margen general']], 'pct')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-pct">% (negativo para bajar)</label><input class="fi" id="mz-pct" name="pr_pct" type="number" step="any" placeholder="Ej: 10 o -5" data-input="mz-prev"></div>
       <div class="fg"><label class="flabel" for="mz-val">Costo USD o margen %</label><input class="fi" id="mz-val" name="pr_val" type="number" step="any" min="0" placeholder="Ej: 12,50 o 45" data-input="mz-prev"></div></div>
@@ -152,7 +154,7 @@ export function modalBorrar() {
 }
 
 /* ---------- acciones ---------- */
-const amable = e => /editar_productos_masivo|borrar_productos|Could not find|does not exist|schema cache/i.test(e.message) ? 'Para editar o borrar en masa falta actualizar la base: corré la migración v2.16 en Supabase.' : e.message;
+const amable = e => /poner_promo/.test(e.message) ? 'Para poner la promo a varios falta correr la migración v2.25 en Supabase.' : /editar_productos_masivo|borrar_productos|Could not find|does not exist|schema cache/i.test(e.message) ? 'Para editar o borrar en masa falta actualizar la base: corré la migración v2.16 en Supabase.' : e.message;
 const ids = () => [...PQ.sel].filter(id => (P.prods || []).some(p => p.id === id));
 async function recargar() { P.prods = await api.misProductos(); const ex = new Set(P.prods.map(p => p.id)); [...PQ.sel].forEach(id => { if (!ex.has(id)) PQ.sel.delete(id); }); }
 on('p-q', (d, el) => { PQ.q = el.value; PQ.pag = 0; P.repintar(); });
@@ -192,6 +194,10 @@ function cambiosDe(f) {
       if (d && d > h) err('La oferta tiene que empezar antes de terminar.');
       c.oferta = { modo: 'poner', pct: Math.round(p * 100) / 100, hasta: new Date(h + 'T23:59:59').toISOString(), desde: d ? new Date(d + 'T00:00:00').toISOString() : null };
     }
+  }
+  if (fd.get('on_promo')) {   // v2.25: va por separado (poner_promo); acá solo se arma
+    if (fd.get('prm_modo') === 'quitar') c.__promo = { promo: null };
+    else { const x = promoDe(fd); if (!x) err('Completá la promo (o elegí un atajo).'); c.__promo = { promo: x }; }
   }
   if (fd.get('on_precio')) {
     const m = fd.get('pr_modo');
@@ -236,7 +242,12 @@ on('mz-aplicar', async (d, f) => {
   const m = $('#mz-m'), b = $('#mz-go'), L = ids();
   let c; try { c = cambiosDe(f); } catch (e) { if (m) m.innerHTML = `<div class="err-box">${esc(e.message)}</div>`; return; }
   if (!Object.keys(c).length) { if (m) m.innerHTML = '<div class="err-box">Tildá al menos una cosa para cambiar.</div>'; return; }
+  const pr = c.__promo; delete c.__promo;
   b.disabled = true; b.innerHTML = '<span class="spin"></span> Aplicando…';
-  try { const n = await api.editarMasivo(L, c); await recargar(); P.modal = null; P.repintar(); toast(`✅ ${n} ${n === 1 ? 'producto actualizado' : 'productos actualizados'}`); }
+  try {
+    let n = Object.keys(c).length ? await api.editarMasivo(L, c) : 0;
+    if (pr) { const k = await api.promoMasivo(L, pr.promo); n = Math.max(n, k); }
+    await recargar(); P.modal = null; P.repintar(); toast(`✅ ${n} ${n === 1 ? 'producto actualizado' : 'productos actualizados'}`);
+  }
   catch (e) { if (m) { m.innerHTML = `<div class="err-box">${esc(amable(e))}</div>`; m.scrollIntoView({ block: 'nearest' }); } b.disabled = false; b.textContent = 'Reintentar'; }
 });

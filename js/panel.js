@@ -18,6 +18,7 @@ import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
 import { demoPendienteHtml, filasDemo, descartarDemo } from './demo.js';
+import { hayPromo, promoSecHtml, promoDe, promoChip, usarPrecio } from './promo_ui.js';
 import { abrirFlyer } from './flyer.js';
 import { recepcionModal } from './recepcion.js';
 import { cierreCard } from './cierre.js';
@@ -127,7 +128,7 @@ function filaProd(p, extra) {
   const pr0 = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista', pr = {};
   Object.keys(pr0).forEach(k => { pr[k] = precioFinal(p, pr0[k]); });
   const of = Number(p.oferta_pct) > 0 ? (ofertaVig(p) ? `🏷️ -${Math.round(p.oferta_pct)}% hasta ${new Date(p.oferta_hasta).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : p.oferta_desde && new Date(p.oferta_desde) > new Date() ? `🏷️ -${Math.round(p.oferta_pct)}% desde ${new Date(p.oferta_desde).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : '') : '';
-  const det = [Array.isArray(p.combo) && p.combo.length ? `🧩 combo de ${p.combo.reduce((a, c) => a + (+c.cant || 0), 0)} u.` : '', of, p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock_talles ? resumenTalles(p) : p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
+  const det = [Array.isArray(p.combo) && p.combo.length ? `🧩 combo de ${p.combo.reduce((a, c) => a + (+c.cant || 0), 0)} u.` : '', of, promoChip(p), p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock_talles ? resumenTalles(p) : p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
   const sel = Q.fly && Q.fly.includes(p.id);
   return `<div class="prow${p.activo ? '' : ' off'}${sel ? ' sel' : ''}" data-act="${Q.fly ? 'pf-sel' : 'p-editar'}" data-id="${p.id}" role="button" tabindex="0" aria-label="${Q.fly ? 'Elegir' : 'Editar'} ${esc(p.nombre)}"${Q.fly ? ` aria-pressed="${!!sel}"` : ''}>
     ${Q.fly ? `<span class="pf-chk" aria-hidden="true">${sel ? '✓' : ''}</span>` : ''}<span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
@@ -196,6 +197,7 @@ function modal() {
       <div class="fg"><label class="flabel" for="p-ofd">Desde el (vacío = ya)</label><input class="fi" id="p-ofd" name="oferta_desde" type="date" value="${diaLocal(p.oferta_desde)}"></div>
       <div class="hint">Mientras dure, la tienda muestra el precio tachado y la etiqueta -%. Al terminar vuelve sola al precio normal. Vacío = sin oferta.</div></details>
     <details class="pm-sec" id="pm-cb"${(m.combo || []).length ? ' open' : ''}><summary>🧩 Combo: este producto trae otros</summary><div id="p-cb">${comboHtml()}</div></details>` : ''}
+    ${hayPromo() && !(m.combo || []).length ? promoSecHtml(p) : ''}
     <div class="fg"><label class="flabel"><input type="checkbox" name="activo" ${p.activo === false ? '' : 'checked'}> Visible en la tienda</label></div>
     <button class="btn btn-p" type="submit">Guardar</button>${p.id ? '<button type="button" class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="p-borrar" data-id="' + p.id + '">Eliminar producto</button>' : ''}<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cancelar</button></form></div></div>`;
   }
@@ -221,6 +223,10 @@ const fotoAlt = () => `<details class="foto-alt" data-asistente="foto"><summary>
 // ---- combo: qué trae, cuántos de cada uno, descuento y cómo queda el precio ----
 const cbProd = id => (P.prods || []).find(p => p.id === id);
 const precioX1 = p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); };
+usarPrecio(() => {   // precio al público con lo que está escrito en el formulario (costo, margen propio y la oferta vigente)
+  const f = document.querySelector('form[data-submit=p-prod]'); if (!f || !(Number(f.costo_usd.value) > 0)) return 0;
+  const mp = f.margen_propio.value; return precioFinal({ ...(P.modal && P.modal.p || {}), combo_desc: 0 }, preciosDe(f.costo_usd.value, mp === '' ? null : Number(mp) / 100).min);
+});
 function comboPrev() {
   const L = (P.modal && P.modal.combo || []).map(c => ({ p: cbProd(c.id), c })).filter(x => x.p); if (!L.length) return '';
   const f = document.querySelector('form[data-submit=p-prod]'), desc = f && f.combo_desc ? Number(f.combo_desc.value) || 0 : Number((P.modal.p || {}).combo_desc) || 0;
@@ -231,7 +237,7 @@ function comboPrev() {
 function comboHtml() {
   const m = P.modal || {}, L = m.combo || [], q = (m.cbq || '').toLowerCase().trim(), yo = (m.p || {}).id;
   const res = q ? (P.prods || []).filter(p => p.id !== yo && !(Array.isArray(p.combo) && p.combo.length) && !L.some(c => c.id === p.id) && [p.nombre, p.sku, p.categoria].join(' ').toLowerCase().includes(q)).slice(0, 6) : [];
-  return `<p class="hint" style="margin-bottom:6px">Armalo con productos que ya tenés. El costo y el stock salen de lo que trae: al vender un combo se descuenta el stock de cada producto.</p>
+  return `<p class="hint" style="margin-bottom:6px">Armalo con productos que ya tenés. El costo y el stock salen de lo que trae: al vender un combo se descuenta el stock de cada producto. Si alguno tiene talles, tu cliente elige el talle de cada uno.</p>
     ${L.map((c, i) => { const p = cbProd(c.id); return `<div class="cb-it"><span class="cb-n">${esc(p ? p.nombre : 'Producto borrado')}</span><input class="fi cb-q" type="number" min="1" max="99" value="${c.cant}" data-input="p-cb-cant" data-i="${i}" aria-label="Cantidad de ${esc(p ? p.nombre : '')}"><button type="button" class="btn btn-s btn-sm" data-act="p-cb-del" data-i="${i}" aria-label="Quitar">✕</button></div>`; }).join('')}
     ${L.length < 10 ? `<input class="fi" id="p-cbq" data-input="p-cb-q" placeholder="Buscar producto para sumar al combo…" value="${esc(m.cbq || '')}" autocomplete="off" aria-label="Buscar producto para el combo">
       <div class="dz-vt-res" id="p-cb-res">${res.map(p => `<button type="button" data-act="p-cb-add" data-id="${p.id}">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="">` : `<span>${esc(p.emoji || '📦')}</span>`}<span>${esc(p.nombre)}</span></button>`).join('')}</div>` : ''}
@@ -305,7 +311,7 @@ on('p-wtraer', async (d, b) => {
   if (b.isConnected) { b.disabled = false; b.textContent = t0; }
 });
 on('p-nofoto', () => { P.modal.foto = null; const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(null); });
-on('p-prev', () => { const f = document.querySelector('form[data-submit=p-prod]'), bx = $('#pprev'); if (!f || !bx) return; const mp = f.margen_propio.value; bx.innerHTML = prevHtml(f.costo_usd.value, mp === '' ? null : Number(mp) / 100); });
+on('p-prev', () => { const f = document.querySelector('form[data-submit=p-prod]'), bx = $('#pprev'); if (!f || !bx) return; const mp = f.margen_propio.value; bx.innerHTML = prevHtml(f.costo_usd.value, mp === '' ? null : Number(mp) / 100); const t = $('#pr-t'); if (t) t.dispatchEvent(new Event('change', { bubbles: true })); });
 on('p-uni', (d, el) => { const c = $('#p-cont'); if (c) c.hidden = !['pack', 'bulto', 'caja', 'display'].includes(el.value); });
 on('p-prod', async (d, f) => {
   const fd = new FormData(f), st = fd.get('stock'), mp = fd.get('margen_propio');
@@ -334,10 +340,14 @@ on('p-prod', async (d, f) => {
       datos.precio_unico = true; datos.stock = null;
     } else { datos.combo = null; datos.combo_desc = 0; }
   }
+  if (hayPromo()) {   // promo por cantidad (v2.25): un combo no lleva (ya tiene su descuento)
+    if (datos.combo) datos.promo = null;
+    else if (document.querySelector('#pm-pr')) { try { datos.promo = promoDe(fd); } catch (e) { return mm(e.message); } }
+  }
   try {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
     await api.guardarProducto(id, datos); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');
-  } catch (e) { mm(/stock_talles/.test(e.message) ? 'Para guardar el stock por talle falta correr la migración v2.24 en Supabase.' : e.message); }
+  } catch (e) { mm(/stock_talles/.test(e.message) ? 'Para guardar el stock por talle falta correr la migración v2.24 en Supabase.' : /promo/.test(e.message) ? 'Revisá la promo por cantidad (o corré la migración v2.25 en Supabase).' : e.message); }
 });
 on('p-borrar', async (d, b) => { if (!confirmar(b, '¿Eliminar? Tocá de nuevo para confirmar')) return; try { await api.borrarProducto(d.id); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Eliminado'); } catch (e) { mm(e.message); } });
 on('p-guardar', async (d, f) => {

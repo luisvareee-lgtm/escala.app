@@ -4,6 +4,10 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, normWsp, waLink, confirmar, store } from './util.js';
 import { P } from './state.js';
 import { imprimir } from './catalogo.js';
+import { promoTxt, promosDelPedido } from './promo.js';
+// v2.25: cada renglón muestra su precio de lista y la promo va aparte (sumada por producto, aunque tenga varios talles)
+const bruto = i => Number(i.subtotal) + (Number(i.descuento) || 0);
+const promoFilas = (it, fila) => promosDelPedido(it).map(x => fila(`🎁 ${esc(promoTxt(x.promo) || 'Promo')} · ${esc(x.nombre)}`, '−' + fmt(x.d))).join('');
 
 export const ETAPA = {
   nuevo: ['🆕', 'Nuevo', ''], confirmado: ['✅', 'Confirmado', 'ok'], en_espera: ['⏸️', 'En espera', 'warn'], listo: ['🎁', 'Listo para entregar', 'ok'],
@@ -88,7 +92,8 @@ export function modalPedido(m) {
   ${o.envio_nombre ? `<br>🚚 ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}` : ''}${ubic(o) ? `<br>📍 ${esc(ubic(o))}` : ''}
   ${o.nota_cliente ? `<br>💬 <i>${esc(o.nota_cliente)}</i>` : ''}
   ${rv ? `<br><span class="tag">Vendió: ${esc(rv.nombre)} · comisión ${fmt(o.comision_ars)}</span>` : ''}</p>
-  <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}${i.recibido_at ? ' <span class="tag ok">llegó</span>' : ''}</span><span class="v">${fmt(i.subtotal)}</span></div>`).join('')}
+  <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}${i.recibido_at ? ' <span class="tag ok">llegó</span>' : ''}</span><span class="v">${fmt(bruto(i))}</span></div>`).join('')}
+  ${promoFilas(it, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}
   ${env || o.envio_nombre ? `<div class="srow"><span class="muted">Productos</span><span class="v">${fmt(sub)}</span></div><div class="srow"><span class="muted">Envío${o.envio_nombre ? ' · ' + esc(o.envio_nombre) : ''}</span><span class="v">${env ? fmt(env) : 'Gratis'}</span></div>` : ''}
   <div class="srow tot"><span>Total</span><span class="v">${fmt(o.total_ars)}</span></div></div>
   ${sig.length ? `<div class="flabel" style="margin-top:6px">Pasar a</div><div class="ped-acc">${sig.map(k => `<button class="btn ${k === 'en_espera' ? 'btn-s' : 'btn-p'} btn-sm" data-act="pd-etapa" data-id="${o.id}" data-e="${k}">${ETAPA[k][0]} ${ETAPA[k][1]}</button>`).join('')}</div>` : ''}
@@ -114,7 +119,8 @@ function remito(o, it) {
   <h2>Cliente</h2><div><b>${esc(o.cliente_nombre)}</b> · +${esc(o.cliente_whatsapp)}${o.cliente_dni ? ' · DNI/CUIT ' + esc(o.cliente_dni) : ''}${ubic(o) ? ' · ' + esc(ubic(o)) : ''}</div>${o.nota_cliente ? `<div>Aclaraciones: ${esc(o.nota_cliente)}</div>` : ''}
   ${o.envio_nombre ? `<div>Entrega: ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}${o.seguimiento ? ' · Seguimiento: ' + esc(o.seguimiento) : ''}</div>` : ''}
   <h2>Detalle</h2><table><thead><tr><th>Cant.</th><th>Producto</th><th class="r">Unitario</th><th class="r">Subtotal</th></tr></thead><tbody>
-  ${it.map(i => `<tr><td>${i.cantidad}</td><td>${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</td><td class="r">${fmt(i.precio_unitario)}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')}
+  ${it.map(i => `<tr><td>${i.cantidad}</td><td>${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</td><td class="r">${fmt(i.precio_unitario)}</td><td class="r">${fmt(bruto(i))}</td></tr>`).join('')}
+  ${promoFilas(it, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}
   ${o.envio_nombre ? `<tr><td></td><td>Productos</td><td></td><td class="r">${fmt(sub)}</td></tr><tr><td></td><td>Envío · ${esc(o.envio_nombre)}</td><td></td><td class="r">${env ? fmt(env) : 'Gratis'}</td></tr>` : ''}
   <tr><td></td><td><b>TOTAL</b></td><td></td><td class="r"><b>${fmt(o.total_ars)}</b></td></tr></tbody></table>
   <p style="margin-top:8px">Pago: ${esc(o.medio_pago)}${t.alias_cobro && o.estado === 'pendiente' ? ' · Alias: ' + esc(t.alias_cobro) : ''}</p>

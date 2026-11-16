@@ -3,10 +3,11 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir } from './catalogo.js';
 import { abrirFlyer } from './flyer.js';
+import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido } from './promo.js';
 import { tiraCierreHtml } from './cuenta.js';
 import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catFotoCfg, catTilesHtml, rubrosCfg, claveCat, rubroDe, rubrosHtml, rubroCabHtml, lookDe } from './bloques.js';
 
-const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [], rubro: null, foco: null, niveles: null, orden: 'dest' };
+const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [], rubro: null, foco: null, niveles: null, orden: 'dest', ct: {} };
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
 // medios de pago que la tienda tiene prendidos (panel: Tienda → Envíos y entregas → Medios de pago); si la base es vieja, los tres
 const pagos = () => { const a = S.tienda && Array.isArray(S.tienda.pagos_activos) && S.tienda.pagos_activos.length ? S.tienda.pagos_activos : null; return Object.keys(PAGO).filter(k => !a || a.includes(k)); };
@@ -54,7 +55,13 @@ function ganCarrito() {
 function lineas() {
   return S.cart.map((l, i) => { const p = prod(l.id); if (!p) return null; const q = qtyEsc(p); const pu = unidad(p, q); return { i, p, vr: l.vr, qty: l.qty, pu, sub: pu * l.qty, base: +p.precio_1 * l.qty }; }).filter(Boolean);
 }
-function totales() { const L = lineas(); return { n: L.reduce((a, l) => a + l.qty, 0), total: L.reduce((a, l) => a + l.sub, 0), ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0) }; }
+// promo por cantidad (v2.25): solo al público (en la lista mayorista mandan las escalas). Se cuentan todas las unidades del producto.
+const promoAplica = p => !!p && vista() === 'min' && promoOk(p.promo);
+function promosCarrito() {
+  const q = new Map(); S.cart.forEach(l => { const p = prod(l.id); if (promoAplica(p)) q.set(p.id, (q.get(p.id) || 0) + l.qty); });
+  return [...q].map(([id, n]) => { const p = prod(id); return { p, q: n, d: promoDesc(p.promo, unidad(p, n), n), falta: promoFalta(p.promo, n) }; });
+}
+function totales() { const L = lineas(), PR = promosCarrito(), promo = PR.reduce((a, x) => a + x.d, 0); return { n: L.reduce((a, l) => a + l.qty, 0), total: L.reduce((a, l) => a + l.sub, 0) - promo, ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0), promo, PR }; }
 const envios = () => Array.isArray(S.tienda.envios) ? S.tienda.envios : [];
 const envioSel = () => envios().find(e => e.id === S.env) || null;
 // mismo criterio que el servidor (el servidor recalcula y es el que cobra)
@@ -214,7 +221,33 @@ const comboTxt = p => Array.isArray(p.combo_items) && p.combo_items.length ? p.c
 const tachado = (p, ahora) => +p.precio_lista > +ahora ? ` <s class="was">${fmt(p.precio_lista)}</s>` : '';
 function ofertaNota(p) {
   const o = ofPct(p), c = comboTxt(p);
-  return `${o ? `<div class="of-nota">🏷️ Oferta -${o}% · ${esc(hastaTxt(p.oferta_hasta))}</div>` : ''}${c ? `<div class="cb-inc">🧩 Incluye: ${esc(c)}</div>` : ''}`;
+  return `${o ? `<div class="of-nota">🏷️ Oferta -${o}% · ${esc(hastaTxt(p.oferta_hasta))}</div>` : ''}${promoAplica(p) ? `<div class="promo-chip">🎁 ${esc(promoTxt(p.promo))}</div>` : ''}${c ? `<div class="cb-inc">🧩 Incluye: ${esc(c)}</div>` : ''}`;
+}
+// recuadro de la ficha: "Comprá más, pagá menos"
+function promoBox(p) {
+  if (!promoAplica(p)) return '';
+  const u = unidad(p, 1), pt = promoPartes(p.promo, u); if (!pt) return '';
+  const q = qtyDe(p.id), d = promoDesc(p.promo, u, q), f = promoFalta(p.promo, q);
+  return `<div class="promo-box"><div class="pb-h">🎁 Comprá más, pagá menos</div><div class="pb-r"><span class="pb-n">${pt[0]}</span><span class="pb-t">${esc(pt[1])}${pt[3] ? `<small>${esc(pt[3])}</small>` : ''}</span><b class="pb-v">${esc(pt[2])}</b></div>
+    ${(p.variantes || []).length > 1 ? '<div class="pb-s">Podés combinar talles o colores: todos suman.</div>' : ''}${d > 0 ? `<div class="pb-ok">✓ Con lo que tenés en el carrito ahorrás ${fmt(d)}${f ? ` · sumá ${f} más y ahorrás todavía más` : ''}</div>` : q > 0 && f ? `<div class="pb-s">Tenés ${q} en el carrito: sumá ${f} más.</div>` : ''}</div>`;
+}
+/* ---------- combos con talles (v2.25): el cliente elige el talle de cada producto que trae ---------- */
+const compsTalle = p => (Array.isArray(p.combo_items) ? p.combo_items : []).map(c => ({ c, q: c.id ? prod(c.id) : null })).filter(x => x.q && (x.q.variantes || []).length);
+const pideTalles = p => !!p && compsTalle(p).length > 0;
+const ctSel = p => (S.ct[p.id] = S.ct[p.id] || {});
+function ctCompleto(p) { const s = ctSel(p); return compsTalle(p).every(({ c, q }) => { const a = s[q.id] || []; for (let k = 0; k < +c.cant; k++) if (a[k] == null) return false; return true; }); }
+function ctDatos(p) {   // [{id, v, n}] y el texto "Zapa urbana 38, 40 · Sandalia 37" (igual que lo arma la base)
+  const s = ctSel(p), out = [], txt = [];
+  compsTalle(p).forEach(({ c, q }) => {
+    const a = (s[q.id] || []).slice(0, +c.cant), n = new Map(); a.forEach(v => n.set(v, (n.get(v) || 0) + 1));
+    const orden = [...n].sort((x, y) => q.variantes.indexOf(x[0]) - q.variantes.indexOf(y[0]));
+    orden.forEach(([v, k]) => out.push({ id: q.id, v, n: k })); txt.push(q.nombre + ' ' + orden.map(([v, k]) => v + (k > 1 ? ' x' + k : '')).join(', '));
+  });
+  return { ct: out, vr: txt.join(' · ') };
+}
+function ctHtml(p) {
+  const s = ctSel(p);
+  return `<div class="flabel" style="margin-top:10px">Elegí los talles</div><div class="ct-box">${compsTalle(p).map(({ c, q }) => Array.from({ length: +c.cant }, (_, k) => `<div class="ct-row"><span class="ct-n">${esc(q.nombre)}${+c.cant > 1 ? ` <small>(${k + 1} de ${+c.cant})</small>` : ''}</span><div class="vars">${q.variantes.map((v, i) => { const ag = varAgot(q, v), on_ = (s[q.id] || [])[k] === v; return `<button class="vchip${on_ ? ' on' : ''}${ag ? ' agot' : ''}" data-act="st-ct" data-id="${p.id}" data-c="${q.id}" data-k="${k}" data-i="${i}"${ag ? ` disabled aria-disabled="true" aria-label="${esc(v)} sin stock"` : ` aria-pressed="${on_}"`}>${esc(v)}</button>`; }).join('')}</div></div>`).join('')).join('')}</div>`;
 }
 
 /* ---------- visitas y "al carrito" por producto (para el panel del comercio) ----------
@@ -514,9 +547,14 @@ function pantallaCarrito() {
   const T = totales(), mc = minimo(), bloq = mc && T.total < mc, pau = pausado(), visto = {};
   // barra de escala una vez por grupo (producto, categoría o carrito) y ganancia una vez por producto
   const extra = l => { const k = grupoDe(l.p), bar = visto[k] ? '' : escalaHtml(l.p, true); visto[k] = 1; if (visto['g' + l.p.id]) return bar; visto['g' + l.p.id] = 1; return bar + ganQty(l.p); };
+  const ult = new Map(); L.forEach((l, k) => ult.set(l.p.id, k));
+  const prRow = (l, k) => { if (ult.get(l.p.id) !== k) return ''; const x = T.PR.find(y => y.p.id === l.p.id); if (!x) return '';
+    const masTalles = (l.p.variantes || []).length > 1 ? ' (de cualquier talle)' : '';
+    return x.d > 0 ? `<div class="cpromo"><span>🎁 ${esc(promoTxt(l.p.promo))}${x.falta ? `<small>Sumá ${x.falta} más${masTalles} y ahorrás todavía más</small>` : ''}</span><b>−${fmt(x.d)}</b></div>`
+      : x.falta ? `<div class="cpromo off"><span>🎁 Sumá ${x.falta} más${masTalles}: ${esc(promoTxt(l.p.promo))}</span></div>` : ''; };
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
-    ${L.map(l => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>`).join('')}
-    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
+    ${L.map((l, k) => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>${prRow(l, k)}`).join('')}
+    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}${T.promo > 0 ? `<div class="srow"><span>🎁 Promos</span><span class="v save">-${fmt(T.promo)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
     <button class="btn btn-p" ${bloq || pau ? 'disabled' : ''} data-act="st-ir" data-v="co">${pau ? '🔒 Pedidos cerrados por ahora' : bloq ? 'Faltan ' + fmt(mc - T.total) + ' para el mínimo' : 'Continuar →'}</button></div>`;
 }
 function pantallaCheckout() {
@@ -568,10 +606,13 @@ function resumenCo() {
   if (!envios().length) return `<div class="card"><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total)}</span></div></div>`;
   return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div><div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : (e.tipo === 'acordar' || e.tipo === 'correo') && !+e.costo ? 'A coordinar' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total + c)}</span></div></div>`;
 }
+const cp0 = i => { const p = prod(i.producto_id); return !!(p && Array.isArray(i.talles) && i.talles.length); };
+const ctTxt = i => { const L = []; (i.talles || []).forEach(x => { const q = prod(x.id), n = q ? q.nombre : 'Producto', o = L.find(y => y.n === n); const v = x.v + (+x.n > 1 ? ' x' + x.n : ''); o ? o.v.push(v) : L.push({ n, v: [v] }); }); return L.map(o => o.n + ' ' + o.v.join(', ')).join(' · '); };
 function ticket(r, cliente) {
   const ubic = [cliente.localidad, cliente.provincia, cliente.cp ? 'CP ' + cliente.cp : ''].filter(Boolean).join(' · ');
   let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}${S.tienda.modalidad === 'minorista' ? '' : 'Modalidad: ' + (r.modo === 'mayorista' ? 'Mayorista' : 'Minorista') + '\n'}\nDetalle:\n`;
-  r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(i.subtotal)}\n`; const cp = prod(i.producto_id), ct = cp ? comboTxt(cp) : ''; if (ct) t += `   ↳ trae: ${ct.replace(/ · /g, ', ')}\n`; });
+  r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : i.talles && cp0(i) ? ' (' + ctTxt(i) + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(+i.subtotal + (+i.descuento || 0))}\n`; const cp = prod(i.producto_id), ct = cp ? comboTxt(cp) : ''; if (ct) t += `   ↳ trae: ${ct.replace(/ · /g, ', ')}\n`; });
+  promosDelPedido(r.items, i => i.nombre).forEach(x => { t += `🎁 ${promoTxt(x.promo) || 'Promo'} · ${x.nombre}: -${fmt(x.d)}\n`; });
   if (r.envio) {
     const e = envioSel(), gratis = +S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde;
     const env = +r.envio_costo ? fmt(r.envio_costo) : e && e.tipo === 'retiro' ? 'sin cargo' : e && (e.tipo === 'acordar' || e.tipo === 'correo') && !gratis ? 'a coordinar' : 'gratis';
@@ -602,6 +643,7 @@ on('st-mas', () => { S.limite += 60; pintarGrid(); });
 on('st-var', d => { const p = prod(d.id); if (p && varAgot(p, (p.variantes || [])[+d.i])) return toast('Ese talle no tiene stock'); S.sel[d.id] = +d.i; pintarGrid(); pintarDet(); });
 on('st-add', (d, b) => {
   const p = prod(d.id); if (!p || p.agotado) return;
+  if (pideTalles(p)) { marcarAct('v', p.id); S.det = p.id; pintarDet(); return; }   // combo con talles: se eligen en la ficha
   const vr = (p.variantes || [])[selVar(p)] || '';
   if (vr && varAgot(p, vr)) return toast('Ese talle no tiene stock');
   const ex = S.cart.find(l => l.id === p.id && l.vr === vr); ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1 }); S.foco = p.id;
@@ -626,15 +668,27 @@ function pintarDet() {
     <div class="pdet-img${p.imagen_url ? ' con-img' : ' noimg'}"${p.imagen_url ? ` style="${cssImg(p.imagen_url)}"` : ''}>${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="${esc(p.nombre)}">` : esc(p.emoji)}</div>
     <div class="view-title" style="margin-bottom:2px">${esc(p.nombre)}</div><div class="muted" style="font-size:.8rem">${esc([p.categoria, p.marca, p.sku ? 'Cód. ' + p.sku : ''].filter(Boolean).join(' · '))}</div>
     ${p.descripcion ? `<div class="pdet-desc">${esc(p.descripcion)}</div>` : ''}
-    ${precios}${p.precio_lista && (!t || t.unico || vista() === 'min') ? `<div class="was-l">Antes ${comboTxt(p) ? '(comprando cada uno por separado)' : ''} <s>${fmt(p.precio_lista)}</s></div>` : ''}${ofertaNota(p)}${p.a_pedido ? `<div class="enc-note">📦 Por encargo: llega en ${+p.demora_dias} días desde que confirmás el pedido.</div>` : ''}
+    ${precios}${p.precio_lista && (!t || t.unico || vista() === 'min') ? `<div class="was-l">Antes ${comboTxt(p) ? '(comprando cada uno por separado)' : ''} <s>${fmt(p.precio_lista)}</s></div>` : ''}${ofertaNota(p)}${promoBox(p)}${p.a_pedido ? `<div class="enc-note">📦 Por encargo: llega en ${+p.demora_dias} días desde que confirmás el pedido.</div>` : ''}
     ${matriz ? `<div class="flabel" style="margin-top:10px">Elegí cuántas de cada una${tramos(p) && !tramos(p).unico ? ' <small class="muted">(todas suman para el precio por cantidad)</small>' : ''}</div><div class="mx" id="mx">${vars.map((v, i) => { const n = qtyVar(p.id, v); if (varAgot(p, v) && !n) return `<div class="mx-row agot"><span class="mx-n">${esc(v)}</span><span class="mx-sin">Sin stock</span></div>`; return `<div class="mx-row${n ? ' on' : ''}"><span class="mx-n">${esc(v)}</span><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="-1" aria-label="Quitar uno de ${esc(v)}" ${n ? '' : 'disabled'}>−</button><input class="fi mx-q" inputmode="numeric" data-change="st-vset" data-id="${p.id}" data-i="${i}" value="${n}" aria-label="Cantidad de ${esc(v)}"><button class="qbtn" data-act="st-vq" data-id="${p.id}" data-i="${i}" data-d="1" aria-label="Agregar uno de ${esc(v)}">+</button></div>`; }).join('')}</div><div class="mx-tot">${qty ? `<b>${qty} u.</b> en total · ${fmt(unidad(p, qe))} c/u · <b>${fmt(unidad(p, qe) * qty)}</b>` : 'Todavía no sumaste ninguna.'}</div>`
-      : vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${chipsVar(p, vi)}</div>` : ''}${guiaHtml(p)}
+      : vars.length ? `<div class="flabel" style="margin-top:10px">Elegí una opción</div><div class="vars">${chipsVar(p, vi)}</div>` : ''}${guiaHtml(p)}${pideTalles(p) && !p.agotado ? ctHtml(p) : ''}
     ${escalaHtml(p)}${ganQty(p) || ganHtml(p)}
-    ${p.agotado ? '<button class="btn btn-s" disabled>Sin stock</button>' : matriz ? '' : `<div style="display:flex;gap:8px;align-items:center">${qty ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>` : ''}<button class="btn btn-p" style="flex:1" data-act="st-add" data-id="${p.id}">${qty ? '+ Agregar otro' : '+ Agregar al carrito'}</button></div>`}
+    ${p.agotado ? '<button class="btn btn-s" disabled>Sin stock</button>' : matriz ? '' : pideTalles(p) ? ctBtn(p, qty) : `<div style="display:flex;gap:8px;align-items:center">${qty ? `<button class="qbtn" data-act="st-dec" data-id="${p.id}" aria-label="Quitar uno">−</button><span class="qnum">${qty}</span>` : ''}<button class="btn btn-p" style="flex:1" data-act="st-add" data-id="${p.id}">${qty ? '+ Agregar otro' : '+ Agregar al carrito'}</button></div>`}
     ${flyOn() ? `<button class="btn btn-s" style="margin-top:8px" data-act="fly-uno" data-id="${p.id}">📸 Crear Flyer para Vender</button>` : ''}
     ${qty ? `<button class="btn btn-s" style="margin-top:8px" data-act="st-ir" data-v="cart">Ver carrito (${totales().n} u.)</button>` : ''}
     <button class="btn btn-s" style="margin-top:8px" data-act="st-det-cerrar">Seguir mirando</button></div></div>`;
 }
+const ctBtn = (p, qty) => `<button class="btn btn-p" style="width:100%" data-act="st-add-ct" data-id="${p.id}" ${ctCompleto(p) ? '' : 'disabled'}>${ctCompleto(p) ? '+ Agregar combo al carrito' : 'Elegí los talles para agregarlo'}</button>${qty ? `<div class="hint" style="margin-top:6px">Ya tenés ${qty} en el carrito.</div>` : ''}`;
+on('st-ct', d => {
+  const p = prod(d.id), q = prod(d.c); if (!p || !q) return; const v = (q.variantes || [])[+d.i]; if (v === undefined) return;
+  if (varAgot(q, v)) return toast('Ese talle no tiene stock');
+  const s = ctSel(p); (s[q.id] = s[q.id] || [])[+d.k] = v; pintarDet();
+});
+on('st-add-ct', d => {
+  const p = prod(d.id); if (!p || p.agotado) return; if (!ctCompleto(p)) return toast('Elegí el talle de cada producto del combo');
+  const { ct, vr } = ctDatos(p), ex = S.cart.find(l => l.id === p.id && l.vr === vr);
+  ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1, ct }); S.foco = p.id;
+  guardarCarrito(); evento('AddToCart', { content_name: p.nombre }); marcarAct('c', p.id); refrescar(); toast('🧩 Combo agregado · ' + vr);
+});
 on('st-ver', d => { marcarAct('v', d.id); S.det = d.id; pintarDet(); if (d.mx) { const m = $('#mx'); if (m) m.scrollIntoView({ block: 'center' }); } });
 // matriz de variantes: cada opción con su cantidad; todas suman para la escala del producto
 const qtyVar = (id, vr) => { const l = S.cart.find(x => x.id === id && x.vr === vr); return l ? l.qty : 0; };
@@ -682,7 +736,7 @@ on('st-pedir', async (d, f) => {
     if (!envioSel()) { $('#co-err').innerHTML = '<div class="err-box">Elegí cómo querés recibir el pedido.</div>'; window.scrollTo(0, 0); return; }
     cliente.envio = S.env; if (f.direccion) cliente.direccion = f.direccion.value.trim();
   }
-  const items = S.cart.map(l => ({ producto_id: l.id, variante: l.vr, cantidad: l.qty }));
+  const items = S.cart.map(l => l.ct ? { producto_id: l.id, variante: '', cantidad: l.qty, talles: l.ct } : { producto_id: l.id, variante: l.vr, cantidad: l.qty });
   const btn = $('#co-go'); S.enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
