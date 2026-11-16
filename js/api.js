@@ -98,6 +98,15 @@ export const api = {
   editarMasivo: async (ids, cambios) => ok(await sb.rpc('editar_productos_masivo', { p_ids: ids, p_cambios: cambios })),
   borrarMasivo: async ids => ok(await sb.rpc('borrar_productos', { p_ids: ids })),
   promoMasivo: async (ids, promo) => ok(await sb.rpc('poner_promo', { p_ids: ids, p_promo: promo })),   // v2.25 (null = quitar)
+  // v2.26: Promociones (por cantidad y por monto), cupones y la promo propia de un producto
+  misPromos: async () => ok(await sb.from('promociones').select('*').order('created_at', { ascending: false })),
+  guardarPromo: async (id, datos) => ok(id ? await sb.from('promociones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('promociones').insert(datos).select().maybeSingle()),
+  borrarPromo: async id => ok(await sb.from('promociones').delete().eq('id', id)),
+  misCupones: async () => ok(await sb.from('cupones').select('*').order('created_at', { ascending: false })),
+  guardarCupon: async (id, datos) => ok(id ? await sb.from('cupones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('cupones').insert(datos).select().maybeSingle()),
+  borrarCupon: async id => ok(await sb.from('cupones').delete().eq('id', id)),
+  promoProducto: async (pid, regla) => ok(await sb.rpc('promo_producto', { p_pid: pid, p_regla: regla })),
+  cuponVer: async (slug, codigo, wsp) => ok(await sb.rpc('cupon_ver', { p_slug: slug, p_codigo: codigo, p_wsp: wsp || null })),
   statsVistas: async dias => ok(await sb.rpc('estadisticas_vistas', { p_dias: dias })) || [],
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),

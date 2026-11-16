@@ -8,7 +8,7 @@
 import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P } from './state.js';
-import { hayPromo, camposPromo, promoDe } from './promo_ui.js';
+import { hayPromo, camposPromo, promoDe, promoChip } from './promo_ui.js';
 
 const PQ = { q: '', cat: '', ver: 'todos', orden: 'nuevos', dias: 30, pag: 0, por: 50, sel: new Set(), vistas: null, vistasDias: null, cargando: false, sinVistas: false, desde: null };
 let H = { precioDe: () => 0, flyerDe: () => { }, fila: () => '', abrirCombo: () => { } };
@@ -53,7 +53,7 @@ function filtrados() {
     && (!q || [p.nombre, p.categoria, p.sku, p.marca].join(' ').toLowerCase().includes(q)));
   const f = { visibles: p => p.activo, ocultos: p => !p.activo, sin_stock: sinStock, encargo: p => t.modo_stock === 'encargo' || (t.modo_stock === 'mixto' && p.a_pedido),
     sin_foto: p => !p.imagen_url, sin_ventas: p => !numDe(p.id).vend, sin_visitas: p => !numDe(p.id).vis,
-    ofertas: p => Number(p.oferta_pct) > 0 && (!p.oferta_hasta || new Date(p.oferta_hasta) > new Date()), combos: p => Array.isArray(p.combo) && p.combo.length > 0, promos: p => !!p.promo }[PQ.ver];
+    ofertas: p => Number(p.oferta_pct) > 0 && (!p.oferta_hasta || new Date(p.oferta_hasta) > new Date()), combos: p => Array.isArray(p.combo) && p.combo.length > 0, promos: p => !!promoChip(p) }[PQ.ver];
   if (f) L = L.filter(f);
   const by = {
     nuevos: (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')),
@@ -246,7 +246,7 @@ on('mz-aplicar', async (d, f) => {
   b.disabled = true; b.innerHTML = '<span class="spin"></span> Aplicando…';
   try {
     let n = Object.keys(c).length ? await api.editarMasivo(L, c) : 0;
-    if (pr) { const k = await api.promoMasivo(L, pr.promo); n = Math.max(n, k); }
+    if (pr) { const k = await api.promoMasivo(L, pr.promo); n = Math.max(n, k); try { P.promos = await api.misPromos(); } catch (e) { } }
     await recargar(); P.modal = null; P.repintar(); toast(`✅ ${n} ${n === 1 ? 'producto actualizado' : 'productos actualizados'}`);
   }
   catch (e) { if (m) { m.innerHTML = `<div class="err-box">${esc(amable(e))}</div>`; m.scrollIntoView({ block: 'nearest' }); } b.disabled = false; b.textContent = 'Reintentar'; }

@@ -5,8 +5,9 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
 import { P, can, aviso } from './state.js';
 import { redimensionar } from './img.js';
-import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, comprarCardHtml, faqHtml, pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catTilesHtml, fotoCategoria, rubrosCfg, rubrosHtml, fotosRubro, TEMAS_RB, lookDe } from './bloques.js';
+import { pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, vitrinasCfg, fotoCategoria, fotosRubro, TEMAS_RB, lookDe } from './bloques.js';
 import { asisSwitch } from './asistente.js';
+import { previaSync } from './vista_previa.js';
 
 const TIPOS = [['retiro', '🏪 Retiro en el local'], ['envio', '🚚 Envío a domicilio'], ['moto', '🛵 Moto / cadete'], ['correo', '📮 Correo / transporte'], ['acordar', '💬 A coordinar']];
 const DATOS = [['dni', 'DNI / CUIT'], ['localidad', 'Localidad'], ['provincia', 'Provincia'], ['cp', 'Código postal'], ['nota', 'Aclaraciones del cliente']];
@@ -34,19 +35,23 @@ const dis = () => {
   const rb = o.rubros && typeof o.rubros === 'object' ? o.rubros : {};
   o.rubros = { activo: !!rb.activo, titulo: rb.titulo || '', lista: (Array.isArray(rb.lista) ? rb.lista : []).slice(0, 6).map(nuevoRubro) };
   o.look = Object.assign({}, o.look && typeof o.look === 'object' ? o.look : {});
-  return (D.d = o);
+  D.d = o; D.base = JSON.stringify(sinLook(limpio()));   // lo guardado, para saber si hay cambios sin guardar
+  return o;
 };
+const sinLook = o => { const x = Object.assign({}, o); delete x.look; return x; };
 const rid = () => Math.random().toString(36).slice(2, 8);
 const nuevoRubro = x => { const r = Object.assign({ id: '', titulo: '', kicker: '', texto: '', badge: '', tema: 'bronce', imagen: '', cats: [], suma: false }, x || {}); if (!/^[a-z0-9-]{1,12}$/.test(r.id)) r.id = rid(); if (!Array.isArray(r.cats)) r.cats = []; return r; };
 const box = (m, e) => (e ? `<div class="err-box">${esc(e)}</div>` : '') + (m ? `<div class="ok-box">${esc(m)}</div>` : '');
 const idNuevo = n => (n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 14) || 'envio') + '-' + Math.random().toString(36).slice(2, 5);
 const tiendaVista = () => Object.assign({}, P.t, { envios: lista() }, hayPagos() ? { pagos_activos: pagos() } : {});
 
-export function vistaEnviosDiseno() { return vistaEnvios() + vistaDiseno(); }
+// v2.26: la pestaña Tienda muestra una sección a la vez (tienda_tab.js); la vista previa es la tienda real (vista_previa.js)
+export const vistaEnviosSec = () => vistaEnvios();
+export const vistaDisenoSec = sec => vistaDiseno(sec);
 
 function vistaEnvios() {
   const L = lista(), t = P.t, dc = datos();
-  return `<div class="grid2"><div class="cc" id="envios" data-asistente="envios"><h3>🚚 Envíos y entregas</h3>${asisSwitch()}${box(E.msg, E.err)}
+  return `<div class="tt-uno"><div class="cc" id="envios" data-asistente="envios" data-prev="envios"><h3>🚚 Envíos y entregas</h3>${asisSwitch()}${box(E.msg, E.err)}
   <p class="hint" style="margin-bottom:8px">Tu cliente elige uno al confirmar el pedido. El costo lo suma el sistema (no lo puede cambiar el comprador). Si no cargás ninguno, se coordina por WhatsApp.</p>
   ${L.map((x, i) => `<div class="env-row${x.activo === false ? ' off' : ''}">
     <div class="row2"><div class="fg"><label class="flabel" for="en-n${i}">Nombre</label><input class="fi" id="en-n${i}" maxlength="60" value="${esc(x.nombre)}" data-input="en-set" data-i="${i}" data-k="nombre" placeholder="Ej: Vía Cargo a sucursal"></div>
@@ -67,10 +72,7 @@ function vistaEnvios() {
   ${t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" data-change="en-rev" ${(E.rev != null ? E.rev : t.reventa_activa) ? 'checked' : ''}> 💰 Mostrar “Tu ganancia”: a cuánto puede revender cada producto y cuánto gana</label>
     <div class="row2" style="align-items:end"><div class="fg"><label class="flabel" for="en-revm">Recargo sugerido para la reventa %</label><input class="fi" id="en-revm" type="number" min="5" max="500" value="${E.revM != null ? E.revM : Math.round(Number(t.reventa_margen || 0.6) * 100)}" data-input="en-revm"></div><p class="hint">Sobre tu precio x1. Si un producto tiene su “precio sugerido” cargado, se usa ese.</p></div></div>` : ''}
   <p class="hint">Compra mínima mayorista: <b>${Number(t.compra_minima) ? fmt(t.compra_minima) : 'sin mínimo'}</b> (se cambia en Ajustes). La tienda la muestra arriba y en el carrito con lo que falta.</p>
-  <button class="btn btn-p" data-act="en-guardar" style="margin-top:8px">Guardar envíos, pagos, datos y reglas</button></div>
-  <div class="cc"><h3>Cómo lo ve tu cliente</h3><div class="env-prev">${L.filter(x => x.activo !== false && x.nombre).map(x => `<div class="opt"><span class="opt-ico">${(TIPOS.find(y => y[0] === x.tipo) || ['', '🚚'])[1].split(' ')[0]}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${x.tipo === 'retiro' ? 'Sin cargo' : Number(x.costo) ? fmt(x.costo) : x.tipo === 'acordar' || x.tipo === 'correo' ? 'Costo a coordinar' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></div>`).join('') || '<p class="muted">Cargá un método para verlo acá.</p>'}</div>
-  ${hayPagos() ? `<div class="flabel" style="margin-top:12px">Medio de pago</div><div class="env-prev">${PAGOS.filter(p => pagos().includes(p[0])).map(([k, i, n]) => `<div class="opt"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div></span><span class="radio"></span></div>`).join('')}</div>` : ''}
-  <div class="hint" style="margin-top:8px">Además del nombre y el WhatsApp, le vamos a pedir: ${DATOS.filter(([k]) => (dc[k] || 'no') !== 'no').map(([k, n]) => n + (dc[k] === 'obligatorio' ? ' *' : '')).join(', ') || 'nada más'}.</div></div></div>`;
+  <button class="btn btn-p" data-act="en-guardar" style="margin-top:8px">Guardar envíos, pagos, datos y reglas</button></div></div>`;
 }
 
 // ---- carruseles de productos y "Comprá por categoría": vista previa (pasan solos si hay efectos) y editores ----
@@ -78,21 +80,6 @@ const MODOS_VT = [['auto', 'Automático'], ['elegidos', 'Los que elijo'], ['cate
 const AYUDA_VT = { auto: 'Hasta 12 productos con foto, en distinto orden en cada visita.', nuevos: 'Los 12 últimos productos que cargaste.', vendidos: 'Los 12 que más se vendieron en los últimos 60 días. Si todavía no hay ventas, muestra una selección automática.', ofertas: 'Los productos que tienen una oferta vigente. Cuando no hay ninguna, el carrusel no aparece.' };
 const sfx = i => (i ? '-' + i : '');
 const prodsAct = () => (P.prods || []).filter(p => p.activo !== false);
-function vtPrev(d, pos) {
-  const mov = efectosOn(d) && !menosMovimiento();
-  return vitrinasCfg(d).filter(c => c.pos === pos).map(cfg => {
-    const srv = cfg.modo === 'nuevos' ? prodsAct().slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''))).map(p => p.id) : null;
-    const L = vitrinaProds(cfg, prodsAct(), () => 0.5, srv).slice(0, 8);
-    const cards = (L.length ? L : [1, 2, 3, 4].map(i => ({ nombre: 'Producto ' + i, emoji: '🛍️' })))
-      .map(p => `<div class="dz-vt-c"><i>${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="">` : esc(p.emoji || '🛍️')}</i><span>${esc(p.nombre)}</span></div>`).join('');
-    return `<div class="dz-vt${mov ? ' mov' : ''}"><b class="dz-vt-t">${esc(cfg.titulo)}</b><div class="dz-vt-w"><div class="dz-vt-r">${cards}${mov ? cards : ''}</div></div></div>`;
-  }).join('');
-}
-function cfPrev(d) {
-  const c = d.catfoto; if (!c || !c.activo || (d.secciones || {}).categorias === false) return '';
-  const cats = [...new Set(prodsAct().map(p => p.categoria))].sort(); if (cats.length < 2) return '';
-  return `<div class="dz-cf-prev">${catTilesHtml({ titulo: String(c.titulo || '').trim() || 'Comprá por categoría', fotos: c.fotos }, cats, prodsAct(), 'Todas').replace(/data-act="[^"]*"/g, '')}</div>`;
-}
 function vtRes(i) {
   const v = dis().vitrinas[i], q = (D.vtq[i] || '').toLowerCase().trim(); if (!v) return '';
   const L = prodsAct().filter(p => !v.ids.includes(p.id) && (!q || [p.nombre, p.marca, p.sku, p.categoria].join(' ').toLowerCase().includes(q))).slice(0, 8);
@@ -169,47 +156,36 @@ const PALETAS = [
   ['#7C3AED', 'oscuro', 'magenta', '🔮 Moda y creatividad', 'El violeta se ve original y moderno.', 'Ropa, accesorios, regalería']];
 const colorAct = () => D.color || P.t.color || '#1d4ba8';
 const temaAct = () => D.tema || P.t.tema || 'auto';
-const onAc = c => { const h = /^#[0-9a-f]{6}$/i.test(c) ? c : '#1d4ba8', [r, g, b] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62 ? '#0A0F1F' : '#FFFFFF'; };
 function estiloEditor(d) {
   const L = lookDe(d), c = colorAct().toLowerCase(), t = temaAct();
   const sw = (k, tit, txt) => `<label class="chk"><input type="checkbox" data-change="dz-look" data-k="${k}" ${L[k] ? 'checked' : ''}><span><b>${tit}</b> ${txt}</span></label>`;
-  return `<fieldset class="dz-fs" id="dz-estilo"><legend>🎨 Colores y estilo</legend>
+  return `<fieldset class="dz-fs" id="dz-estilo" data-prev="estilo"><legend>🎨 Colores y estilo</legend>
     <p class="hint" style="margin-bottom:8px">Cada color despierta una sensación distinta en quien compra. Elegí el que va con lo que vendés: cambia el color de los botones y el fondo claro u oscuro de la tienda.</p>
     <div class="dz-pal">${PALETAS.map(([col, tema, , n, txt, ideal]) => `<button type="button" class="dz-pal-b${c === col.toLowerCase() && t === tema ? ' on' : ''}" data-act="dz-pal" data-c="${col}" data-t="${tema}" aria-pressed="${c === col.toLowerCase() && t === tema}"><i style="background:${col}"></i><span><b>${n}</b><small>${txt}</small><small class="dz-pal-i">Ideal: ${ideal} · fondo ${tema === 'auto' ? 'según el celular' : tema}</small></span></button>`).join('')}</div>
-    ${D.color || D.tema ? `<p class="hint" style="margin-top:6px">Color elegido: <b style="color:${esc(colorAct())}">■ ${esc(colorAct())}</b> · fondo ${esc(temaAct())}. Se guarda con “Guardar diseño”. <button type="button" class="btn-link" data-act="dz-pal-no">volver al anterior</button></p>` : ''}
+    <div class="row2" style="margin-top:10px;align-items:end"><div class="fg"><label class="flabel" for="dz-col">Otro color</label><input class="fi dz-col" id="dz-col" type="color" value="${esc(colorAct())}" data-input="dz-col"></div>
+      <div class="fg"><span class="flabel">Fondo</span><div class="seg" role="group" aria-label="Fondo">${[['auto', 'Automático'], ['claro', 'Claro'], ['oscuro', 'Oscuro']].map(([k, n]) => `<button type="button" class="${t === k ? 'on' : ''}" data-act="dz-tema" data-k="${k}">${n}</button>`).join('')}</div></div></div>
+    ${D.color || D.tema ? `<p class="hint" style="margin-top:6px">Color elegido: <b style="color:${esc(colorAct())}">■ ${esc(colorAct())}</b> · fondo ${esc(temaAct())}. Se guarda con “Guardar estilo”. <button type="button" class="btn-link" data-act="dz-pal-no">volver al anterior</button></p>` : ''}
     <div class="flabel" style="margin-top:12px">Estilo</div>
     ${sw('modo', '☀️/🌙 Botón claro u oscuro', 'para que cada cliente elija cómo ver la tienda (se recuerda en su celular).')}
     ${sw('barra', '🏆 Barra del pedido con niveles', '1u · 3u · 6u · 12u+. Al desbloquear un nivel el celular vibra y la barra lo festeja. Se puede minimizar y muestra la compra mínima.')}
     ${sw('compacto', '📱 Encabezado compacto', 'más lugar para los productos: el buscador queda arriba y se esconde al bajar, “Cómo comprar” y la lista PDF pasan a botones chicos, y suma “Ordenar por precio”.')}
     ${sw('limpia', '🏷️ Tarjeta de precio limpia', 'en lugar de los 4 precios muestra grande el precio x12 y chico el de 1 unidad. El flyer pasa a un botón 📲 sobre la foto.')}</fieldset>`;
 }
-// vista previa: banners de rubro (los que no tienen título se ven como "Rubro N") y barra del pedido
-function rbPrev(d) {
-  if (!d.rubros || !d.rubros.activo) return '';
-  const pr = prodsAct(), v = { rubros: { activo: true, titulo: d.rubros.titulo, lista: d.rubros.lista.map((r, i) => Object.assign({}, r, { titulo: r.titulo.trim() || 'Rubro ' + (i + 1) })) } };
-  const cfg = rubrosCfg(v, pr);
-  return cfg ? `<div class="dz-rb-prev">${rubrosHtml(cfg, pr, pr.length).replace(/ data-act="[^"]*"/g, '').replace(/ role="button" tabindex="0"/g, '')}</div>` : '<p class="hint dz-rb-prev">Elegí las categorías de cada rubro para verlo acá.</p>';
-}
-function gbPrev(L) {
-  if (!L.barra || P.t.modalidad === 'minorista') return '';
-  return `<div class="dz-gami gami lvl1"><div class="gb-top"><div class="gb-msg">Sumá <b>1 u.</b> más de Producto 1 y desbloqueá el precio Especial · <b>$ 11.500 c/u</b></div><span class="gb-tg">▾ Minimizar</span></div>
-    <div class="gb-track"><div class="gb-rail"><i style="width:55.6%"></i></div>${[[1, 'Inicial', 0], [3, 'Mayorista', 33.33], [6, 'Especial', 66.67], [12, '🏆 Super', 100]].map(([n, nm, x]) => `<span class="gb-cp${n <= 3 ? ' ok' : ''}" style="left:${x}%"><b></b><small>${n}u${n === 12 ? '+' : ''} · ${nm}</small></span>`).join('')}</div>
-    <div class="gb-foot"><span class="gb-tot"><b>5 u.</b> · $ 57.500</span><span class="gb-go">Ver pedido →</span></div></div>`;
-}
 
 const lst = (arr, max, fila, add, l) => `${arr.map(fila).join('')}${arr.length < max ? `<button class="btn btn-s btn-sm" data-act="dz-add" data-l="${l}">${add}</button>` : ''}`;
-function vistaDiseno() {
-  const d = dis(), p = d.popup || {}, sec = d.secciones || {}, tv = tiendaVista();
-  const vista = Object.assign({}, d, { comprar: d.propios ? d.comprar : undefined });
-  const L = lookDe(d), col = colorAct(), rbp = rbPrev(d);
-  const prev = `<div class="dz-prev ${D.disp}"><div class="dz-frame${L.compacto ? ' dz-comp' : ''}" style="--ac:${esc(col)};--on-ac:${onAc(col)}">${anuncioHtml(vista)}<div class="dz-hdr">${P.t.logo_url ? `<img src="${esc(P.t.logo_url)}" alt="">` : ''}<b>${esc(P.t.nombre)}</b><span>${L.modo ? '🌙 ' : ''}${L.compacto ? '📖 📄 ' : ''}🛒</span></div>${heroHtml(vista)}${L.compacto ? '' : `<div class="dz-ban"><b>${esc(P.t.nombre)}</b><small>${esc(P.t.eslogan || '')}</small></div>`}${beneficiosHtml(vista)}${L.compacto ? '' : comprarCardHtml(vista)}${vtPrev(vista, 'arriba')}${rbp || cfPrev(vista)}
-    ${rbp ? '' : `<div class="dz-grid">${[1, 2, 3, 4].map(i => `<div><i></i><span>Producto ${i}</span><b>$ ${(9800 + i * 1700).toLocaleString('es-AR')}</b></div>`).join('')}</div>`}${vtPrev(vista, 'abajo')}${testimoniosHtml(vista)}${faqHtml(vista)}${gbPrev(L)}</div>
-    ${p.activo ? `<div class="dz-pop">${popupHtml(vista).replace(/data-act="[^"]*"/g, '')}</div>` : ''}</div>`;
-  const sw = (k, txt) => `<label class="dz-sw"><input type="checkbox" data-change="dz-sec" data-k="${k}" ${sec[k] === false ? '' : 'checked'}> ${txt || 'mostrar'}</label>`;
-  return `<div class="grid2 dz"><div class="cc"><h3>🖌️ Diseño de la tienda</h3>${box(D.msg, D.err)}
-  <fieldset class="dz-fs"><legend>Barra de anuncios (hasta 6) <label class="dz-sw"><input type="checkbox" data-change="dz-mov" ${d.anuncio_mov ? 'checked' : ''}> que corra</label></legend>
+// v2.26: el editor se muestra por sección (Portada, Secciones, Estilo); la vista previa es la tienda real
+const cuponPopHint = c => { const L = P.cupones, k = String(c || '').trim().toUpperCase();
+  if (!k) return 'Si ponés un código, tu cliente lo usa con “Usar” y se aplica al confirmar. Creá el cupón en 🎁 Promociones.';
+  if (!Array.isArray(L)) return 'El cupón se crea en 🎁 Promociones → Cupón.';
+  const x = L.find(y => y.codigo === k); return x ? (x.activa ? `✓ Es tu cupón ${esc(k)}: se aplica solo al confirmar el pedido.` : `⚠️ El cupón ${esc(k)} está apagado en Promociones.`) : `⚠️ No tenés un cupón ${esc(k)}: crealo en 🎁 Promociones → Cupón para que se aplique solo.`; };
+function vistaDiseno(sec) {
+  const d = dis(), p = d.popup || {}, sec_ = d.secciones || {}, tv = tiendaVista();
+  const sw = (k, txt) => `<label class="dz-sw"><input type="checkbox" data-change="dz-sec" data-k="${k}" ${sec_[k] === false ? '' : 'checked'}> ${txt || 'mostrar'}</label>`;
+  if (sec === 'estilo') return estiloEditor(d);
+  const cuerpo = sec === 'portada' ? `
+  <fieldset class="dz-fs" data-prev="anuncios"><legend>Barra de anuncios (hasta 6) <label class="dz-sw"><input type="checkbox" data-change="dz-mov" ${d.anuncio_mov ? 'checked' : ''}> que corra</label></legend>
     ${lst(d.anuncios, 6, (x, i) => `<div class="dz-li"><input class="fi" maxlength="100" value="${esc(x)}" data-input="dz-an" data-i="${i}" aria-label="Anuncio ${i + 1}" placeholder="Ej: 📦 Pedidos semanales · despachos de 6 a 8 días"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="anuncios" data-i="${i}" aria-label="Quitar">✕</button></div>`, '+ Anuncio', 'anuncios')}</fieldset>
-  <fieldset class="dz-fs"><legend>Banners de portada (hasta 4, pasan solos)</legend>
+  <fieldset class="dz-fs" data-prev="banners"><legend>Banners de portada (hasta 4, pasan solos)</legend>
     ${lst(d.banners, 4, (b, i) => `<div class="dz-ban-ed"><div class="dz-ban-th">${b.imagen ? `<img src="${esc(b.imagen)}" alt="">` : '<span>Sin imagen</span>'}</div><div class="dz-ban-f">
       <input class="fi" maxlength="60" value="${esc(b.titulo || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="titulo" aria-label="Título del banner ${i + 1}" placeholder="Título · Ej: Nueva temporada">
       <input class="fi" maxlength="160" value="${esc(b.texto || '')}" data-input="dz-li" data-l="banners" data-i="${i}" data-k="texto" aria-label="Texto del banner ${i + 1}" placeholder="Texto · Ej: Precios por volumen desde 3 unidades">
@@ -217,29 +193,49 @@ function vistaDiseno() {
       <label class="filebtn">🖼️ ${b.imagen ? 'Cambiar' : 'Imagen'}<input type="file" accept="image/*" data-change="dz-img" data-i="${i}"></label>${b.imagen ? `<button class="btn btn-s btn-sm" data-act="dz-noimg" data-i="${i}">Sin imagen</button>` : ''}${D.subiendo === i ? '<span class="spin"></span>' : ''}<button class="btn btn-s btn-sm" data-act="dz-del" data-l="banners" data-i="${i}" aria-label="Quitar banner">✕</button></div></div></div>`, '+ Banner', 'banners')}
     <p class="hint">Imagen ancha (por ejemplo 1600 × 600). La achicamos sola para que cargue rápido.</p></fieldset>
   ${rbEditor(d)}
-  ${vtEditor(d)}
-  ${estiloEditor(d)}
-  <fieldset class="dz-fs"><legend>Beneficios (hasta 4) ${sw('beneficios')}</legend>
+  ${vtEditor(d)}` : `
+  <fieldset class="dz-fs" data-prev="beneficios"><legend>Beneficios (hasta 4) ${sw('beneficios')}</legend>
     ${lst(d.beneficios, 4, (x, i) => `<div class="dz-li"><input class="fi dz-ico" maxlength="4" value="${esc(x.icono || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="icono" aria-label="Ícono" placeholder="🚚"><input class="fi" maxlength="60" value="${esc(x.texto || '')}" data-input="dz-li" data-l="beneficios" data-i="${i}" data-k="texto" aria-label="Beneficio ${i + 1}" placeholder="Ej: Envíos a todo el país"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="beneficios" data-i="${i}" aria-label="Quitar">✕</button></div>`, '+ Beneficio', 'beneficios')}</fieldset>
-  <fieldset class="dz-fs"><legend>📖 Cómo comprar ${sw('comprar')}</legend>
+  <fieldset class="dz-fs" data-prev="comprar"><legend>📖 Cómo comprar ${sw('comprar')}</legend>
     <div class="seg" role="group" aria-label="Pasos" style="margin-bottom:8px"><button class="${d.propios ? '' : 'on'}" data-act="dz-propios" data-v="0">Automático</button><button class="${d.propios ? 'on' : ''}" data-act="dz-propios" data-v="1">Escribir los míos</button></div>
     ${d.propios ? lst(d.comprar, 6, (x, i) => `<div class="dz-tes"><div class="dz-li"><span class="dz-num">${i + 1}</span><input class="fi" maxlength="50" value="${esc(x.titulo || '')}" data-input="dz-li" data-l="comprar" data-i="${i}" data-k="titulo" aria-label="Paso ${i + 1}" placeholder="Título del paso"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="comprar" data-i="${i}" aria-label="Quitar">✕</button></div><textarea class="fi" rows="2" maxlength="240" data-input="dz-li" data-l="comprar" data-i="${i}" data-k="texto" aria-label="Detalle del paso ${i + 1}">${esc(x.texto || '')}</textarea></div>`, '+ Paso', 'comprar')
       : `<p class="hint">Se arma solo con tu configuración real (escalas, compra mínima, envíos y medios de pago) y se actualiza cuando la cambiás:</p><ol class="dz-auto">${pasosAuto(tv).map(x => `<li><b>${esc(x.titulo)}</b> — ${esc(x.texto)}</li>`).join('')}</ol>`}</fieldset>
-  <fieldset class="dz-fs"><legend>❓ Preguntas frecuentes (hasta 12) ${sw('faq')}</legend>
+  <fieldset class="dz-fs" data-prev="faq"><legend>❓ Preguntas frecuentes (hasta 12) ${sw('faq')}</legend>
     ${d.faq.length ? '' : '<button class="btn btn-s btn-sm" data-act="dz-faq-sug" style="margin-bottom:8px">✨ Cargar preguntas sugeridas para mi tienda</button>'}
     ${lst(d.faq, 12, (x, i) => `<div class="dz-tes"><div class="dz-li"><input class="fi" maxlength="120" value="${esc(x.p || '')}" data-input="dz-li" data-l="faq" data-i="${i}" data-k="p" aria-label="Pregunta ${i + 1}" placeholder="Pregunta"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="faq" data-i="${i}" aria-label="Quitar">✕</button></div><textarea class="fi" rows="2" maxlength="500" data-input="dz-li" data-l="faq" data-i="${i}" data-k="r" aria-label="Respuesta ${i + 1}" placeholder="Respuesta">${esc(x.r || '')}</textarea></div>`, '+ Pregunta', 'faq')}</fieldset>
-  <fieldset class="dz-fs"><legend>Testimonios (hasta 6) ${sw('testimonios')}</legend>
+  <fieldset class="dz-fs" data-prev="testimonios"><legend>Testimonios (hasta 6) ${sw('testimonios')}</legend>
     <p class="hint">Usá solo opiniones reales de tus clientes, con su permiso.</p>
     ${lst(d.testimonios, 6, (x, i) => `<div class="dz-tes"><div class="dz-li"><input class="fi" maxlength="40" value="${esc(x.nombre || '')}" data-input="dz-li" data-l="testimonios" data-i="${i}" data-k="nombre" aria-label="Nombre" placeholder="Nombre"><input class="fi" maxlength="40" value="${esc(x.lugar || '')}" data-input="dz-li" data-l="testimonios" data-i="${i}" data-k="lugar" aria-label="Lugar" placeholder="Ciudad (opcional)"><button class="btn btn-s btn-sm" data-act="dz-del" data-l="testimonios" data-i="${i}" aria-label="Quitar">✕</button></div><textarea class="fi" rows="2" maxlength="220" data-input="dz-li" data-l="testimonios" data-i="${i}" data-k="texto" aria-label="Opinión" placeholder="Lo que dijo">${esc(x.texto || '')}</textarea></div>`, '+ Testimonio', 'testimonios')}</fieldset>
-  <fieldset class="dz-fs"><legend>Ventana de bienvenida / oferta <label class="dz-sw"><input type="checkbox" data-change="dz-pop" ${p.activo ? 'checked' : ''}> activa</label></legend>
+  <fieldset class="dz-fs" data-prev="popup"><legend>Ventana de bienvenida / oferta <label class="dz-sw"><input type="checkbox" data-change="dz-pop" ${p.activo ? 'checked' : ''}> activa</label></legend>
     <p class="hint">Aparece una sola vez a cada visitante (y otra vez si la cambiás).</p>
     <div class="fg"><label class="flabel" for="dz-pt">Título</label><input class="fi" id="dz-pt" maxlength="60" value="${esc(p.titulo || '')}" data-input="dz-set" data-k="popup.titulo" placeholder="¡Bienvenido!"></div>
     <div class="fg"><label class="flabel" for="dz-px">Texto</label><textarea class="fi" id="dz-px" rows="2" maxlength="220" data-input="dz-set" data-k="popup.texto" placeholder="Ej: 10% off en tu primera compra mayorista">${esc(p.texto || '')}</textarea></div>
-    <div class="fg"><label class="flabel" for="dz-pc">Código de descuento (opcional)</label><input class="fi" id="dz-pc" maxlength="20" value="${esc(p.cupon || '')}" data-input="dz-set" data-k="popup.cupon" placeholder="HOLA10"><div class="hint">El descuento lo aplicás vos al confirmar por WhatsApp.</div></div></fieldset>
-  <div class="fg"><label class="flabel"><input type="checkbox" data-change="dz-sec" data-k="categorias" ${sec.categorias === false ? '' : 'checked'}> Mostrar los botones de categorías</label></div>
-  <button class="btn btn-p" data-act="dz-guardar">Guardar diseño</button></div>
-  <div class="cc dz-pcol"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap"><h3 style="margin:0">Vista previa</h3><div class="seg" role="group" aria-label="Dispositivo"><button class="${D.disp === 'cel' ? 'on' : ''}" data-act="dz-disp" data-k="cel">📱 Celular</button><button class="${D.disp === 'pc' ? 'on' : ''}" data-act="dz-disp" data-k="pc">💻 Compu</button></div></div><div id="dz-prev">${prev}</div></div></div>`;
+    <div class="fg"><label class="flabel" for="dz-pc">Código de descuento (opcional)</label><input class="fi" id="dz-pc" maxlength="20" value="${esc(p.cupon || '')}" data-input="dz-set" data-k="popup.cupon" placeholder="HOLA10"><div class="hint">${cuponPopHint(p.cupon)}</div></div></fieldset>
+  <div class="fg" data-prev="categorias"><label class="flabel"><input type="checkbox" data-change="dz-sec" data-k="categorias" ${sec_.categorias === false ? '' : 'checked'}> Mostrar los botones de categorías</label></div>`;
+  return `<div class="tt-uno dz"><div class="cc"><h3>${sec === 'portada' ? '🏠 Portada' : '🧩 Secciones'}</h3>${box(D.msg, D.err)}${cuerpo}
+  <button class="btn btn-p" data-act="dz-guardar">Guardar diseño</button></div></div>`;
 }
+// ---- borradores para la vista previa y "cambios sin guardar" ----
+export const disenoSucio = () => !!D.d && JSON.stringify(sinLook(limpio())) !== D.base;
+// solo las partes de una sección (Portada o Secciones), para marcarla con "cambios sin guardar"
+const PARTES = { portada: ['anuncios', 'anuncio_mov', 'banners', 'rubros', 'vitrinas', 'catfoto', 'efectos'], secciones: ['beneficios', 'comprar', 'faq', 'testimonios', 'popup', 'secciones'] };
+export function disenoCambio(sec) {
+  if (!D.d) return false; const a = limpio(), b = JSON.parse(D.base || '{}'), k = PARTES[sec] || [];
+  return k.some(x => JSON.stringify(a[x] === undefined ? null : a[x]) !== JSON.stringify(b[x] === undefined ? null : b[x]));
+}
+export const estiloDisenoSucio = () => !!(D.color || D.tema) || (!!D.d && JSON.stringify(limpio().look || {}) !== JSON.stringify((P.t.diseno || {}).look || {}));
+export function lookLimpio() { const o = limpio(); return o.look; }
+export const colorTema = () => ({ color: colorAct(), tema: temaAct() });
+export const resetColor = () => { D.color = null; D.tema = null; };
+const envNorm = L => L.map(x => { const y = { id: x.id, nombre: String(x.nombre || '').trim(), tipo: x.tipo, costo: x.tipo === 'retiro' ? 0 : Math.max(0, Math.round(Number(x.costo) || 0)) }; if (x.detalle && String(x.detalle).trim()) y.detalle = String(x.detalle).trim(); if (x.activo === false) y.activo = false; return y; });
+export function borradorEnvios() {
+  const dc = {}; Object.entries(datos()).forEach(([k, v]) => { if (DATOS.some(x => x[0] === k) && v !== 'no') dc[k] = v; });
+  const o = { envios: envNorm(lista()), envio_gratis_desde: E.gratis != null ? E.gratis : Number(P.t.envio_gratis_desde || 0), datos_checkout: dc };
+  if (hayPagos()) o.pagos_activos = pagos();
+  return o;
+}
+export const enviosSucio = () => E.lista != null && JSON.stringify(borradorEnvios()) !== JSON.stringify({ envios: envNorm(Array.isArray(P.t.envios) ? P.t.envios : []), envio_gratis_desde: Number(P.t.envio_gratis_desde || 0), datos_checkout: Object.fromEntries(Object.entries(P.t.datos_checkout || { localidad: 'opcional' }).filter(([k, v]) => DATOS.some(x => x[0] === k) && v !== 'no')), ...(hayPagos() ? { pagos_activos: PAGOS.map(p => p[0]).filter(k => !P.t.pagos_activos.length || P.t.pagos_activos.includes(k)) } : {}) });
+export const borradorDiseno = () => Object.assign({ diseno: limpio() }, colorTema());
 
 // ---- envíos ----
 on('en-add', d => { const L = lista(); if (L.length >= 12) return; const n = { retiro: 'Retiro en el local', moto: 'Moto / cadete', correo: 'Correo a todo el país', acordar: 'Coordinar entrega', envio: 'Envío a domicilio' }[d.t]; L.push({ id: idNuevo(n), nombre: n, tipo: d.t, costo: 0, detalle: '' }); E.msg = ''; P.repintar(); });
@@ -270,7 +266,7 @@ on('en-guardar', async () => {
 });
 
 // ---- diseño ----
-const repPrev = () => { const el = $('#dz-prev'); if (!el) return; const tmp = document.createElement('div'); tmp.innerHTML = vistaDiseno(); const n = tmp.querySelector('#dz-prev'); if (n) el.innerHTML = n.innerHTML; };
+const repPrev = () => previaSync();   // v2.26: la vista previa es la tienda real
 const ponerK = (k, v) => { const d = dis(), [a, b] = k.split('.'); if (b) { d[a] = d[a] || {}; d[a][b] = v; } else d[a] = v; };
 const MAX = { anuncios: 6, banners: 4, beneficios: 4, testimonios: 6, comprar: 6, faq: 12 };
 const NUEVO = { anuncios: () => '', banners: () => ({ titulo: '', texto: '' }), beneficios: () => ({ icono: '✓', texto: '' }), testimonios: () => ({ nombre: '', texto: '' }), comprar: () => ({ titulo: '', texto: '' }), faq: () => ({ p: '', r: '' }) };
@@ -282,7 +278,6 @@ on('dz-add', d => { const L = dis()[d.l] = dis()[d.l] || []; if (L.length < MAX[
 on('dz-del', d => { (dis()[d.l] || []).splice(+d.i, 1); P.repintar(); });
 on('dz-sec', (d, el) => { const s = dis().secciones = dis().secciones || {}; if (el.checked) delete s[d.k]; else s[d.k] = false; repPrev(); });
 on('dz-pop', (d, el) => { const p = dis().popup = dis().popup || {}; p.activo = el.checked; repPrev(); });
-on('dz-disp', d => { D.disp = d.k; P.repintar(); });
 const vt = d => dis().vitrinas[+d.i];
 on('dz-vt-add', () => { const L = dis().vitrinas; if (L.length < 4) L.push(nuevaVitrina({ modo: L.length ? 'nuevos' : 'auto' })); P.repintar(); });
 on('dz-vt-del', d => { dis().vitrinas.splice(+d.i, 1); D.vtq = {}; P.repintar(); });
@@ -321,6 +316,8 @@ on('dz-rb-img', async (d, el) => {
 // colores y estilo
 const temaRbDef = () => { const p = PALETAS.find(x => x[0].toLowerCase() === colorAct().toLowerCase()); return p ? p[2] : 'bronce'; };
 on('dz-pal', d => { D.color = d.c; D.tema = d.t; P.repintar(); });
+on('dz-col', (d, el) => { D.color = el.value; clearTimeout(D.tc); D.tc = setTimeout(() => P.repintar(), 250); });
+on('dz-tema', d => { D.tema = d.k; P.repintar(); });
 on('dz-pal-no', () => { D.color = null; D.tema = null; P.repintar(); });
 on('dz-look', (d, el) => { const l = dis().look; l[d.k] = el.checked; repPrev(); });
 on('dz-propios', d => { const o = dis(); o.propios = d.v === '1'; if (o.propios && !o.comprar.length) o.comprar = pasosAuto(tiendaVista()).map(x => ({ ...x })); P.repintar(); });

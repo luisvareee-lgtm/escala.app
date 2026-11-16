@@ -151,7 +151,7 @@ export function popupHtml(d) {
   const p = d && d.popup; if (!p || !p.activo || !(p.titulo || p.texto || p.cupon)) return '';
   return `<div class="modal-bg" data-act="st-pop-bg"><div class="modal st-pop" role="dialog" aria-modal="true" aria-label="${esc(p.titulo || 'Bienvenida')}">
     ${p.titulo ? `<div class="view-title">${esc(p.titulo)}</div>` : ''}${p.texto ? `<p>${esc(p.texto)}</p>` : ''}
-    ${p.cupon ? `<div class="st-cupon"><span>Código</span><b>${esc(p.cupon)}</b><button class="btn btn-s btn-sm" data-act="st-pop-copiar" data-v="${esc(p.cupon)}">Copiar</button></div><p class="hint">Mencionalo al enviar tu pedido por WhatsApp.</p>` : ''}
+    ${p.cupon ? `<div class="st-cupon"><span>Código</span><b>${esc(p.cupon)}</b><button class="btn btn-s btn-sm" data-act="st-pop-copiar" data-v="${esc(p.cupon)}">Copiar</button><button class="btn btn-p btn-sm" data-act="st-pop-usar" data-v="${esc(p.cupon)}">Usar</button></div><p class="hint">Tocá “Usar” y se aplica cuando confirmás tu pedido.</p>` : ''}
     <button class="btn btn-p" style="margin-top:10px" data-act="st-pop-cerrar">Ver productos</button></div></div>`;
 }
 // huella del popup: si el comercio lo cambia, se vuelve a mostrar una vez

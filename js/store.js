@@ -3,11 +3,14 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir } from './catalogo.js';
 import { abrirFlyer } from './flyer.js';
-import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido } from './promo.js';
+import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido, montoDesc, montoEscalon, montoTxt, cuponDesc, cuponTxt } from './promo.js';
 import { tiraCierreHtml } from './cuenta.js';
 import { anuncioHtml, heroHtml, beneficiosHtml, testimoniosHtml, popupHtml, firmaPopup, secOn, iniciarCarrusel, comprarCardHtml, comprarModalHtml, faqHtml, efectosOn, menosMovimiento, vitrinasCfg, vitrinaProds, catFotoCfg, catTilesHtml, rubrosCfg, claveCat, rubroDe, rubrosHtml, rubroCabHtml, lookDe } from './bloques.js';
 
 const S = { ref: null, slug: '', tienda: null, prods: [], cart: [], may: null, codigo: '', cat: 'Todas', q: '', limite: 60, sel: {}, vista: 'cat', pay: 'transferencia', env: null, pedirCodigo: false, enviando: false, ultimo: null, fly: [], rubro: null, foco: null, niveles: null, orden: 'dest', ct: {} };
+// Vista previa (v2.26): la tienda dentro del panel del comercio. No guarda carrito, no cuenta visitas y no manda pedidos;
+// el panel le pasa lo que se está editando y le pide ir a una pantalla o resaltar una parte.
+const PREVIA = (() => { try { return new URLSearchParams(location.search).get('vista') === 'previa' && window.parent !== window; } catch (e) { return false; } })();
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
 // medios de pago que la tienda tiene prendidos (panel: Tienda → Envíos y entregas → Medios de pago); si la base es vieja, los tres
 const pagos = () => { const a = S.tienda && Array.isArray(S.tienda.pagos_activos) && S.tienda.pagos_activos.length ? S.tienda.pagos_activos : null; return Object.keys(PAGO).filter(k => !a || a.includes(k)); };
@@ -61,11 +64,20 @@ function promosCarrito() {
   const q = new Map(); S.cart.forEach(l => { const p = prod(l.id); if (promoAplica(p)) q.set(p.id, (q.get(p.id) || 0) + l.qty); });
   return [...q].map(([id, n]) => { const p = prod(id); return { p, q: n, d: promoDesc(p.promo, unidad(p, n), n), falta: promoFalta(p.promo, n) }; });
 }
-function totales() { const L = lineas(), PR = promosCarrito(), promo = PR.reduce((a, x) => a + x.d, 0); return { n: L.reduce((a, l) => a + l.qty, 0), total: L.reduce((a, l) => a + l.sub, 0) - promo, ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0), promo, PR }; }
+function totales() {
+  const L = lineas(), PR = promosCarrito(), promo = PR.reduce((a, x) => a + x.d, 0), total = L.reduce((a, l) => a + l.sub, 0) - promo;
+  // descuento general (v2.26): el cupón o el descuento por monto, el que más le conviene al cliente (igual que el pedido)
+  const dmx = vista() === 'min' ? montoDesc(S.tienda.desc_monto, total) : 0, c = S.cupon && S.cupon.ok ? S.cupon : null;
+  const conDesc = new Set(PR.filter(x => x.d > 0).map(x => x.p.id)), falta = c && total < +c.minimo ? +c.minimo - total : 0;
+  const base = c && c.tipo !== 'envio' ? L.filter(l => !l.p.con_desc && !conDesc.has(l.p.id)).reduce((a, l) => a + l.sub, 0) : 0;
+  const dcx = c && !falta ? cuponDesc(c, base) : 0, gana = dcx > 0 && dcx > dmx, dc = gana ? dcx : 0, dm = gana ? 0 : dmx;
+  return { n: L.reduce((a, l) => a + l.qty, 0), total, ahorro: L.reduce((a, l) => a + (l.base - l.sub), 0), promo, PR, dm, dc, final: total - dc - dm,
+    cupon: c, cuponFalta: falta, cuponSinBase: !!c && c.tipo !== 'envio' && !falta && base <= 0, cuponPierde: dcx > 0 && !gana, envioCupon: !!c && c.tipo === 'envio' && !falta };
+}
 const envios = () => Array.isArray(S.tienda.envios) ? S.tienda.envios : [];
 const envioSel = () => envios().find(e => e.id === S.env) || null;
 // mismo criterio que el servidor (el servidor recalcula y es el que cobra)
-const costoEnvio = (e, total) => !e ? 0 : e.tipo !== 'retiro' && +S.tienda.envio_gratis_desde > 0 && total >= +S.tienda.envio_gratis_desde ? 0 : +e.costo || 0;
+const costoEnvio = (e, total) => !e ? 0 : S.cupon && S.cupon.ok && S.cupon.tipo === 'envio' && !(totales().cuponFalta > 0) ? 0 : e.tipo !== 'retiro' && +S.tienda.envio_gratis_desde > 0 && total >= +S.tienda.envio_gratis_desde ? 0 : +e.costo || 0;
 const ENV_ICO = { retiro: '🏪', envio: '🚚', moto: '🛵', correo: '📮', acordar: '💬' };
 const minimo = () => (vista() === 'may' ? +S.tienda.compra_minima || 0 : 0);
 function pista() {
@@ -85,7 +97,7 @@ function pista() {
   });
   return mejor;
 }
-const guardarCarrito = () => store.set('cart:' + S.slug, S.cart);
+const guardarCarrito = () => { if (!S.previa) store.set('cart:' + S.slug, S.cart); };
 
 /* ---------- barra de escalas: cuánto falta para el próximo precio y cuánto se ahorra ---------- */
 // q = unidades que cuentan para la escala (las del producto o, si la tienda lo eligió, las de su categoría o todo el carrito)
@@ -172,7 +184,7 @@ function cargarPixel(id) {
   const s = document.createElement('script'); s.async = true; s.src = 'https://connect.facebook.net/en_US/fbevents.js'; document.head.appendChild(s);
   window.fbq('init', id); window.fbq('track', 'PageView');
 }
-const evento = (n, d) => { try { if (window.fbq) window.fbq('track', n, d); } catch (e) { } };
+const evento = (n, d) => { if (S.previa) return; try { if (window.fbq) window.fbq('track', n, d); } catch (e) { } };
 
 /* ---------- entrada ---------- */
 export async function mostrarTienda(slug, app) {
@@ -186,14 +198,52 @@ export async function mostrarTienda(slug, app) {
     const modos = [...new Set(vitrinasCfg(S.tienda.diseno).map(v => v.modo).filter(m => m === 'nuevos' || m === 'vendidos'))];
     S.vitSrv = {}; await Promise.all(modos.map(async m => { try { S.vitSrv[m] = await api.vitrinaIds(slug, m); } catch (e) { S.vitSrv[m] = null; } }));
   } catch (e) { app.innerHTML = '<div class="page"><div class="err-box">' + esc(e.message) + '</div></div>'; return; }
-  S.cart = (store.get('cart:' + slug, []) || []).filter(l => l && prod(l.id));
+  S.previa = PREVIA;
+  S.cart = S.previa ? [] : (store.get('cart:' + slug, []) || []).filter(l => l && prod(l.id));
+  try { const cp = new URLSearchParams(location.search).get('cupon'); if (cp && /^[A-Za-z0-9_-]{3,20}$/.test(cp)) S.cuponPend = cp.toUpperCase(); } catch (e) { }
   try { const pg = new URLSearchParams(location.search).get('pago'); S.avisoPago = ({ ok: '✅ ¡Gracias! Estamos confirmando tu pago con Mercado Pago. El comercio te avisa por WhatsApp.', pendiente: '⏳ Tu pago quedó pendiente. Cuando se acredite, el comercio lo confirma.', error: 'El pago no se completó. Podés volver a intentar o coordinar por WhatsApp.' })[pg] || ''; } catch (e) { S.avisoPago = ''; }
   try { const r = new URLSearchParams(location.search).get('r'); if (r && /^[A-Za-z0-9_-]{8,64}$/.test(r)) store.set('ref:' + slug, { r, ts: Date.now() }); const g = store.get('ref:' + slug, null); S.ref = g && g.r && Date.now() - g.ts < 30 * 864e5 ? g.r : null; } catch (e) { S.ref = null; }   // la atribución al revendedor vence a los 30 días
   S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null; S.rubro = null; S.foco = null; S.niveles = null; S.orden = 'dest';
-  cargarPixel(S.tienda.pixel_id);
+  if (!S.previa) cargarPixel(S.tienda.pixel_id);
   document.title = S.tienda.nombre;
   pintar();
+  if (S.previa) { if (S.prevMsg) aplicarPrevia(S.prevMsg); try { window.parent.postMessage({ t: 'eskalapp-previa-lista' }, location.origin); } catch (e) { } }
 }
+/* ---------- vista previa dentro del panel ---------- */
+const FOCO = { anuncios: '.st-anuncio', banners: '.st-heros', rubros: '#rubros', vitrinas: 'section.vt', catfoto: '#cats', categorias: '#cats', efectos: '#pgrid', productos: '#pgrid',
+  beneficios: '.st-benef', comprar: '.st-howto', faq: '.st-faq', testimonios: '.st-testi', estilo: '#hdr', cierre: '#st-cierre', envios: '#store-banner' };
+function irPrevia(v) {
+  S.det = null; const pd = $('#pdet-root'); if (pd) pd.innerHTML = '';
+  const disp = S.prods.filter(p => !p.agotado), muestra = disp.find(p => promoAplica(p)) || disp[0] || S.prods[0];
+  if (v === 'inicio' || v === 'categoria') {
+    S.vista = 'cat'; S.rubro = null; S.cat = 'Todas';
+    if (v === 'categoria') { const c = [...new Set(disp.map(p => p.categoria))]; S.cat = c.includes(muestra && muestra.categoria) ? muestra.categoria : c[0] || 'Todas'; }
+    pintar(); if (v === 'categoria') { const e = $('#search-row'); if (e) e.scrollIntoView(); } else window.scrollTo(0, 0); return;
+  }
+  if (v === 'producto') { S.vista = 'cat'; pintar(); if (muestra) { S.det = muestra.id; pintarDet(); } return; }
+  if (!S.cart.length && muestra) S.cart.push({ id: muestra.id, vr: (muestra.variantes || [])[selVar(muestra)] || '', qty: promoAplica(muestra) ? Math.max(2, +muestra.promo.desde || 2) : 1 });
+  S.vista = v === 'checkout' && S.cart.length ? 'co' : S.cart.length ? 'cart' : 'cat'; pintar(); window.scrollTo(0, 0);
+}
+function focoPrevia(k, otra) {
+  if (k === 'popup') { S.popForzar = true; const r = $('#pop-root'); if (r) r.innerHTML = ''; pintarPopup(); return; }
+  if (S.vista !== 'cat' || S.det) irPrevia('inicio');
+  const el = document.querySelector(FOCO[k] || '#__nada'); if (!el) { if (!otra) setTimeout(() => focoPrevia(k, true), 450); return; }   // puede llegar justo antes que el cambio que la crea
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.remove('prev-foco'); void el.offsetWidth; el.classList.add('prev-foco');
+  setTimeout(() => el.classList.remove('prev-foco'), 1900);
+}
+async function aplicarPrevia(m) {
+  if (m.recargar) { try { const t = await api.tienda(S.slug); if (t) S.tienda = Object.assign(t, S.borrador || {}); S.prods = await api.productos(S.slug); S.cart = S.cart.filter(l => prod(l.id)); } catch (e) { } }
+  if (m.tienda) { S.borrador = m.tienda; Object.assign(S.tienda, m.tienda); }
+  if (m.ir) irPrevia(m.ir);
+  else if (m.tienda || m.recargar) { pintar(); if (S.det) pintarDet(); }
+  if (m.foco) setTimeout(() => focoPrevia(m.foco), 80);
+}
+if (PREVIA) window.addEventListener('message', e => {
+  if (e.origin !== location.origin || e.source !== window.parent) return;
+  const m = e.data; if (!m || m.t !== 'eskalapp-previa') return;
+  if (!S.tienda) { S.prevMsg = Object.assign(S.prevMsg || {}, m); return; }   // todavía cargando: se aplica al terminar
+  aplicarPrevia(m);
+});
 
 /* ---------- pantallas ---------- */
 function pintar() {
@@ -254,7 +304,7 @@ function ctHtml(p) {
    Visita = abrió la ficha. Al carrito = lo agregó. Cada navegador cuenta 1 vez por producto y por día; se mandan juntas cada pocos segundos. */
 const ACT = { v: new Set(), c: new Set(), t: null };
 function marcarAct(tipo, id) {
-  if (!id || !S.slug) return;
+  if (!id || !S.slug || S.previa) return;
   const hoy = new Date().toLocaleDateString('sv'), k = 'act:' + S.slug;
   let m = store.get(k, null); if (!m || m.d !== hoy) m = { d: hoy, v: [], c: [] };
   if (m[tipo].includes(id)) return;
@@ -341,13 +391,15 @@ function iniciarVitrina() {
 on('vt-mov', (d, b) => { const sec = b.closest('section.vt'); if (sec && sec._mover) sec._mover(+d.d); });
 function pintarPopup() {
   const d = S.tienda.diseno, k = 'pop:' + S.slug, f = firmaPopup(d), r = $('#pop-root');
-  if (!r || !f || S.popVisto || store.get(k, '') === f) return;
+  if (!r || !f) return;
+  if (S.previa ? !S.popForzar : (S.popVisto || store.get(k, '') === f)) return;   // en la vista previa, solo cuando se edita la ventana
   const h = popupHtml(d); if (!h) return;
-  r.innerHTML = h; S.popVisto = true; store.set(k, f);
+  r.innerHTML = h; S.popVisto = true; S.popForzar = false; if (!S.previa) store.set(k, f);
 }
 on('st-pop-cerrar', () => { const r = $('#pop-root'); if (r) r.innerHTML = ''; });
 on('st-pop-bg', (d, b, e) => { if (e.target === b) { const r = $('#pop-root'); if (r) r.innerHTML = ''; } });
 on('st-pop-copiar', d => copiar(d.v));
+on('st-pop-usar', d => { S.cuponPend = String(d.v || '').toUpperCase(); S.cupon = null; const r = $('#pop-root'); if (r) r.innerHTML = ''; toast(`🎟️ Cupón ${S.cuponPend} listo: se aplica al confirmar tu pedido`); });
 const cerrarComprar = () => { const r = $('#pop-root'); if (r) r.innerHTML = ''; };
 on('st-comprar', () => { const r = $('#pop-root'); if (r) { r.innerHTML = comprarModalHtml(S.tienda.diseno, S.tienda); const b = r.querySelector('[data-act=st-comprar-cerrar]'); if (b) b.focus(); } });
 on('st-comprar-cerrar', cerrarComprar);
@@ -390,6 +442,8 @@ function banner() {
   if (t.modalidad === 'hibrido') chips += S.may ? '<button class="chip" data-act="may-salir">✓ Lista mayorista activa · Salir</button>' : '<button class="chip" data-act="may-abrir">💼 Acceso Mayorista</button>';
   const caja = S.pedirCodigo && !S.may ? `<form data-submit="may-codigo" id="gremio-box"><input class="fi" name="codigo" placeholder="Código de revendedor" autocomplete="off" aria-label="Código de revendedor" required><button class="btn btn-p btn-sm" type="submit">Activar</button></form><div class="ferr" id="may-err" hidden></div>` : '';
   if (t.modo_stock === 'encargo') chips += `<span class="chip">📦 Por encargo · llega en ${+t.demora_encargo || 7} días</span>`;
+  if (m === 'min' && t.desc_monto && t.desc_monto.escalones) chips += `<span class="chip">🎁 ${esc(montoTxt(t.desc_monto).replace(/^s/, 'S'))}</span>`;
+  if (S.cuponPend) chips += `<span class="chip">🎟️ Cupón ${esc(S.cuponPend)}: se aplica al confirmar</span>`;
   if (+t.envio_gratis_desde > 0 && envios().some(e => e.tipo !== 'retiro')) chips += `<span class="chip">🚚 Envío gratis desde ${fmt(t.envio_gratis_desde)}</span>`;
   chips += '<button class="chip" data-act="st-pdf">📄 Lista de precios (PDF)</button>';
   // encabezado compacto: el nombre va arriba y "Cómo comprar" y el PDF quedan como botones chicos
@@ -535,8 +589,23 @@ on('fly-sel', d => {
 on('fly-crear', () => crearFlyer(S.fly));
 on('fly-uno', d => { S.det = null; pintarDet(); crearFlyer([d.id]); });
 on('fly-limpiar', () => { S.fly = []; pintarGrid(); pintarFlybar(); });
+const pctTxt = v => String(Math.round(+v * 100) / 100).replace('.', ',');
+function barrasDesc(T) {
+  let h = ''; const eg = +S.tienda.envio_gratis_desde;
+  if (eg > 0 && envios().some(e => e.activo !== false && e.tipo !== 'retiro') && !T.envioCupon) {
+    const ok = T.final >= eg;
+    h += `<div class="prog prog-env${ok ? ' ok' : ''}"><div class="prog-t">${ok ? '🚚 ¡Tenés envío gratis!' : `🚚 Te faltan <span>${fmt(eg - T.final)}</span> para el envío gratis`}</div><div class="bar"><i style="width:${Math.min(100, Math.round(T.final / eg * 100))}%"></i></div></div>`;
+  }
+  const m = vista() === 'min' && S.tienda.desc_monto ? montoEscalon(S.tienda.desc_monto, T.total) : null;
+  if (m && (m.act || m.sig)) {
+    const tx = m.act && T.dm > 0 ? `🎁 ¡${pctTxt(m.act.pct)} % off en todo tu pedido!${m.sig ? ` Te faltan <span>${fmt(m.sig.desde - T.total)}</span> para ${pctTxt(m.sig.pct)} %` : ''}`
+      : m.act ? `🎁 Ya llegaste al ${pctTxt(m.act.pct)} % off por monto${T.dc ? ' (tu cupón te conviene más)' : ''}` : `🎁 Te faltan <span>${fmt(m.sig.desde - T.total)}</span> para ${pctTxt(m.sig.pct)} % off en todo tu pedido`;
+    h += `<div class="prog prog-monto${m.act ? ' ok' : ''}"><div class="prog-t">${tx}</div><div class="bar"><i style="width:${m.sig ? Math.min(100, Math.round(T.total / m.sig.desde * 100)) : 100}%"></i></div></div>`;
+  }
+  return h;
+}
 function bloquesProgreso(T) {
-  let h = ''; const th = pista(), mc = minimo();
+  let h = barrasDesc(T); const th = pista(), mc = minimo();
   if (th) { const base = { 3: 0, 6: 3, 12: 6 }[th.nx], pct = Math.min(100, Math.round((th.q - base) / (th.nx - base) * 100)); h += `<div class="prog"><div class="prog-t">Sumá <span>${th.falta} u. más</span> ${esc(th.de)} y ahorrá <span>${fmt(th.ahorro)}</span></div><div class="bar"><i style="width:${pct}%"></i></div></div>`; }
   if (mc) { const ok = T.total >= mc; h += `<div class="prog ${ok ? '' : 'warn'}"><div class="prog-t">${ok ? '✓ Superaste el mínimo de compra (' + fmt(mc) + ')' : 'Compra mínima ' + fmt(mc) + ' · te faltan <span>' + fmt(mc - T.total) + '</span>'}</div><div class="bar"><i style="width:${Math.min(100, Math.round(T.total / mc * 100))}%"></i></div></div>`; }
   return h;
@@ -554,10 +623,33 @@ function pantallaCarrito() {
       : x.falta ? `<div class="cpromo off"><span>🎁 Sumá ${x.falta} más${masTalles}: ${esc(promoTxt(l.p.promo))}</span></div>` : ''; };
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
     ${L.map((l, k) => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>${prRow(l, k)}`).join('')}
-    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}${T.promo > 0 ? `<div class="srow"><span>🎁 Promos</span><span class="v save">-${fmt(T.promo)}</span></div>` : ''}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.total)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
+    <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}${T.promo > 0 ? `<div class="srow"><span>🎁 Promos</span><span class="v save">-${fmt(T.promo)}</span></div>` : ''}${descRows(T)}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.final)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
     <button class="btn btn-p" ${bloq || pau ? 'disabled' : ''} data-act="st-ir" data-v="co">${pau ? '🔒 Pedidos cerrados por ahora' : bloq ? 'Faltan ' + fmt(mc - T.total) + ' para el mínimo' : 'Continuar →'}</button></div>`;
 }
+// "¿Tenés un cupón?" (v2.26): se valida al tocar Aplicar y de nuevo al confirmar el pedido
+function cuponMsg(T) {
+  const c = S.cupon; if (!c) return S.cuponPend ? `<div class="hint">🎟️ Tenés el cupón ${esc(S.cuponPend)}: tocá Aplicar.</div>` : '';
+  if (c.err) return `<div class="cup-err">${esc(c.err)}</div>`;
+  const nota = T.cuponFalta ? `Es para compras desde ${fmt(c.minimo)}: te faltan ${fmt(T.cuponFalta)}.` : T.cuponSinBase ? 'No se suma a productos que ya tienen descuento (promo, oferta o combo).'
+    : T.cuponPierde ? 'Tu pedido ya tiene un descuento por monto que te conviene más: el cupón no se usa.' : c.primera_compra ? 'Es para tu primera compra: lo confirmamos al enviar el pedido.' : '';
+  return `<div class="cup-ok">🎟️ <b>${esc(c.codigo)}</b> · ${esc(cuponTxt(c))}${T.dc ? ` · <b>-${fmt(T.dc)}</b>` : T.envioCupon ? ' · aplicado' : ''}</div>${nota ? `<div class="hint">${esc(nota)}</div>` : ''}`;
+}
+function cuponUi() {
+  if (!S.tienda.hay_cupones && !S.cupon && !S.cuponPend) return '';
+  const T = totales(), ok = S.cupon && S.cupon.ok;
+  return `<div class="fg cup-box"><label class="flabel" for="co-cup">¿Tenés un cupón de descuento?</label><div class="cup-r"><input class="fi" id="co-cup" maxlength="20" autocomplete="off" autocapitalize="characters" value="${esc(S.cupon ? S.cupon.codigo : S.cuponPend || '')}" placeholder="Ej: HOLA10" ${ok ? 'readonly' : ''} aria-describedby="cup-msg"><button type="button" class="btn btn-s btn-sm" data-act="${ok ? 'st-cup-quitar' : 'st-cup'}">${ok ? 'Quitar' : 'Aplicar'}</button></div><div id="cup-msg" aria-live="polite">${cuponMsg(T)}</div></div>`;
+}
+async function aplicarCupon(cod) {
+  cod = String(cod || '').trim().toUpperCase(); if (!cod) return;
+  const w = document.querySelector('#co-form [name=whatsapp]'), wsp = w ? soloDigitos(w.value) : '';
+  try { const r = await api.cuponVer(S.slug, cod, wsp.length >= 8 ? wsp : null); S.cupon = Object.assign({ ok: true }, r); S.cuponPend = ''; }
+  catch (e) { S.cupon = { codigo: cod, err: e.message }; }
+  repintarCo();
+}
+on('st-cup', () => { const i = $('#co-cup'); aplicarCupon(i && i.value); });
+on('st-cup-quitar', () => { S.cupon = null; S.cuponPend = ''; repintarCo(); });
 function pantallaCheckout() {
+  if (S.cuponPend && !S.cupon && !S.cupAuto) { S.cupAuto = true; setTimeout(() => aplicarCupon(S.cuponPend), 0); }
   if (!S.cart.length || pausado()) { S.vista = 'cart'; return pantallaCarrito(); }
   if (!pagos().includes(S.pay)) S.pay = pagos()[0];   // si el comercio apagó el que estaba elegido
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cart">← Volver al carrito</button><div class="view-title">📋 Tus datos</div><div id="co-err"></div>
@@ -568,7 +660,7 @@ function pantallaCheckout() {
       ${envioUi()}
       <div class="fg"><label class="flabel">Medio de pago</label>${pagos().map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
       ${tandaUi()}${encargoUi()}${notaUi()}
-      ${resumenCo()}
+      ${cuponUi()}${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;
 }
 const PROVINCIAS = ['Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'];
@@ -597,14 +689,15 @@ function envioUi() {
   const L = envios(); if (!L.length) return '';
   if (!envioSel()) S.env = L.length === 1 ? L[0].id : null;
   const T = totales(), e = envioSel();
-  return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.total); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${(x.tipo === 'acordar' || x.tipo === 'correo') && !c && !(+S.tienda.envio_gratis_desde > 0 && totales().total >= +S.tienda.envio_gratis_desde) ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
+  return `<div class="fg"><span class="flabel" id="env-lbl">¿Cómo lo recibís?</span><div role="radiogroup" aria-labelledby="env-lbl">${L.map(x => { const c = costoEnvio(x, T.final); return `<button type="button" role="radio" aria-checked="${S.env === x.id}" class="opt ${S.env === x.id ? 'on' : ''}" data-act="st-env" data-e="${esc(x.id)}"><span class="opt-ico">${ENV_ICO[x.tipo] || '🚚'}</span><span class="opt-tx"><div class="opt-nm">${esc(x.nombre)}</div><div class="opt-ds">${(x.tipo === 'acordar' || x.tipo === 'correo') && !c && !(+S.tienda.envio_gratis_desde > 0 && totales().final >= +S.tienda.envio_gratis_desde) ? 'Costo a coordinar' : c ? fmt(c) : x.tipo === 'retiro' ? 'Sin cargo' : 'Gratis'}${x.detalle ? ' · ' + esc(x.detalle) : ''}</div></span><span class="radio"></span></button>`; }).join('')}</div></div>
     ${e && e.tipo === 'acordar' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección o zona <small class="muted">(opcional)</small></label><input class="fi" id="co-dir" name="direccion" maxlength="160" placeholder="Para coordinar la entrega (barrio, calle…)"></div>`
       : e && e.tipo !== 'retiro' ? `<div class="fg"><label class="flabel" for="co-dir">Dirección de entrega</label><input class="fi" id="co-dir" name="direccion" maxlength="160" required minlength="5" placeholder="Calle, número, piso / referencia"></div>` : ''}`;
 }
+const descRows = T => `${T.dm > 0 ? `<div class="srow"><span>🎁 Descuento por monto</span><span class="v save">-${fmt(T.dm)}</span></div>` : ''}${T.dc > 0 ? `<div class="srow"><span>🎟️ Cupón ${esc(T.cupon.codigo)}</span><span class="v save">-${fmt(T.dc)}</span></div>` : ''}`;
 function resumenCo() {
-  const T = totales(), e = envioSel(), c = costoEnvio(e, T.total);
-  if (!envios().length) return `<div class="card"><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total)}</span></div></div>`;
-  return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div><div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : (e.tipo === 'acordar' || e.tipo === 'correo') && !+e.costo ? 'A coordinar' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.total + c)}</span></div></div>`;
+  const T = totales(), e = envioSel(), c = costoEnvio(e, T.final);
+  if (!envios().length) return `<div class="card">${T.dm || T.dc ? `<div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div>${descRows(T)}` : ''}<div class="srow tot"><span>Total</span><span class="v">${fmt(T.final)}</span></div></div>`;
+  return `<div class="card"><div class="srow"><span>Productos</span><span class="v">${fmt(T.total)}</span></div>${descRows(T)}<div class="srow"><span>Envío</span><span class="v">${e ? (c ? fmt(c) : e.tipo === 'retiro' ? 'Sin cargo' : (e.tipo === 'acordar' || e.tipo === 'correo') && !+e.costo ? 'A coordinar' : 'Gratis') : '—'}</span></div><div class="srow tot"><span>Total</span><span class="v">${fmt(T.final + c)}</span></div></div>`;
 }
 const cp0 = i => { const p = prod(i.producto_id); return !!(p && Array.isArray(i.talles) && i.talles.length); };
 const ctTxt = i => { const L = []; (i.talles || []).forEach(x => { const q = prod(x.id), n = q ? q.nombre : 'Producto', o = L.find(y => y.n === n); const v = x.v + (+x.n > 1 ? ' x' + x.n : ''); o ? o.v.push(v) : L.push({ n, v: [v] }); }); return L.map(o => o.n + ' ' + o.v.join(', ')).join(' · '); };
@@ -613,6 +706,8 @@ function ticket(r, cliente) {
   let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}${S.tienda.modalidad === 'minorista' ? '' : 'Modalidad: ' + (r.modo === 'mayorista' ? 'Mayorista' : 'Minorista') + '\n'}\nDetalle:\n`;
   r.items.forEach(i => { const u = unidadTxt(i.unidad, i.contenido); t += `• ${i.cantidad} × ${i.nombre}${i.variante ? ' (' + i.variante + ')' : i.talles && cp0(i) ? ' (' + ctTxt(i) + ')' : ''}${u ? ' [' + u + ']' : ''} · ${fmt(i.precio_unitario)} c/${u || 'u'} = ${fmt(+i.subtotal + (+i.descuento || 0))}\n`; const cp = prod(i.producto_id), ct = cp ? comboTxt(cp) : ''; if (ct) t += `   ↳ trae: ${ct.replace(/ · /g, ', ')}\n`; });
   promosDelPedido(r.items, i => i.nombre).forEach(x => { t += `🎁 ${promoTxt(x.promo) || 'Promo'} · ${x.nombre}: -${fmt(x.d)}\n`; });
+  if (+r.descuento_monto > 0) t += `🎁 Descuento por monto: -${fmt(r.descuento_monto)}\n`;
+  if (r.cupon) t += +r.descuento_cupon > 0 ? `🎟️ Cupón ${r.cupon}: -${fmt(r.descuento_cupon)}\n` : r.cupon_envio ? `🎟️ Cupón ${r.cupon}: envío gratis\n` : '';
   if (r.envio) {
     const e = envioSel(), gratis = +S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde;
     const env = +r.envio_costo ? fmt(r.envio_costo) : e && e.tipo === 'retiro' ? 'sin cargo' : e && (e.tipo === 'acordar' || e.tipo === 'correo') && !gratis ? 'a coordinar' : 'gratis';
@@ -722,7 +817,7 @@ async function activarMay(codigo) {
 }
 
 const subirCarrito = debounce(async (nombre, wsp) => {
-  if (!S.tienda.carritos_activos || soloDigitos(wsp).length < 8 || !S.cart.length) return;
+  if (S.previa || !S.tienda.carritos_activos || soloDigitos(wsp).length < 8 || !S.cart.length) return;
   try { const T = totales(); await api.guardarCarrito(S.slug, nombre || 'Cliente', wsp, lineas().map(l => ({ n: l.p.nombre, v: l.vr, q: l.qty })), T.total); } catch (e) { }
 }, 1500);
 on('st-contacto', () => { const f = $('#co-form'); if (f) subirCarrito(f.nombre.value.trim(), f.whatsapp.value.trim()); });
@@ -737,11 +832,13 @@ on('st-pedir', async (d, f) => {
     cliente.envio = S.env; if (f.direccion) cliente.direccion = f.direccion.value.trim();
   }
   const items = S.cart.map(l => l.ct ? { producto_id: l.id, variante: '', cantidad: l.qty, talles: l.ct } : { producto_id: l.id, variante: l.vr, cantidad: l.qty });
+  if (S.cupon && S.cupon.ok) cliente.cupon = S.cupon.codigo;
+  if (S.previa) { $('#co-err').innerHTML = '<div class="ok-box">👁 Vista previa: así lo ve tu cliente. Desde acá no se envían pedidos.</div>'; window.scrollTo(0, 0); return; }
   const btn = $('#co-go'); S.enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
     const tk = ticket(r, cliente), link = waLink(normWsp(r.whatsapp), tk);
-    S.ultimo = { r, tk, link }; S.cart = []; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS' });
+    S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS' });
     if (S.pay === 'link' && S.tienda.mp_activo) {   // link de pago de Mercado Pago (el monto lo calcula el servidor)
       try { S.ultimo.mp = (await api.mpPreferencia(S.slug, r.id)).init_point; } catch (e) { S.ultimo.mpError = e.message; }
     }

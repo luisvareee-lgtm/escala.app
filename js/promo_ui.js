@@ -1,14 +1,21 @@
-// Panel (v2.25): la promo por cantidad en la ficha del producto y en "Editar" varios a la vez.
+// Panel: la promo por cantidad en la ficha del producto, en "Editar" varios a la vez y en 🎁 Promociones.
+// v2.26: las promos viven en Promociones (P.promos); la de un producto es la más puntual que le toca.
 import { esc, fmt, on, $ } from './util.js';
 import { P } from './state.js';
-import { TIPOS, ATAJOS, promoOk, promoTxt, promoDesc } from './promo.js';
+import { TIPOS, ATAJOS, promoOk, promoTxt, promoDesc, promoDeProducto } from './promo.js';
 
-// Se ve cuando la base ya tiene la v2.25 y la tienda le vende al público (en una mayorista no aplica).
-export const hayPromo = () => !!P.t && P.t.modalidad !== 'mayorista' && (P.prods || []).some(p => 'promo' in p);
-export const promoChip = p => p && p.promo && promoOk(p.promo) ? '🎁 ' + promoTxt(p.promo) : '';
-// precio por unidad que ve el público (lo da el panel según el costo y el margen del formulario)
-let precioForm = () => 0;
+// Se ve cuando la base ya tiene Promociones (v2.26) y la tienda le vende al público (en una mayorista no aplica).
+export const hayPromo = () => !!P.t && P.t.modalidad !== 'mayorista' && Array.isArray(P.promos);
+export const reglaDe = p => promoDeProducto(p, P.promos);
+export const promoChip = p => { const r = Array.isArray(P.promos) && reglaDe(p); return r ? '🎁 ' + promoTxt(r.regla) : ''; };
+// ¿la promo que vale es solo de este producto? (la que se edita desde su ficha)
+export const propiaDe = p => { const r = reglaDe(p); return r && r.alcance === 'productos' && (r.productos || []).length === 1 ? r : null; };
+// precio por unidad que ve el público: el del formulario del producto o, en Promociones, el del ejemplo
+let precioForm = () => 0, precioRef = () => 0, avisar = () => { };
 export const usarPrecio = fn => { precioForm = fn; };
+export const usarPrecioRef = fn => { precioRef = fn; };
+export const alCambiarPromo = fn => { avisar = fn; };
+const precio = () => Number(precioForm()) || Number(precioRef()) || 0;
 
 const LBL = {
   desde: t => t === 'nx' || t === 'ult' ? 'Cada cuántas unidades' : 'Desde cuántas unidades',
@@ -25,10 +32,11 @@ export function camposPromo(x, quitar) {
     <div class="pr-prev" id="pr-prev" aria-live="polite">${prevPromo(x)}</div>`;
 }
 export function promoSecHtml(p) {
-  const x = p && promoOk(p.promo) ? p.promo : null;
-  return `<details class="pm-sec" id="pm-pr"${x ? ' open' : ''}><summary>🎁 Promo por cantidad${x ? ` · ${esc(promoTxt(x))}` : ''}</summary>
-    ${camposPromo(x, false)}
-    <div class="hint">Se cuentan todas las unidades de este producto: los talles y los colores se suman (un 38 y un 40 son 2). La tienda la muestra en la tarjeta y en la ficha, y el pedido la descuenta solo. Dejá los casilleros vacíos para no tener promo.</div></details>`;
+  const r = p && p.id ? reglaDe(p) : null, propia = p && p.id ? propiaDe(p) : null, x = propia ? propia.regla : null;
+  const de = r && !propia ? `<div class="pr-de">🎁 <b>${esc(promoTxt(r.regla))}</b> · viene de la promo de ${esc(r.alcance === 'tienda' ? 'toda la tienda' : r.alcance === 'categoria' ? 'la categoría ' + r.categoria : 'varios productos')}. Se edita en Tienda → 🎁 Promociones. Si le ponés una propia acá abajo, le gana.</div>` : '';
+  return `<details class="pm-sec" id="pm-pr"${r ? ' open' : ''}><summary>🎁 Promo por cantidad${r ? ` · ${esc(promoTxt(r.regla))}` : ''}</summary>
+    ${de}${camposPromo(x, false)}
+    <div class="hint">Se cuentan todas las unidades de este producto: los talles y los colores se suman (un 38 y un 40 son 2). La tienda la muestra en la tarjeta y en la ficha, y el pedido la descuenta solo. Dejá los casilleros vacíos para no tener promo propia.</div></details>`;
 }
 // Lo que se escribió en el formulario: la promo, null (sin promo) o un error para mostrar.
 export function promoDe(fd) {
@@ -46,7 +54,7 @@ export function promoDe(fd) {
 }
 function prevPromo(x) {
   if (!promoOk(x)) return '<span class="muted">Elegí un atajo o completá la promo.</span>';
-  const u = Number(precioForm()) || 0, n = +x.desde, txt = `<b>🎁 ${esc(promoTxt(x))}</b>`;
+  const u = precio(), n = +x.desde, txt = `<b>🎁 ${esc(promoTxt(x))}</b>`;
   if (!(u > 0)) return `Así se ve en tu tienda: ${txt}`;
   const d = promoDesc(x, u, n);
   if (x.tipo === 'nx' && !(d > 0)) return `${txt}<br><span class="pr-warn">Ojo: ${n} a precio normal salen ${fmt(n * u)}. Con ${fmt(x.valor)} no hay descuento.</span>`;
@@ -58,10 +66,11 @@ on('pr-prev', () => {
   const dl = $('#pr-d-l'), vl = $('#pr-v-l'), vi = $('#pr-v'); if (dl) dl.textContent = LBL.desde(t); if (vl) vl.textContent = LBL.valor(t); if (vi) vi.placeholder = LBL.ej(t);
   const quitar = r.fd.get('prm_modo') === 'quitar'; let x = null; try { x = quitar ? null : promoDe(r.fd); } catch (e) { x = null; }
   const b = $('#pr-prev'); if (b) b.innerHTML = quitar ? '<span class="muted">Se quita la promo de los productos elegidos.</span>' : prevPromo(x);
+  avisar(quitar ? null : x);
 });
 on('pr-atajo', d => {
   const a = ATAJOS[+d.i]; if (!a) return; const x = { ...a[1] };
-  if (x.tipo === 'nx') { const u = Number(precioForm()) || 0; x.valor = u > 0 ? Math.floor(x.desde * u * 0.9 / 100) * 100 : ''; }
+  if (x.tipo === 'nx') { const u = precio(); x.valor = u > 0 ? Math.floor(x.desde * u * 0.9 / 100) * 100 : ''; }
   const t = $('#pr-t'), n = $('#pr-d'), v = $('#pr-v'); if (!t || !n || !v) return;
   t.value = x.tipo; n.value = x.desde; v.value = x.valor;
   const q = document.querySelector('input[name=prm_modo][value=poner]'); if (q) q.checked = true;

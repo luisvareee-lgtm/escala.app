@@ -8,32 +8,30 @@ import { asisSwitch } from './asistente.js';
 import { pruebaFrase } from './fundadores.js';
 import { vistaSimple, avanzadas } from './vista.js';
 import { MARCA } from './marca.js';
+import { previaSync } from './vista_previa.js';
 
-const COLORES = ['#1d4ba8', '#0f766e', '#7c3aed', '#be185d', '#c2410c', '#15803d', '#0f172a', '#b45309'];
 const S = { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' };
 export const resetAj = () => Object.assign(S, { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' });
 const v = k => S[k] !== null && S[k] !== undefined ? S[k] : (k === 'usd' ? P.t.mostrar_usd : k === 'logo' ? P.t.logo_url : P.t[k]);
 const msgs = () => (S.err ? `<div class="err-box">${esc(S.err)}</div>` : '') + (S.msg ? `<div class="ok-box">${esc(S.msg)}</div>` : '');
 
-export function vistaTienda() {
-  const c = v('color'), tema = v('tema'), logo = S.logo !== undefined ? S.logo : P.t.logo_url;
-  const claro = tema === 'oscuro' ? ['#111827', '#f3f4f6', '#1f2937'] : ['#f5f7fb', '#111827', '#ffffff'];
-  return `${msgs()}<div class="grid2"><div class="cc"><h3>🎨 Estilo de tu tienda</h3>
-  <div class="fg"><label class="flabel">Nombre visible</label><input class="fi" maxlength="60" value="${esc(v('nombre'))}" data-input="aj-s" data-k="nombre"></div>
-  <div class="fg"><label class="flabel">Frase corta (opcional)</label><input class="fi" maxlength="90" value="${esc(v('eslogan') || '')}" data-input="aj-s" data-k="eslogan" placeholder="Ej: Perfumería mayorista en Posadas"></div>
-  <div class="fg"><label class="flabel">Color principal</label><div class="swatch">${COLORES.map(x => `<button type="button" style="background:${x}" class="${c.toLowerCase() === x ? 'on' : ''}" data-act="aj-color" data-c="${x}" aria-label="Color ${x}"></button>`).join('')}<input type="color" value="${esc(c)}" data-input="aj-colorp" aria-label="Elegir otro color" style="width:34px;height:34px;border:none;background:none;padding:0"></div></div>
-  <div class="fg"><label class="flabel">Tema</label><div class="seg">${[['auto', 'Automático'], ['claro', 'Claro'], ['oscuro', 'Oscuro']].map(([k, n]) => `<button type="button" class="${tema === k ? 'on' : ''}" data-act="aj-tema" data-k="${k}">${n}</button>`).join('')}</div></div>
-  <div class="fg"><label class="flabel">Logo</label>${logo ? `<img src="${esc(logo)}" alt="Logo actual" style="height:48px;border-radius:8px;display:block;margin-bottom:6px">` : ''}<input type="file" accept="image/*" data-change="aj-logo" aria-label="Subir logo">${logo ? '<button class="btn btn-s btn-sm" style="margin-top:6px" data-act="aj-nologo">Quitar logo</button>' : ''}</div>
-  <div class="fg"><label class="flabel"><input type="checkbox" data-change="aj-usd" ${v('usd') ? 'checked' : ''} ${can('usd') ? '' : 'disabled'}> Mostrar también el precio en dólares${aviso('usd')}</label></div>
-  <button class="btn btn-p" data-act="aj-guardar-estilo">Guardar estilo</button></div>
-  <div class="cc"><h3>Vista previa</h3><div id="prev-tienda" style="border-radius:14px;overflow:hidden;border:1px solid var(--bd);background:${claro[0]};color:${claro[1]}"><div style="background:${esc(c)};color:#fff;padding:14px;display:flex;gap:10px;align-items:center">${logo ? `<img src="${esc(logo)}" alt="" style="height:36px;border-radius:6px;background:#fff">` : ''}<div><b>${esc(v('nombre'))}</b><div style="font-size:.78rem;opacity:.9">${esc(v('eslogan') || '')}</div></div></div>
-  <div style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">${[['Perfume árabe 100ml', 17600], ['Crema hidratante', 9800]].map(([n, p]) => `<div style="background:${claro[2]};border:1px solid rgba(128,128,128,.25);border-radius:10px;padding:8px"><div style="height:46px;border-radius:8px;background:${esc(c)};opacity:.85;margin-bottom:6px"></div><div style="font-size:.78rem">${n}</div><b>${fmt(p)}</b><div style="margin-top:6px;background:${esc(c)};color:#fff;border-radius:8px;text-align:center;font-size:.75rem;padding:5px">+ Agregar</div></div>`).join('')}</div></div></div></div>`;
+// v2.26: los datos de la tarjeta 🎨 Estilo de la pestaña Tienda (el color y el fondo los dan las paletas de diseno.js)
+export function estiloCampos() {
+  const logo = S.logo !== undefined ? S.logo : P.t.logo_url;
+  return `${msgs()}<div class="fg"><label class="flabel" for="aj-nom">Nombre visible</label><input class="fi" id="aj-nom" maxlength="60" value="${esc(v('nombre'))}" data-input="aj-s" data-k="nombre"></div>
+  <div class="fg"><label class="flabel" for="aj-esl">Frase corta (opcional)</label><input class="fi" id="aj-esl" maxlength="90" value="${esc(v('eslogan') || '')}" data-input="aj-s" data-k="eslogan" placeholder="Ej: Perfumería mayorista en Posadas"></div>
+  <div class="fg"><span class="flabel">Logo</span>${logo ? `<img src="${esc(logo)}" alt="Logo actual" style="height:48px;border-radius:8px;display:block;margin-bottom:6px">` : ''}<label class="filebtn">🖼️ ${logo ? 'Cambiar logo' : 'Subir logo'}<input type="file" accept="image/*" data-change="aj-logo" aria-label="Subir logo"></label>${logo ? ' <button class="btn btn-s btn-sm" data-act="aj-nologo">Quitar logo</button>' : ''}</div>
+  <div class="fg"><label class="flabel"><input type="checkbox" data-change="aj-usd" ${v('usd') ? 'checked' : ''} ${can('usd') ? '' : 'disabled'}> Mostrar también el precio en dólares${aviso('usd')}</label></div>`;
 }
-on('aj-s', (d, el) => { S[d.k] = el.value; const p = $('#prev-tienda b'); if (d.k === 'nombre' && p) p.textContent = el.value; });
+export const estiloSucio = () => ['nombre', 'eslogan', 'usd'].some(k => S[k] !== null && S[k] !== undefined) || S.logo !== undefined;
+export const borradorEstilo = () => ({ nombre: String(v('nombre') || '').trim() || P.t.nombre, eslogan: String(v('eslogan') || '').trim() || null, logo_url: S.logo !== undefined ? S.logo : P.t.logo_url, mostrar_usd: !!v('usd') && can('usd') });
+export const estiloAviso = (m, e) => { S.msg = m || ''; S.err = e || ''; };
+export const resetEstilo = () => Object.assign(S, { color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined });
+on('aj-s', (d, el) => { S[d.k] = el.value; previaSync(); });
 on('aj-color', d => { S.color = d.c; P.repintar(); });
 on('aj-colorp', (d, el) => { S.color = el.value; clearTimeout(on.tc); on.tc = setTimeout(() => P.repintar(), 250); });
 on('aj-tema', d => { S.tema = d.k; P.repintar(); });
-on('aj-usd', (d, el) => { S.usd = el.checked; });
+on('aj-usd', (d, el) => { S.usd = el.checked; previaSync(); });
 on('aj-nologo', () => { S.logo = null; P.repintar(); });
 on('aj-logo', async (d, el) => {
   try { const f = el.files[0]; if (!f) return; const b = await redimensionar(f, 400); S.logo = await api.subirFoto(P.t.id, b, 'logo-' + Date.now()); S.err = ''; } catch (e) { S.err = e.message; }

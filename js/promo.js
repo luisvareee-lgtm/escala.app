@@ -77,3 +77,31 @@ export function promosDelPedido(items, nombre = i => i.nombre_snapshot || i.nomb
   });
   return [...m.values()];
 }
+
+/* ---------- v2.26: descuento por monto del carrito, cupones y qué promo vale para cada producto ---------- */
+// {"escalones": [{"desde": 100000, "pct": 10}, …]} (igual que monto_ok en la base)
+export function montoOk(x) {
+  const e = x && Array.isArray(x.escalones) ? x.escalones : null; if (!e || e.length < 1 || e.length > 3) return false;
+  return e.every((s, i) => s && isFinite(+s.desde) && isFinite(+s.pct) && +s.desde >= 1 && +s.desde <= 1e8 && +s.pct >= 1 && +s.pct <= 50
+    && e.slice(0, i).every(f => +f.desde < +s.desde && +f.pct <= +s.pct));
+}
+// el escalón alcanzado con ese total (o null) y el siguiente (para "te faltan $X")
+export function montoEscalon(x, total) {
+  if (!montoOk(x)) return { act: null, sig: null };
+  const e = x.escalones.slice().sort((a, b) => a.desde - b.desde);
+  return { act: e.filter(s => +s.desde <= total).pop() || null, sig: e.find(s => +s.desde > total) || null };
+}
+export const montoDesc = (x, total) => { const { act } = montoEscalon(x, Number(total) || 0); return act ? pctDe(Number(total), +act.pct) : 0; };
+export const montoTxt = x => montoOk(x) ? x.escalones.map(s => `superando ${fmt(s.desde)}: ${num(s.pct)} % off`).join(' · ') : '';
+// cupón: % sobre lo que no tiene otro descuento, $ (hasta ese total) o envío gratis
+export const cuponDesc = (c, base) => !c || !(base > 0) ? 0 : c.tipo === 'pct' ? pctDe(base, +c.valor) : c.tipo === 'monto' ? Math.min(+c.valor, base) : 0;
+export const cuponTxt = c => !c ? '' : c.tipo === 'pct' ? `${num(c.valor)} % off` : c.tipo === 'monto' ? `${fmt(c.valor)} off` : 'envío gratis';
+// Promociones del panel: la que vale hoy para un producto (igual que promo_vigente en la base)
+export const vigente = (r, ahora = Date.now()) => !!r && r.activa !== false && (!r.desde_at || new Date(r.desde_at).getTime() <= ahora) && (!r.hasta_at || ahora < new Date(r.hasta_at).getTime());
+const nivel = r => r.alcance === 'productos' ? 1 : r.alcance === 'categoria' ? 2 : 3;
+export function promoDeProducto(p, reglas, ahora) {
+  if (!p || (Array.isArray(p.combo) && p.combo.length)) return null;
+  const L = (reglas || []).filter(r => r.tipo === 'cantidad' && vigente(r, ahora) && (r.alcance === 'productos' ? (r.productos || []).includes(p.id) : r.alcance === 'categoria' ? r.categoria === p.categoria : true));
+  L.sort((a, b) => nivel(a) - nivel(b) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  return L[0] || null;
+}

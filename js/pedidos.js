@@ -7,6 +7,8 @@ import { imprimir } from './catalogo.js';
 import { promoTxt, promosDelPedido } from './promo.js';
 // v2.25: cada renglón muestra su precio de lista y la promo va aparte (sumada por producto, aunque tenga varios talles)
 const bruto = i => Number(i.subtotal) + (Number(i.descuento) || 0);
+// v2.26: el descuento general del pedido (cupón o descuento por monto)
+const descFilas = (o, fila) => (+o.descuento_monto > 0 ? fila('🎁 Descuento por monto', '−' + fmt(o.descuento_monto)) : '') + (o.cupon_codigo ? fila(`🎟️ Cupón ${esc(o.cupon_codigo)}`, +o.descuento_cupon > 0 ? '−' + fmt(o.descuento_cupon) : 'envío gratis') : '');
 const promoFilas = (it, fila) => promosDelPedido(it).map(x => fila(`🎁 ${esc(promoTxt(x.promo) || 'Promo')} · ${esc(x.nombre)}`, '−' + fmt(x.d))).join('');
 
 export const ETAPA = {
@@ -81,7 +83,7 @@ const wa = (o, k, txt, cls = 'btn-wa') => `<a class="btn ${cls}" target="_blank"
 
 export function modalPedido(m) {
   const o = m.o, it = m.items || [], rv = P.revs.find(r => r.id === o.sub_revendedor_id), e = etapaDe(o), canc = e === 'cancelado';
-  const sub = it.reduce((s, i) => s + Number(i.subtotal), 0), env = Number(o.envio_costo || 0);
+  const sub = it.reduce((s, i) => s + Number(i.subtotal), 0) - (+o.descuento_monto || 0) - (+o.descuento_cupon || 0), env = Number(o.envio_costo || 0);
   const idx = CAMINO.indexOf(e === 'en_espera' || e === 'listo' ? 'confirmado' : e);
   const pasos = CAMINO.map((k, i) => `<li class="${canc ? '' : i < idx ? 'hecho' : i === idx ? (e === 'en_espera' ? 'espera' : 'actual') : ''}"><span>${i === idx && e === 'listo' ? ETAPA.listo[0] : ETAPA[k][0]}</span>${i === idx && e === 'en_espera' ? 'En espera' : i === idx && e === 'listo' ? 'Listo' : ETAPA[k][1]}</li>`).join('');
   const sig = canc || e === 'entregado' ? [] : e === 'nuevo' ? ['confirmado', 'en_espera'] : e === 'confirmado' ? ['despachado', 'en_espera'] : e === 'en_espera' ? ['listo', 'confirmado', 'despachado'] : e === 'listo' ? ['despachado', 'entregado'] : ['entregado'];
@@ -93,7 +95,7 @@ export function modalPedido(m) {
   ${o.nota_cliente ? `<br>💬 <i>${esc(o.nota_cliente)}</i>` : ''}
   ${rv ? `<br><span class="tag">Vendió: ${esc(rv.nombre)} · comisión ${fmt(o.comision_ars)}</span>` : ''}</p>
   <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}${i.recibido_at ? ' <span class="tag ok">llegó</span>' : ''}</span><span class="v">${fmt(bruto(i))}</span></div>`).join('')}
-  ${promoFilas(it, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}
+  ${promoFilas(it, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}${descFilas(o, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}
   ${env || o.envio_nombre ? `<div class="srow"><span class="muted">Productos</span><span class="v">${fmt(sub)}</span></div><div class="srow"><span class="muted">Envío${o.envio_nombre ? ' · ' + esc(o.envio_nombre) : ''}</span><span class="v">${env ? fmt(env) : 'Gratis'}</span></div>` : ''}
   <div class="srow tot"><span>Total</span><span class="v">${fmt(o.total_ars)}</span></div></div>
   ${sig.length ? `<div class="flabel" style="margin-top:6px">Pasar a</div><div class="ped-acc">${sig.map(k => `<button class="btn ${k === 'en_espera' ? 'btn-s' : 'btn-p'} btn-sm" data-act="pd-etapa" data-id="${o.id}" data-e="${k}">${ETAPA[k][0]} ${ETAPA[k][1]}</button>`).join('')}</div>` : ''}
@@ -113,14 +115,14 @@ export function modalPedido(m) {
 
 const ubic = o => [o.localidad, o.provincia, o.codigo_postal ? 'CP ' + o.codigo_postal : ''].filter(Boolean).join(' · ');
 function remito(o, it) {
-  const t = P.t, sub = it.reduce((s, i) => s + Number(i.subtotal), 0), env = Number(o.envio_costo || 0);
+  const t = P.t, sub = it.reduce((s, i) => s + Number(i.subtotal), 0) - (+o.descuento_monto || 0) - (+o.descuento_cupon || 0), env = Number(o.envio_costo || 0);
   return `<div class="catp remito" style="--pc:${esc(t.color)}"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div><h1>${esc(t.nombre)}</h1><div>WhatsApp +${esc(t.whatsapp)}</div></div>
   <div style="text-align:right"><b style="font-size:16px">REMITO · Pedido #${o.numero}</b><div>${hora(o.created_at)}</div><div>${ETAPA[etapaDe(o)][1]} · ${o.estado === 'cobrado' ? 'Cobrado' : o.estado === 'pendiente' ? 'Pendiente de cobro' : 'Cancelado'}</div></div></div>
   <h2>Cliente</h2><div><b>${esc(o.cliente_nombre)}</b> · +${esc(o.cliente_whatsapp)}${o.cliente_dni ? ' · DNI/CUIT ' + esc(o.cliente_dni) : ''}${ubic(o) ? ' · ' + esc(ubic(o)) : ''}</div>${o.nota_cliente ? `<div>Aclaraciones: ${esc(o.nota_cliente)}</div>` : ''}
   ${o.envio_nombre ? `<div>Entrega: ${esc(o.envio_nombre)}${o.direccion ? ' · ' + esc(o.direccion) : ''}${o.seguimiento ? ' · Seguimiento: ' + esc(o.seguimiento) : ''}</div>` : ''}
   <h2>Detalle</h2><table><thead><tr><th>Cant.</th><th>Producto</th><th class="r">Unitario</th><th class="r">Subtotal</th></tr></thead><tbody>
   ${it.map(i => `<tr><td>${i.cantidad}</td><td>${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</td><td class="r">${fmt(i.precio_unitario)}</td><td class="r">${fmt(bruto(i))}</td></tr>`).join('')}
-  ${promoFilas(it, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}
+  ${promoFilas(it, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}${descFilas(o, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}
   ${o.envio_nombre ? `<tr><td></td><td>Productos</td><td></td><td class="r">${fmt(sub)}</td></tr><tr><td></td><td>Envío · ${esc(o.envio_nombre)}</td><td></td><td class="r">${env ? fmt(env) : 'Gratis'}</td></tr>` : ''}
   <tr><td></td><td><b>TOTAL</b></td><td></td><td class="r"><b>${fmt(o.total_ars)}</b></td></tr></tbody></table>
   <p style="margin-top:8px">Pago: ${esc(o.medio_pago)}${t.alias_cobro && o.estado === 'pendiente' ? ' · Alias: ' + esc(t.alias_cobro) : ''}</p>

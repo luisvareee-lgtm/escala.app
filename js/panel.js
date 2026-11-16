@@ -7,21 +7,22 @@ import { vistaImportar, resetImp } from './imp_ui.js';
 import { vistaCatalogo } from './catalogo.js';
 import { vistaPrecios } from './precios.js';
 import { vistaEquipo } from './equipo.js';
-import { vistaTienda, vistaAjustes, resetAj } from './ajustes.js';
+import { vistaAjustes, resetAj } from './ajustes.js';
 import { redimensionar } from './img.js';
 import { fichaDesdeEnlace, promptFoto, limpiarNombre } from './webprov.js';
 import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
 import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
-import { vistaEnviosDiseno, resetDis } from './diseno.js';
+import { resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
 import { demoPendienteHtml, filasDemo, descartarDemo } from './demo.js';
-import { hayPromo, promoSecHtml, promoDe, promoChip, usarPrecio } from './promo_ui.js';
+import { hayPromo, promoSecHtml, promoDe, promoChip, usarPrecio, propiaDe } from './promo_ui.js';
+import { vistaTiendaTab, trasPintarTienda, irSeccion, resetTT } from './tienda_tab.js';
+import { promosModal, usarPrecioPromo } from './promos_hub.js';
 import { abrirFlyer } from './flyer.js';
 import { recepcionModal } from './recepcion.js';
-import { cierreCard } from './cierre.js';
 import { activarApp, instalarHtml } from './instalar.js';
 import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiarSel } from './productos.js';
 import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundadores.js';
@@ -48,8 +49,9 @@ export async function mostrarPanel(app) {
   // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
   const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
   Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); resetAvisos(); P.gastos = [];
-  P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; Q.fly = null;
+  P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; P.irSeccion = irSeccion; Q.fly = null; resetTT();
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
+  usarPrecioPromo(p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, pr.min); });   // promos: precio al público
   await cargar();
   if (qp) { const o = P.pedidos.find(x => x.id === qp); if (o) { P.tab = 'pedidos'; P.modal = { tipo: 'ped', o, items: P.items.filter(i => i.order_id === o.id) }; } }
   if (Q.stop) Q.stop();
@@ -60,17 +62,21 @@ async function cargar() {
   const r = await Promise.allSettled([api.misProductos(), api.pedidosTodos(), api.itemsTodos(), api.misCarritos(), api.misRevendedores(), api.misProveedores()]);
   [P.prods, P.pedidos, P.items, P.carritos, P.revs, P.provs] = r.map(x => x.value || []);
   const f = r.find(x => x.status === 'rejected'); if (f) toast(f.reason.message);
+  // v2.26: Promociones y cupones (null = la base todavía no tiene la migración 21)
+  const [pr, cu] = await Promise.allSettled([api.misPromos(), api.misCupones()]);
+  P.promos = pr.status === 'fulfilled' ? pr.value || [] : null; P.cupones = cu.status === 'fulfilled' ? cu.value || [] : null;
 }
 async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.all([api.pedidosTodos(), api.itemsTodos()]); P.t = await api.miTienda() || P.t; P.prods = await api.misProductos(); } catch (e) { } }
 
 function pintar() {
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: () => vistaTienda() + cierreCard() + vistaEnviosDiseno(), ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
+  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
     <div class="page wide" style="padding-top:16px">${avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
+  trasPintarTienda();
 }
 
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
@@ -169,6 +175,7 @@ function modal() {
   if (m.tipo === 'planes') return planesHtml(m);
   if (m.tipo === 'imp') return vistaImportar();
   if (m.tipo === 'cat') return vistaCatalogo();
+  if (String(m.tipo).startsWith('ph-')) return promosModal(m);
   if (m.tipo === 'prod') {
     const p = m.p || {}, foto = m.foto !== undefined ? m.foto : p.imagen_url;
     if (!m.combo) m.combo = Array.isArray(p.combo) ? p.combo.map(c => ({ id: c.id, cant: +c.cant || 1 })) : [];
@@ -188,7 +195,7 @@ function modal() {
     <div class="fg"><label class="flabel">Margen propio % para este producto (vacío = el general)</label><input class="fi" name="margen_propio" type="number" min="0" max="900" step="any" value="${p.margen_override != null ? Math.round(Number(p.margen_override) * 10000) / 100 : ''}" data-input="p-prev" placeholder="General: ${Math.round(Number(P.t.margen_1) * 100)}%"></div>
     ${(P.t.modo_stock || 'stock') !== 'stock' ? `<div class="fg">${P.t.modo_stock === 'mixto' ? `<label class="flabel"><input type="checkbox" name="a_pedido" ${p.a_pedido ? 'checked' : ''}> Por encargo (no lo tengo en stock: lo compro cuando me lo piden)</label>` : '<div class="hint">Tu tienda trabaja por encargo: este producto se vende aunque no tengas stock.</div>'}
       <label class="flabel" for="p-dem" style="margin-top:6px">Demora propia en días (vacío = ${Number(P.t.demora_encargo || 7)})</label><input class="fi" id="p-dem" name="demora_dias" type="number" min="1" max="120" value="${p.demora_dias || ''}"></div>` : ''}
-    ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel" for="p-pvp">Precio sugerido de venta al público $ (opcional)</label><input class="fi" id="p-pvp" name="pvp_sugerido" type="number" min="0" step="any" value="${p.pvp_sugerido != null ? Number(p.pvp_sugerido) : ''}" placeholder="Vacío = lo calcula la app"><div class="hint">Es a cuánto puede venderlo tu cliente revendedor. Se usa en “Tu ganancia” (Tienda → Reglas).</div></div>` : ''}
+    ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel" for="p-pvp">Precio sugerido de venta al público $ (opcional)</label><input class="fi" id="p-pvp" name="pvp_sugerido" type="number" min="0" step="any" value="${p.pvp_sugerido != null ? Number(p.pvp_sugerido) : ''}" placeholder="Vacío = lo calcula la app"><div class="hint">Es a cuánto puede venderlo tu cliente revendedor. Se usa en “Tu ganancia” (Tienda → 🚚 Envíos y pagos).</div></div>` : ''}
     <div class="flabel">Así lo ve tu cliente</div><div class="pprev" id="pprev">${prevHtml(p.costo_usd, p.margen_override)}</div>
     <div class="fg"><label class="flabel">Descripción</label><textarea class="fi" name="descripcion" rows="2" maxlength="2000">${esc(p.descripcion || '')}</textarea></div>
     ${hayV216() ? `<details class="pm-sec"${Number(p.oferta_pct) > 0 ? ' open' : ''}><summary>🏷️ Oferta con fechas</summary>
@@ -340,13 +347,14 @@ on('p-prod', async (d, f) => {
       datos.precio_unico = true; datos.stock = null;
     } else { datos.combo = null; datos.combo_desc = 0; }
   }
-  if (hayPromo()) {   // promo por cantidad (v2.25): un combo no lleva (ya tiene su descuento)
-    if (datos.combo) datos.promo = null;
-    else if (document.querySelector('#pm-pr')) { try { datos.promo = promoDe(fd); } catch (e) { return mm(e.message); } }
-  }
+  // promo propia del producto (v2.26: vive en Promociones; un combo no lleva porque ya tiene su descuento)
+  const conPromo = hayPromo() && !datos.combo && !!document.querySelector('#pm-pr'); let promoNueva = null;
+  if (conPromo) { try { promoNueva = promoDe(fd); } catch (e) { return mm(e.message); } }
   try {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
-    await api.guardarProducto(id, datos); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');
+    const g = await api.guardarProducto(id, datos), pid = id || (g && g.id), antes = id ? propiaDe(p0) : null;
+    if (conPromo && pid && JSON.stringify(antes ? antes.regla : null) !== JSON.stringify(promoNueva)) { await api.promoProducto(pid, promoNueva); P.promos = await api.misPromos(); }
+    P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');
   } catch (e) { mm(/stock_talles/.test(e.message) ? 'Para guardar el stock por talle falta correr la migración v2.24 en Supabase.' : /promo/.test(e.message) ? 'Revisá la promo por cantidad (o corré la migración v2.25 en Supabase).' : e.message); }
 });
 on('p-borrar', async (d, b) => { if (!confirmar(b, '¿Eliminar? Tocá de nuevo para confirmar')) return; try { await api.borrarProducto(d.id); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Eliminado'); } catch (e) { mm(e.message); } });
