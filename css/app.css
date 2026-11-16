@@ -1485,3 +1485,9 @@ body.vp-dock #ayuda-fab{right:436px}
 .prev-foco{outline:3px solid var(--ac);outline-offset:3px;border-radius:10px;animation:prevFoco 1.8s ease-out}
 @keyframes prevFoco{0%{outline-color:transparent}20%{outline-color:var(--ac)}100%{outline-color:transparent}}
 @media (prefers-reduced-motion:reduce){.prev-foco{animation:none}}
+/* v2.27 · herramientas según lo que vendés */
+.ph-sug{margin:-2px 0 8px;font-size:.82rem;color:var(--t2)}
+.ph-lock{margin:10px 0 2px;padding:12px 14px;border:1px dashed var(--bd);border-radius:12px;background:var(--bg);font-size:.86rem;line-height:1.45;color:var(--t2)}
+.ph-lock p{margin:0 0 8px}
+.ph-lock b{color:var(--t1)}
+.aj-sug{margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--acs);font-size:.84rem;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
