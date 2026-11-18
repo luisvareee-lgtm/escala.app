@@ -2,9 +2,9 @@
 import { esc, fmt, on, $ } from './util.js';
 import { P, can, precioArs } from './state.js';
 
-export function htmlCatalogo({ nombre, logo, color, eslogan, titulo, nota, grupos, conStock }) {
+export function htmlCatalogo({ nombre, logo, color, eslogan, titulo, nota, grupos, conStock, conSku = true }) {
   return `<div class="catp" style="--pc:${esc(color || '#1d4ba8')}"><div style="display:flex;gap:12px;align-items:center">${logo ? `<img src="${esc(logo)}" alt="" style="height:44px;border-radius:6px">` : ''}<div><h1>${esc(nombre)}</h1><div style="color:#555;font-size:12px">${esc(eslogan || '')}</div></div><div style="margin-left:auto;text-align:right;font-size:12px"><b>${esc(titulo)}</b><br>${new Date().toLocaleDateString('es-AR')}</div></div>
-  ${grupos.map(g => `<h2>${esc(g.cat)}</h2><table><tr><th style="width:70px">Código</th><th>Producto</th>${conStock ? '<th>Stock</th>' : ''}<th class="r" style="width:90px">Precio</th></tr>${g.filas.map(f => `<tr><td>${esc(f.sku || '')}</td><td>${esc(f.nombre)}${f.variantes && f.variantes.length ? ' <span style="color:#777">(' + esc(f.variantes.join(', ')) + ')</span>' : ''}</td>${conStock ? `<td>${esc(f.stock)}</td>` : ''}<td class="r"><b>${fmt(f.precio)}</b></td></tr>`).join('')}</table>`).join('')}
+  ${grupos.map(g => `<h2>${esc(g.cat)}</h2><table><tr>${conSku ? '<th style="width:70px">Código</th>' : ''}<th>Producto</th>${conStock ? '<th>Stock</th>' : ''}<th class="r" style="width:90px">Precio</th></tr>${g.filas.map(f => `<tr>${conSku ? `<td>${esc(f.sku || '')}</td>` : ''}<td>${esc(f.nombre)}${f.variantes && f.variantes.length ? ' <span style="color:#777">(' + esc(f.variantes.join(', ')) + ')</span>' : ''}</td>${conStock ? `<td>${esc(f.stock)}</td>` : ''}<td class="r"><b>${fmt(f.precio)}</b></td></tr>`).join('')}</table>`).join('')}
   <p style="margin-top:14px;font-size:10px;color:#666">${esc(nota || 'Precios sujetos a cambio sin previo aviso.')}</p></div>`;
 }
 export function imprimir(html) {

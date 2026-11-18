@@ -28,11 +28,11 @@ export function pantallaRegistro(app) {
     <div class="fg"><label class="flabel" for="p">Contraseña (mínimo 8 caracteres)</label><input class="fi" id="p" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Crear cuenta gratis</button></form>
     <p class="hint center" style="margin-top:10px">Al crear tu cuenta aceptás los <a href="#/terminos">Términos y condiciones</a> y la <a href="#/privacidad">Política de privacidad</a>.</p>
-    <p class="hint center" style="margin-top:8px">7 días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
+    <p class="hint center" style="margin-top:8px"><span class="dias-prueba">14</span> días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
   cargarCupos();
 }
-export function pantallaOlvide(app) {
-  app.innerHTML = caja('Recuperar contraseña', `<div id="m"></div><form data-submit="a-olvide"><div class="fg"><label class="flabel" for="e">Tu email</label><input class="fi" id="e" name="email" type="email" required></div><button class="btn btn-p" type="submit" id="go">Enviarme el enlace</button></form>`);
+export function pantallaOlvide(app, aviso) {
+  app.innerHTML = caja('Recuperar contraseña', `<div id="m">${aviso ? err(aviso) : ''}</div><form data-submit="a-olvide"><div class="fg"><label class="flabel" for="e">Tu email</label><input class="fi" id="e" name="email" type="email" required></div><button class="btn btn-p" type="submit" id="go">Enviarme el enlace</button></form>`);
 }
 export function pantallaNuevaClave(app) {
   app.innerHTML = caja('Elegí una contraseña nueva', `<div id="m"></div><form data-submit="a-clave"><div class="fg"><label class="flabel" for="p">Nueva contraseña</label><input class="fi" id="p" name="password" type="password" minlength="8" required></div><button class="btn btn-p" type="submit" id="go">Guardar</button></form>`);
@@ -63,8 +63,8 @@ on('a-registro', (d, f) => envio(f, 'Creando…', async fd => {
   const r = await api.registrar(fd.get('email').trim(), fd.get('password'));
   if (r && r.session) irPanel(); else msg('#m', 'Cuenta creada. Revisá tu email para confirmarla y después ingresá.', true);
 }));
-on('a-olvide', (d, f) => envio(f, 'Enviando…', async fd => { await api.olvide(fd.get('email').trim()); msg('#m', 'Si el email existe, te enviamos un enlace.', true); }));
-on('a-clave', (d, f) => envio(f, 'Guardando…', async fd => { await api.nuevaClave(fd.get('password')); toast('Contraseña actualizada'); irPanel(); }));
+on('a-olvide', (d, f) => envio(f, 'Enviando…', async fd => { await api.olvide(fd.get('email').trim()); msg('#m', 'Si el email tiene una cuenta, te mandamos un enlace (revisá también spam y promociones). Abrilo en la próxima hora: sirve una sola vez.', true); }));
+on('a-clave', (d, f) => envio(f, 'Guardando…', async fd => { await api.nuevaClave(fd.get('password')); toast('Contraseña actualizada'); history.replaceState(null, '', location.pathname + '#/panel'); irPanel(); }));
 on('a-slug', (d, el) => { const s = $('#s'); if (s && !s.dataset.tocado) { s.value = slugify(el.value); } $('#slv').textContent = (s && s.value) || 'tu-negocio'; });
 document.addEventListener('input', e => { if (e.target.id === 's') { e.target.dataset.tocado = 1; const v = $('#slv'); if (v) v.textContent = e.target.value || 'tu-negocio'; } });
 on('a-tienda', (d, f) => envio(f, 'Creando…', async fd => {

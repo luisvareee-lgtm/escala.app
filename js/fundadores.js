@@ -29,9 +29,12 @@ export function pruebaFrase(t) {
 /* ---------- cupos de fundadores (portada y registro) ---------- */
 export const cuposHtml = () => '<p class="fund-cupos" id="fund-cupos" hidden></p>';
 export async function cargarCupos() {
-  const el = document.getElementById('fund-cupos'); if (!el) return;
+  const el = document.getElementById('fund-cupos'); if (!el && !document.querySelector('.dias-prueba')) return;
   try {
-    const c = await api.cupos(); if (!c || !(c.quedan > 0)) return;
+    const c = await api.cupos(); if (!c) return;
+    // los días de la prueba común salen de la configuración (Administración → Programa Fundadores)
+    if (+c.prueba_dias > 0) document.querySelectorAll('.dias-prueba').forEach(s => { s.textContent = +c.prueba_dias; });
+    if (!el || !(c.quedan > 0)) return;
     const meses = Math.round(c.dias / 30);
     el.innerHTML = `⭐ <b>Programa Fundadores:</b> quedan <b>${c.quedan} de ${c.total}</b> lugares con <b>${meses >= 2 ? meses + ' meses' : c.dias + ' días'} gratis</b> y todo desbloqueado.`;
     el.hidden = false;

@@ -1,6 +1,25 @@
 // Toda la comunicación con Supabase pasa por acá.
 import { CONFIG } from './config.js';
 
+// v2.28.1 · Enlaces del email (recuperar contraseña, confirmar cuenta). Antes el enlace volvía a "…/#/login" y Supabase
+// le pegaba atrás "#access_token=…&type=recovery": quedaba "#/login#access_token=…", el navegador no lo reconocía y la
+// persona caía en la portada sin poder poner la clave nueva. Acá se deja el fragmento limpio ANTES de crear el cliente
+// (así también funcionan los emails que ya se mandaron) y se recuerda si era una recuperación o si el enlace venció.
+export function leerEnlace() {
+  const v = { recupero: false, error: '', desc: '' };
+  try {
+    let h = location.hash || '';
+    const i = h.indexOf('#', 1);
+    if (i > 0 && /(access_token|error|error_code)=/.test(h.slice(i))) { h = h.slice(i); history.replaceState(history.state, '', location.pathname + location.search + h); }
+    const q = new URLSearchParams(h.replace(/^#/, '')), s = new URLSearchParams(location.search);
+    v.recupero = q.get('type') === 'recovery' || s.get('clave') === 'nueva';
+    v.error = q.get('error_code') || q.get('error') || s.get('error_code') || '';
+    v.desc = q.get('error_description') || s.get('error_description') || '';
+  } catch (e) { }
+  return v;
+}
+export const ENLACE = leerEnlace();
+
 export const sb = (window.__SB_TEST__) ? window.__SB_TEST__
   : window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
@@ -11,6 +30,9 @@ const amable = m => {
   if (/User already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Iniciá sesión.';
   if (/Email not confirmed/i.test(m)) return 'Falta confirmar tu email. Revisá tu casilla (y spam).';
   if (/Password should be at least/i.test(m)) return 'La contraseña debe tener al menos 8 caracteres.';
+  if (/should be different from the old password|same_password/i.test(m)) return 'Elegí una contraseña distinta a la anterior.';
+  if (/Auth session missing|session_not_found|JWT expired/i.test(m)) return 'El enlace venció. Pedí uno nuevo en “Olvidé mi contraseña”.';
+  if (/For security purposes|rate limit|over_email_send_rate_limit/i.test(m)) return 'Ya te mandamos un enlace hace poco. Esperá un minuto y probá de nuevo.';
   if (/rate limit|too many/i.test(m)) return 'Demasiados intentos. Esperá unos minutos.';
   if (/margenes_ordenados/.test(m)) return 'Los márgenes deben ir de mayor a menor: x1 ≥ x3 ≥ x6 ≥ x12.';
   if (/tenants_envios_chk/.test(m)) return 'Revisá los métodos de envío: cada uno necesita nombre (2 a 60 letras) y un costo válido.';
@@ -66,7 +88,8 @@ export const api = {
   registrar: async (email, password) => ok(await sb.auth.signUp({ email, password })),
   entrar: async (email, password) => ok(await sb.auth.signInWithPassword({ email, password })),
   salir: async () => { await sb.auth.signOut(); },
-  olvide: async email => ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '#/login' })),
+  // sin "#" en la vuelta: Supabase agrega los datos de la sesión en el fragmento (y ?clave=nueva avisa que es para cambiar la clave)
+  olvide: async email => ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?clave=nueva' })),
   nuevaClave: async password => ok(await sb.auth.updateUser({ password })),
 
   // ---- comerciante (RLS: solo ve lo suyo)

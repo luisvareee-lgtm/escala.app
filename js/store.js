@@ -201,6 +201,9 @@ export async function mostrarTienda(slug, app) {
   } catch (e) { app.innerHTML = '<div class="page"><div class="err-box">' + esc(e.message) + '</div></div>'; return; }
   S.previa = PREVIA;
   S.cart = S.previa ? [] : (store.get('cart:' + slug, []) || []).filter(l => l && prod(l.id));
+  // v2.29: vista elegida (tarjetas o pedido rápido), aviso de pedido sin terminar y el último pedido de este celular
+  S.vmodo = store.get('vm:' + slug, 'tarj') === 'tabla' ? 'tabla' : 'tarj'; S.avisoCart = !S.previa && S.cart.length > 0; S.ultOculto = false;
+  S.ult = S.previa ? null : store.get('ult:' + slug, null);
   try { const cp = new URLSearchParams(location.search).get('cupon'); if (cp && /^[A-Za-z0-9_-]{3,20}$/.test(cp)) S.cuponPend = cp.toUpperCase(); } catch (e) { }
   try { const pg = new URLSearchParams(location.search).get('pago'); S.avisoPago = ({ ok: '✅ ¡Gracias! Estamos confirmando tu pago con Mercado Pago. El comercio te avisa por WhatsApp.', pendiente: '⏳ Tu pago quedó pendiente. Cuando se acredite, el comercio lo confirma.', error: 'El pago no se completó. Podés volver a intentar o coordinar por WhatsApp.' })[pg] || ''; } catch (e) { S.avisoPago = ''; }
   try { const r = new URLSearchParams(location.search).get('r'); if (r && /^[A-Za-z0-9_-]{8,64}$/.test(r)) store.set('ref:' + slug, { r, ts: Date.now() }); const g = store.get('ref:' + slug, null); S.ref = g && g.r && Date.now() - g.ts < 30 * 864e5 ? g.r : null; } catch (e) { S.ref = null; }   // la atribución al revendedor vence a los 30 días
@@ -454,9 +457,9 @@ function banner() {
 const ORDEN = [['dest', 'Destacados'], ['menor', 'Menor precio'], ['mayor', 'Mayor precio'], ['az', 'A – Z']];
 function pantallaCat() {
   const c = lookDe(S.tienda.diseno).compacto, n = totales().n;
-  return `${banner()}${vitrinasHtml('arriba')}<div id="search-row"${c ? ' class="sr-c"' : ''}><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div>${c ? `<button type="button" class="sr-cart" data-act="st-ir" data-v="cart" aria-label="Mi pedido">🛒<span id="sr-n">${n || ''}</span></button>` : ''}</div>
+  return `${avisosCompra()}${banner()}${vitrinasHtml('arriba')}<div id="search-row"${c ? ' class="sr-c"' : ''}><div class="srch-wrap"><span class="srch-ico">🔍</span><input class="fi" id="srch" data-input="st-q" placeholder="Buscar producto…" value="${esc(S.q)}" aria-label="Buscar producto"></div>${c ? `<button type="button" class="sr-cart" data-act="st-ir" data-v="cart" aria-label="Mi pedido">🛒<span id="sr-n">${n || ''}</span></button>` : ''}</div>
     ${c ? `<div class="catalog-meta" id="cmeta"><span id="cm-n"></span><label class="cm-ord">Ordenar <select class="fi" data-change="st-orden" aria-label="Ordenar productos">${ORDEN.map(([k, t]) => `<option value="${k}" ${S.orden === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label></div>` : ''}
-    <div id="rubros"></div><div id="cats"></div><div id="pgrid"></div><div id="mas"></div>${vitrinasHtml('abajo')}${testimoniosHtml(S.tienda.diseno)}${faqHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="flybar" hidden></div><div id="cartbar" hidden></div></div><div class="cart-esp"></div>`;
+    <div id="rubros"></div><div id="cats"></div><div id="vmodo"></div><div id="pgrid"></div><div id="mas"></div>${vitrinasHtml('abajo')}${testimoniosHtml(S.tienda.diseno)}${faqHtml(S.tienda.diseno)}<div id="pdet-root"></div><div id="pop-root"></div><div class="cart-fixed"><div id="flybar" hidden></div><div id="cartbar" hidden></div></div><div class="cart-esp"></div>`;
 }
 on('st-orden', (d, el) => { S.orden = ORDEN.some(o => o[0] === el.value) ? el.value : 'dest'; S.limite = 60; pintarGrid(); });
 // encabezado compacto: la fila del buscador se esconde al bajar y vuelve apenas se sube
@@ -493,6 +496,11 @@ function pintarGrid() {
   if (cmp || separar) { const ix = p => separar ? rAct.cats.indexOf(p.categoria) : 0; lista = lista.map((p, i) => [p, i]).sort((a, b) => (ix(a[0]) - ix(b[0])) || (cmp ? cmp(a[0], b[0]) : 0) || a[1] - b[1]).map(x => x[0]); }
   if (cm) { cm.hidden = false; const n = $('#cm-n'); if (n) n.textContent = `Mostrando ${lista.length} ${lista.length === 1 ? 'producto' : 'productos'}`; }
   const m = vista(), esc_ = S.tienda.escalas_activas;
+  // v2.29 · ⚡ Pedido rápido: en la lista mayorista, una fila por producto para cargar cantidades sin scrollear fotos
+  const vmEl = $('#vmodo'), conTabla = m === 'may' && S.prods.length >= 6, tabla = conTabla && S.vmodo === 'tabla';
+  if (vmEl) vmEl.innerHTML = conTabla ? `<div class="vm-sw" role="group" aria-label="Cómo ver los productos"><button type="button" data-act="st-vmodo" data-v="tarj" class="${tabla ? '' : 'on'}" aria-pressed="${!tabla}">🖼️ Tarjetas</button><button type="button" data-act="st-vmodo" data-v="tabla" class="${tabla ? 'on' : ''}" aria-pressed="${tabla}">⚡ Pedido rápido</button></div>` : '';
+  g.classList.toggle('ptabla', tabla);
+  if (tabla && lista.length) { g.innerHTML = `<div class="tr-cab" aria-hidden="true"><span>Producto</span><span>Precio</span><span>Cantidad</span></div>` + lista.slice(0, S.limite).map(filaTabla).join(''); $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : ''; return; }
   if (!lista.length) { g.innerHTML = `<div style="grid-column:1/-1" class="empty"><div class="ico">🔍</div><p>No encontramos productos${rAct ? ' en ' + esc(rAct.titulo) : ''}.</p>${rAct && q ? '<button class="btn btn-s btn-sm" style="margin-top:8px" data-act="st-rubro" data-r="*">Buscar en todo el catálogo</button>' : ''}</div>`; $('#mas').innerHTML = ''; return; }
   const verCat = S.cat === 'Todas' && cats.length > 2 && !L.limpia && !separar;   // la etiqueta de categoría solo suma si hay varias
   let previa = null;
@@ -520,6 +528,52 @@ function pintarGrid() {
   $('#mas').innerHTML = lista.length > S.limite ? `<div class="more"><button class="btn btn-s" data-act="st-mas">Ver más (${lista.length - S.limite} restantes)</button></div>` : '';
   revelar();
 }
+// una fila del pedido rápido: mini foto, nombre y código, opción en línea, precio x12 (y x1 chico) y − [cantidad] +
+function filaTabla(p) {
+  const t = tramos(p), vars = p.variantes || [], vi = selVar(p), vr = vars[vi] || '', qv = vr ? qtyVar(p.id, vr) : qtyDe(p.id), tot = qtyDe(p.id);
+  const escalas = S.tienda.escalas_activas && t && !t.unico && t[12] < t[1];
+  const pr = escalas ? `<b>${fmt(t[12])}</b><small>c/u x12+ · x1 ${fmt(t[1])}</small>` : `<b>${fmt(t ? t[1] : p.precio_1)}</b><small>${t && t.unico ? 'precio único' : 'c/u'}</small>`;
+  const img = p.imagen_url ? `<span class="tr-img" style="${cssImg(p.imagen_url)}"></span>` : `<span class="tr-img tr-em">${esc(p.emoji || '📦')}</span>`;
+  const sel = vars.length ? `<select class="tr-var" data-change="st-tvar" data-id="${p.id}" aria-label="${esc(palP(p).w)} de ${esc(p.nombre)}">${vars.map((v, i) => `<option value="${i}" ${i === vi ? 'selected' : ''} ${varAgot(p, v) ? 'disabled' : ''}>${esc(v)}${varAgot(p, v) ? ' · sin stock' : ''}</option>`).join('')}</select>` : '';
+  const q = p.agotado ? '<span class="tr-agot">Agotado</span>' : pideTalles(p) ? `<button type="button" class="btn btn-s btn-sm" data-act="st-ver" data-id="${p.id}">Elegir</button>`
+    : `<div class="tr-q"><button type="button" class="qbtn" data-act="st-tq" data-id="${p.id}" data-d="-1" aria-label="Quitar uno de ${esc(p.nombre)}" ${qv ? '' : 'disabled'}>−</button><input class="tr-in" type="number" inputmode="numeric" min="0" max="9999" value="${qv || ''}" placeholder="0" data-change="st-tqin" data-id="${p.id}" aria-label="Cantidad de ${esc(p.nombre)}${vr ? ' ' + esc(vr) : ''}"><button type="button" class="qbtn" data-act="st-tq" data-id="${p.id}" data-d="1" aria-label="Sumar uno de ${esc(p.nombre)}">+</button></div>`;
+  return `<div class="tr-f${tot ? ' in' : ''}" data-id="${p.id}">${img}<div class="tr-n"><b data-act="st-ver" data-id="${p.id}">${esc(p.nombre)}</b>${p.sku ? `<small>#${esc(p.sku)}</small>` : ''}${sel}${vars.length && tot > qv ? `<small class="tr-tot">${tot} u. en total</small>` : ''}</div><div class="tr-p">${pr}</div>${q}</div>`;
+}
+// pone una cantidad exacta (desde la tabla) y vuelve a dejar el foco donde estaba
+function ponerCant(p, vr, q) {
+  q = Math.max(0, Math.min(9999, Math.floor(+q || 0)));
+  if (vr && q > 0 && varAgot(p, vr)) return toast(agotTxt(p));
+  const l = S.cart.find(x => x.id === p.id && x.vr === vr), antes = l ? l.qty : 0;
+  if (!q) { if (l) S.cart = S.cart.filter(x => x !== l); } else if (l) l.qty = q; else S.cart.push({ id: p.id, vr, qty: q });
+  S.foco = p.id; guardarCarrito(); if (q > antes) { evento('AddToCart', { content_name: p.nombre }); marcarAct('c', p.id); }
+  const a = document.activeElement, k = a && a.dataset && a.dataset.id ? `[data-id="${a.dataset.id}"]${a.dataset.act ? `[data-act="${a.dataset.act}"][data-d="${a.dataset.d}"]` : a.dataset.change ? `[data-change="${a.dataset.change}"]` : ''}` : '';
+  refrescar();
+  if (k) { const e = document.querySelector('#pgrid ' + k); if (e && !e.disabled) { e.focus(); if (e.select) e.select(); } }
+}
+on('st-vmodo', d => { S.vmodo = d.v === 'tabla' ? 'tabla' : 'tarj'; store.set('vm:' + S.slug, S.vmodo); S.limite = 60; pintarGrid(); });
+on('st-tvar', (d, el) => { const p = prod(d.id); if (!p) return; S.sel[d.id] = +el.value; pintarGrid(); const e = document.querySelector(`#pgrid [data-change="st-tqin"][data-id="${d.id}"]`); if (e) e.focus(); });
+on('st-tq', d => { const p = prod(d.id); if (!p || p.agotado) return; const vr = (p.variantes || [])[selVar(p)] || ''; ponerCant(p, vr, (vr ? qtyVar(p.id, vr) : qtyDe(p.id)) + Number(d.d)); });
+on('st-tqin', (d, el) => { const p = prod(d.id); if (!p || p.agotado) return; const vr = (p.variantes || [])[selVar(p)] || ''; ponerCant(p, vr, el.value); });
+
+/* ---------- v2.29 · pedido sin terminar y "Repetir mi último pedido" (todo queda en este celular) ---------- */
+const ultDisp = () => { const u = S.ult; if (!u || !Array.isArray(u.items)) return []; return u.items.filter(l => { const p = prod(l.id), v = p && p.variantes || []; return p && !p.agotado && (l.vr ? v.includes(l.vr) && !varAgot(p, l.vr) : !v.length); }); };
+const cuando = ts => { const d = Math.floor((Date.now() - ts) / 864e5); return d < 1 ? 'hoy' : d === 1 ? 'ayer' : d < 30 ? `hace ${d} días` : new Date(ts).toLocaleDateString('es-AR'); };
+function avisosCompra() {
+  if (S.previa) return '';
+  if (S.avisoCart && S.cart.length) { const T = totales(); return `<div class="st-ret"><span>🛒 <b>Tenés un pedido sin terminar</b> · ${T.n} u. · ${fmt(T.final)}</span><button type="button" class="btn btn-p btn-sm" data-act="st-ir" data-v="cart">Seguir con mi pedido</button><button type="button" class="st-ret-x" data-act="st-ret-x" aria-label="Cerrar el aviso">✕</button></div>`; }
+  const L = !S.cart.length && !S.ultOculto ? ultDisp() : [];
+  return L.length ? `<div class="st-ret"><span>🔁 <b>¿Repetís tu último pedido?</b> · ${cuando(S.ult.at)} · ${L.length} ${L.length === 1 ? 'producto' : 'productos'}</span><button type="button" class="btn btn-s btn-sm" data-act="st-repetir">Repetir</button><button type="button" class="st-ret-x" data-act="st-ret-x" aria-label="Cerrar el aviso">✕</button></div>` : '';
+}
+on('st-ret-x', () => { S.avisoCart = false; S.ultOculto = true; pintar(); });
+on('st-repetir', () => {
+  const todos = (S.ult && S.ult.items) || [], L = ultDisp(), no = todos.length - L.length;
+  if (!L.length) return toast('Los productos de tu último pedido ya no están disponibles.');
+  L.forEach(l => { const nl = JSON.parse(JSON.stringify(l)), simple = Object.keys(nl).every(k => ['id', 'vr', 'qty'].includes(k)); const ex = simple && S.cart.find(x => x.id === nl.id && x.vr === nl.vr && Object.keys(x).length === 3); if (ex) ex.qty += nl.qty; else S.cart.push(nl); });
+  S.avisoCart = false; guardarCarrito();
+  toast(`🔁 Agregamos ${L.length} ${L.length === 1 ? 'producto' : 'productos'} con los precios de hoy${no ? ` · ${no} ya no ${no === 1 ? 'está disponible' : 'están disponibles'}` : ''}`);
+  ir('cart');
+});
+
 /* ---------- talles sin stock (ropa y calzado) ---------- */
 const agotSet = p => new Set(Array.isArray(p.talles_agotados) ? p.talles_agotados : []);
 const varAgot = (p, v) => agotSet(p).has(v);
@@ -619,7 +673,7 @@ function bloquesProgreso(T) {
 }
 function pantallaCarrito() {
   const L = lineas();
-  if (!L.length) return '<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="empty"><div class="ico">🛒</div><p>Todavía no agregaste productos.</p></div></div>';
+  if (!L.length) { const U = S.previa ? [] : ultDisp(); return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="empty"><div class="ico">🛒</div><p>Todavía no agregaste productos.</p>${U.length ? `<button type="button" class="btn btn-s btn-sm" style="margin-top:12px" data-act="st-repetir">🔁 Repetir mi último pedido (${U.length} ${U.length === 1 ? 'producto' : 'productos'})</button>` : ''}</div></div>`; }
   const T = totales(), mc = minimo(), bloq = mc && T.total < mc, pau = pausado(), visto = {};
   // barra de escala una vez por grupo (producto, categoría o carrito) y ganancia una vez por producto
   const extra = l => { const k = grupoDe(l.p), bar = visto[k] ? '' : escalaHtml(l.p, true); visto[k] = 1; if (visto['g' + l.p.id]) return bar; visto['g' + l.p.id] = 1; return bar + ganQty(l.p); };
@@ -629,7 +683,8 @@ function pantallaCarrito() {
     return x.d > 0 ? `<div class="cpromo"><span>🎁 ${esc(promoTxt(l.p.promo))}${x.falta ? `<small>Sumá ${x.falta} más${masTalles} y ahorrás todavía más</small>` : ''}</span><b>−${fmt(x.d)}</b></div>`
       : x.falta ? `<div class="cpromo off"><span>🎁 Sumá ${x.falta} más${masTalles}: ${esc(promoTxt(l.p.promo))}</span></div>` : ''; };
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cat">← Seguir comprando</button><div class="view-title">🛒 Mi carrito</div>${bloquesProgreso(T)}
-    ${L.map((l, k) => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button></div></div>${prRow(l, k)}`).join('')}
+    ${L.map((l, k) => `${extra(l)}<div class="citem"><div class="citem-em">${esc(l.p.emoji)}</div><div class="citem-inf"><div class="citem-nm">${esc(l.p.nombre)}${l.vr ? ' · ' + esc(l.vr) : ''}</div><div class="citem-pr">${fmt(l.pu)} c/u · <b>${fmt(l.sub)}</b></div></div><div class="citem-ctrl"><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span class="qnum">${l.qty}</span><button class="qbtn" data-act="st-lq" data-i="${l.i}" data-d="1" aria-label="Agregar uno">+</button><button type="button" class="cdel" data-act="st-lx" data-i="${l.i}" aria-label="Sacar ${esc(l.p.nombre)} del pedido" title="Sacar del pedido">🗑</button></div></div>${prRow(l, k)}`).join('')}
+    <button type="button" class="c-mas" data-act="st-ir" data-v="cat">＋ Agregar más productos</button>
     <div class="card"><div class="srow"><span>Unidades</span><span class="v">${T.n}</span></div>${T.ahorro > 0 ? `<div class="srow"><span>Ahorro por volumen</span><span class="v save">-${fmt(T.ahorro)}</span></div>` : ''}${T.promo > 0 ? `<div class="srow"><span>🎁 Promos</span><span class="v save">-${fmt(T.promo)}</span></div>` : ''}${descRows(T)}<div class="srow tot"><span>Total productos</span><span class="v">${fmt(T.final)}</span></div>${envios().length ? '<div class="hint" style="margin-top:6px">El envío lo elegís en el próximo paso.</div>' : ''}</div>${ganCarrito()}
     <button class="btn btn-p" ${bloq || pau ? 'disabled' : ''} data-act="st-ir" data-v="co">${pau ? '🔒 Pedidos cerrados por ahora' : bloq ? 'Faltan ' + fmt(mc - T.total) + ' para el mínimo' : 'Continuar →'}</button></div>`;
 }
@@ -737,7 +792,7 @@ function pantallaOk() {
 }
 
 /* ---------- acciones ---------- */
-const ir = v => { S.vista = v; S.det = null; pintar(); window.scrollTo(0, 0); };
+const ir = v => { if (v === 'cart') S.avisoCart = false; S.vista = v; S.det = null; pintar(); window.scrollTo(0, 0); };
 on('st-ir', d => ir(d.v));
 on('st-q', (d, el) => { S.q = el.value; S.limite = 60; pintarGrid(); });
 on('st-cat', d => { S.cat = d.c; S.limite = 60; pintarGrid(); });
@@ -756,6 +811,7 @@ on('st-dec', d => {
   const l = S.cart.find(x => x.id === d.id && x.vr === vr) || S.cart.find(x => x.id === d.id); if (!l) return;
   l.qty--; if (l.qty < 1) S.cart = S.cart.filter(x => x !== l); S.foco = d.id; guardarCarrito(); refrescar();
 });
+on('st-lx', d => { const l = S.cart[+d.i]; if (!l) return; const p = prod(l.id); S.cart.splice(+d.i, 1); guardarCarrito(); pintar(); toast(`Sacamos ${p ? p.nombre : 'el producto'} del pedido`); });
 on('st-lq', d => { const l = S.cart[+d.i]; if (!l) return; l.qty += +d.d; if (l.qty < 1) S.cart.splice(+d.i, 1); guardarCarrito(); pintar(); });
 function refrescar() { const T = totales(); const f = $('#cart-fab'); if (f) f.innerHTML = fabHtml(T); const sn = $('#sr-n'); if (sn) sn.textContent = T.n || ''; pintarGrid(); pintarBarra(); pintarDet(); pintarVitrina(); }
 // en el carrusel solo se actualiza el "N u" (así no salta de lugar mientras la persona agrega)
@@ -845,6 +901,7 @@ on('st-pedir', async (d, f) => {
   try {
     const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
     const tk = ticket(r, cliente), link = waLink(normWsp(r.whatsapp), tk);
+    if (!S.previa) { const u = { at: Date.now(), items: S.cart.map(l => JSON.parse(JSON.stringify(l))) }; store.set('ult:' + S.slug, u); S.ult = u; }
     S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS' });
     if (S.pay === 'link' && S.tienda.mp_activo) {   // link de pago de Mercado Pago (el monto lo calcula el servidor)
       try { S.ultimo.mp = (await api.mpPreferencia(S.slug, r.id)).init_point; } catch (e) { S.ultimo.mpError = e.message; }
@@ -858,9 +915,60 @@ on('st-pedir', async (d, f) => {
 });
 on('st-copiar', () => copiar(S.ultimo.tk));
 
-on('st-pdf', () => {
-  const t = S.tienda, g = new Map();
-  S.prods.filter(p => !p.agotado).forEach(p => { const tr = tramos(p); const l = g.get(p.categoria) || []; l.push({ sku: p.sku, nombre: p.nombre, variantes: p.variantes, stock: '—', precio: tr ? tr[1] : +p.precio_1 }); g.set(p.categoria, l); });
-  const grupos = [...g.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([cat, filas]) => ({ cat, filas: filas.sort((a, b) => a.nombre.localeCompare(b.nombre)) }));
-  imprimir(htmlCatalogo({ nombre: t.nombre, logo: t.logo_url, color: t.color, eslogan: t.eslogan, titulo: vista() === 'may' ? 'Lista mayorista' : 'Lista de precios', grupos, conStock: false, nota: 'Precios en pesos argentinos, sujetos a cambio sin previo aviso.' }));
+// v2.29 · PDF: en la lista por menor se descarga con los precios oficiales; en la mayorista además el revendedor
+// arma su propia lista (precio base x1/x3/x6/x12 + su % de ganancia, redondeado a $100, con su nombre y WhatsApp)
+function gruposPdf(precioDe, conSku) {
+  const g = new Map();
+  S.prods.filter(p => !p.agotado).forEach(p => { const tr = tramos(p); const l = g.get(p.categoria) || []; l.push({ sku: conSku ? p.sku : '', nombre: p.nombre, variantes: p.variantes, stock: '—', precio: precioDe(p, tr) }); g.set(p.categoria, l); });
+  return [...g.entries()].sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || ''))).map(([cat, filas]) => ({ cat, filas: filas.sort((a, b) => a.nombre.localeCompare(b.nombre)) }));
+}
+const NOTA_PDF = 'Precios en pesos argentinos, sujetos a cambio sin previo aviso.';
+function pdfOficial() { const t = S.tienda; imprimir(htmlCatalogo({ nombre: t.nombre, logo: t.logo_url, color: t.color, eslogan: t.eslogan, titulo: vista() === 'may' ? 'Lista mayorista' : 'Lista de precios', grupos: gruposPdf((p, tr) => tr ? tr[1] : +p.precio_1, true), conStock: false, nota: NOTA_PDF })); }
+const redondeo = (u, pct) => Math.ceil(u * (1 + pct / 100) / 100) * 100;
+const baseDe = (p, tr, b) => { if (!tr) return +p.precio_1; return tr[b] != null ? tr[b] : tr[1]; };
+const revOk = () => vista() === 'may';
+function revCfg() { const c = store.get('rev:' + S.slug, null) || {}; return { base: [1, 3, 6, 12].includes(+c.base) ? +c.base : (S.tienda.escalas_activas ? 12 : 1), pct: Number.isFinite(+c.pct) && c.pct !== '' ? Math.max(0, Math.min(500, +c.pct)) : 50, nombre: String(c.nombre || '').slice(0, 60), wsp: String(c.wsp || '').slice(0, 30) }; }
+function pintarRev() {
+  let r = $('#rev-root'); if (!r) { r = document.createElement('div'); r.id = 'rev-root'; document.body.appendChild(r); }
+  if (!S.rev) { r.innerHTML = ''; return; }
+  const c = S.rev, ej = S.prods.find(p => !p.agotado && tramos(p)) || S.prods.find(p => !p.agotado), tr = ej && tramos(ej), u = ej ? baseDe(ej, tr, c.base) : 0;
+  const bases = S.tienda.escalas_activas && S.prods.some(p => { const t = tramos(p); return t && !t.unico; });
+  r.innerHTML = `<div class="modal-bg" data-act="rev-bg"><div class="modal rev-m" role="dialog" aria-modal="true" aria-labelledby="rev-t">
+    <div class="view-title" id="rev-t" style="margin-bottom:4px">📥 Lista de precios en PDF</div>
+    <button type="button" class="btn btn-s" style="width:100%" data-act="rev-oficial">Descargar con los precios de ${esc(S.tienda.nombre)}</button>
+    <div class="rev-sep"><span>o</span></div>
+    <div class="rev-box"><b>💼 Soy revendedor</b><p class="muted">Armá tu propia lista para tus clientes: con tu ganancia sumada, tu nombre y tu WhatsApp. No aparece el nombre de ${esc(S.tienda.nombre)}.</p>
+    ${bases ? `<div class="flabel">Tu precio de compra</div><div class="rev-ch" role="group" aria-label="Tu precio de compra">${[1, 3, 6, 12].map(n => `<button type="button" class="chipf${c.base === n ? ' on' : ''}" data-act="rev-base" data-n="${n}" aria-pressed="${c.base === n}">x${n}${n === 12 ? '+' : ''}</button>`).join('')}</div>` : ''}
+    <label class="flabel" for="rev-pct">Tu ganancia (%)</label><div class="rev-ch"><input id="rev-pct" class="fi rev-pct" type="number" inputmode="numeric" min="0" max="500" step="1" value="${c.pct}" data-change="rev-pct">${[30, 50, 80].map(n => `<button type="button" class="chipf${c.pct === n ? ' on' : ''}" data-act="rev-p" data-n="${n}">+${n}%</button>`).join('')}</div>
+    <label class="flabel" for="rev-nom">Tu nombre o el de tu negocio</label><input id="rev-nom" class="fi" maxlength="60" value="${esc(c.nombre)}" placeholder="Ej: Cosmética Sofi" data-change="rev-nom">
+    <label class="flabel" for="rev-wsp">Tu WhatsApp (opcional)</label><input id="rev-wsp" class="fi" inputmode="tel" maxlength="30" value="${esc(c.wsp)}" placeholder="Ej: 11 2345 6789" data-change="rev-wsp">
+    ${ej ? `<div class="rev-ej" id="rev-ej">Ejemplo · ${esc(ej.nombre)}: lo comprás a <b>${fmt(u)}</b> y en tu lista sale <b>${fmt(redondeo(u, c.pct))}</b> <small class="muted">(redondeado a $100)</small></div>` : ''}
+    <button type="button" class="btn btn-p" style="width:100%;margin-top:10px" data-act="rev-gen">💼 Generar mi lista en PDF</button></div>
+    <button type="button" class="btn btn-s" style="margin-top:8px;width:100%" data-act="rev-x">Cerrar</button></div></div>`;
+}
+function revGuardar() { if (S.rev) store.set('rev:' + S.slug, S.rev); }
+function revLeer() { const v = id => { const e = $('#' + id); return e ? e.value : null; }; if (!S.rev) return; const pc = v('rev-pct'); if (pc !== null) S.rev.pct = Math.max(0, Math.min(500, Math.round(+pc || 0))); const n = v('rev-nom'); if (n !== null) S.rev.nombre = n.trim().slice(0, 60); const w = v('rev-wsp'); if (w !== null) S.rev.wsp = w.trim().slice(0, 30); }
+function revRepintar(foco) { revLeer(); revGuardar(); pintarRev(); const e = foco && $('#' + foco); if (e) { e.focus(); try { const n = e.value.length; e.setSelectionRange && e.type !== 'number' && e.setSelectionRange(n, n); } catch { /* */ } } }
+on('st-pdf', () => { if (!revOk()) return pdfOficial(); S.rev = revCfg(); pintarRev(); const b = $('#rev-root [data-act="rev-oficial"]'); if (b) b.focus(); });
+on('rev-oficial', () => { S.rev = null; pintarRev(); pdfOficial(); });
+on('rev-base', d => { revLeer(); S.rev.base = +d.n; revRepintar(); });
+on('rev-p', d => { revLeer(); S.rev.pct = +d.n; revGuardar(); pintarRev(); });
+on('rev-pct', () => revRepintar('rev-pct'));
+on('rev-nom', () => { revLeer(); revGuardar(); });
+on('rev-wsp', () => { revLeer(); revGuardar(); });
+on('rev-gen', () => {
+  revLeer(); revGuardar(); const c = S.rev;
+  const grupos = gruposPdf((p, tr) => redondeo(baseDe(p, tr, c.base), c.pct), false);
+  S.rev = null; pintarRev();
+  imprimir(htmlCatalogo({ nombre: c.nombre || 'Lista de precios', logo: '', color: '#334155', eslogan: c.wsp ? 'Pedidos por WhatsApp: ' + c.wsp : '', titulo: 'Lista de precios', grupos, conStock: false, conSku: false, nota: NOTA_PDF }));
+});
+on('rev-x', () => { S.rev = null; pintarRev(); });
+on('rev-bg', (d, b, e) => { if (e.target === b) { S.rev = null; pintarRev(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.rev) { S.rev = null; pintarRev(); } });
+// el ejemplo se actualiza mientras escribe el %, sin repintar (así no pierde el foco)
+document.addEventListener('input', e => {
+  if (!S.rev || !e.target || e.target.id !== 'rev-pct') return;
+  const pct = Math.max(0, Math.min(500, Math.round(+e.target.value || 0))), ej = S.prods.find(p => !p.agotado && tramos(p)) || S.prods.find(p => !p.agotado), box = $('#rev-ej'); if (!ej || !box) return;
+  const bs = box.querySelectorAll('b'); if (bs[1]) bs[1].textContent = fmt(redondeo(baseDe(ej, tramos(ej), S.rev.base), pct));
+  document.querySelectorAll('#rev-root [data-act="rev-p"]').forEach(b => b.classList.toggle('on', +b.dataset.n === pct));
 });

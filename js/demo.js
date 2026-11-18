@@ -8,7 +8,7 @@ import { ilus } from './ilus.js';
 import { redimensionar } from './img.js';
 
 const K = 'demo:prods';
-const DM = { items: null, busy: false, msg: '', err: '', aviso: '', m1: 50, m12: 20, dolar: 1200, fuente: '', modo: 'mayor', edit: -1 };   // modo: mayor | menor | dos
+const DM = { items: null, busy: false, msg: '', err: '', aviso: '', m1: 50, m12: 20, dolar: 1200, fuente: '', modo: 'mayor', edit: -1, cart: {}, pedido: false };   // modo: mayor | menor | dos
 const MODOS = [['mayor', 'Por mayor', 'precios por cantidad'], ['menor', 'Por menor', 'un precio por unidad'], ['dos', 'Las dos', 'minorista y mayorista']];
 const FORMATOS = 'image/*,.pdf,.xlsx,.xls,.ods,.csv,.txt,.zip';
 const EJEMPLO = `Perfume Asad 100ml EDP $38.500
@@ -104,11 +104,13 @@ function salida() {
       <div class="dm-m"><label>${DM.modo === 'menor' ? 'Tu ganancia' : 'Tu ganancia x1'} <input class="fi" type="number" min="0" max="500" value="${DM.m1}" data-input="dm-m" data-k="m1" aria-label="Ganancia por unidad en porcentaje">%</label>${DM.modo === 'menor' ? '' : `<label>x12 <input class="fi" type="number" min="0" max="500" value="${DM.m12}" data-input="dm-m" data-k="m12" aria-label="Ganancia llevando 12 en porcentaje">%</label>`}</div></div>
     ${DM.aviso ? `<div class="warn-box" id="dm-aviso">${esc(DM.aviso)}</div>` : ''}
     ${antesDespues(L, grilla(), true)}
+    <div class="dm-cartb" id="dm-cartb">${barraPedido()}</div>
     <div class="dm-pie">${aMano()}<span class="hint">¿Leyó mal un nombre o un precio? Tocá ✏️ en el producto y corregilo.${L.length > verN() ? ` Hay ${L.length - verN()} productos más: los ves y corregís todos al guardar tu tienda.` : ''}</span></div>
     <a class="btn btn-p dm-cta" href="#/registro" data-act="dm-guardar">Guardar mi tienda gratis con ${L.length === 1 ? 'este producto' : 'estos ' + L.length + ' productos'} →</a>
-    <p class="hint">Después podés corregir nombres y costos, sumar fotos y recibir pedidos por WhatsApp. 7 días gratis, sin tarjeta.</p></div>`;
+    <p class="hint">Después podés corregir nombres y costos, sumar fotos y recibir pedidos por WhatsApp. <span class="dias-prueba">14</span> días gratis, sin tarjeta.</p></div>`;
 }
-// Tarjeta como la ve el cliente en la tienda: foto (acá, un dibujo de ejemplo), precio grande y "+ Agregar".
+// Tarjeta como la ve el cliente en la tienda: foto (acá, un dibujo de ejemplo), nombre, precio y "+ Agregar".
+// v2.28.1: tu costo y tu ganancia no van en la tarjeta (la ve tu cliente): están en "Ver pedido".
 const fotoEdit = (x, i) => `<label class="dm-foto-in">${x.foto ? `<img src="${esc(x.foto)}" alt="">` : '<span aria-hidden="true">📷</span>'}<b>${x.foto ? 'Cambiar foto' : 'Agregar foto'}</b><input type="file" accept="image/*" hidden data-change="dm-e-foto" data-i="${i}"></label>`;
 function tarjeta(x, i) {
   const t = tiers(x.costo), cls = i >= 0 ? 'dm-card' : 'dm-card0', n = i >= 0 ? i : -1 - i;
@@ -119,23 +121,69 @@ function tarjeta(x, i) {
       <label class="dm-f-l">Tu costo ($)<input class="fi" id="dm-fc-${i}" inputmode="numeric" value="${x.costo || ''}" placeholder="Ej: 45000"></label>
       <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="dm-f-ok" data-i="${i}">Listo</button><button class="btn btn-s btn-sm" data-act="dm-e-quitar" data-i="${i}" aria-label="Quitar esta foto">Quitar</button></div></div></div>`;
   const may = DM.modo === 'mayor', dos = DM.modo === 'dos', off = (may || dos) && t[1] > t[12] ? Math.round((1 - t[12] / t[1]) * 100) : 0;
-  const precio = may ? `<div class="dmc-p"><strong>${fmt(t[12])}</strong><small>c/u llevando 12+</small></div><div class="dmc-1">Por unidad ${fmt(t[1])}</div>`
+  const precio = may ? `<div class="dmc-p"><strong>${fmt(t[12])}</strong><small>c/u llevando 12+</small></div>`
     : dos ? `<div class="dmc-p"><strong>${fmt(t[1])}</strong><small>precio al público</small></div><div class="dmc-1">Por mayor, con código: desde ${fmt(t[12])}</div>`
     : `<div class="dmc-p"><strong>${fmt(t[1])}</strong></div>`;
-  return `<div class="${cls} dmc" style="--i:${Math.max(0, i)}"><div class="dmc-img">${img}${off ? `<span class="dmc-off">−${off}% x12</span>` : ''}${i >= 0 ? `<button class="dm-edit" data-act="dm-editar" data-i="${i}" aria-label="Corregir ${esc(x.nombre)}">✏️</button>` : ''}</div>
-    <div class="dmc-b"><b class="dmc-n">${esc(x.nombre)}</b>${precio}<small class="dmc-c">Tu costo: ${fmt(x.costo)}</small><em class="dmc-g">Ganás ${fmt(t[1] - x.costo)} por unidad</em>
-      <span class="dmc-add" aria-hidden="true">+ Agregar</span>${i >= 0 ? `<button class="dm-fly" data-act="dm-flyer" data-i="${i}">📸 Ver en flyer</button>` : ''}</div></div>`;
+  const q = i >= 0 ? DM.cart[i] || 0 : 0;
+  const acc = i < 0 ? '<span class="dmc-add" aria-hidden="true">+ Agregar</span>'
+    : q ? `<div class="dmc-step" role="group" aria-label="Cantidad de ${esc(x.nombre)}"><button type="button" data-act="dm-q" data-i="${i}" data-d="-1" aria-label="Quitar uno">−</button><span>${q}</span><button type="button" data-act="dm-q" data-i="${i}" data-d="1" aria-label="Sumar uno">+</button></div>`
+    : `<button type="button" class="dmc-add" data-act="dm-q" data-i="${i}" data-d="1">+ Agregar</button>`;
+  return `<div class="${cls} dmc" style="--i:${Math.max(0, i)}"><div class="dmc-img">${img}${off ? `<span class="dmc-off">−${off}% x12</span>` : ''}${i >= 0 ? `<button class="dm-edit" data-act="dm-editar" data-i="${i}" aria-label="Corregir ${esc(x.nombre)}">✏️</button><button class="dm-fly" data-act="dm-flyer" data-i="${i}" aria-label="Ver ${esc(x.nombre)} en un flyer" title="Ver en flyer">📸</button>` : ''}</div>
+    <div class="dmc-b"><b class="dmc-n">${esc(x.nombre)}</b>${precio}${acc}</div></div>`;
 }
 const verN = () => (DM.items || []).some(x => x.foto) ? 12 : 6;
 const grilla = () => DM.items.slice(0, verN()).map(tarjeta).join('');
+/* ---- el pedido de prueba: lo que paga el cliente y, solo para vos, tu costo y tu ganancia ---- */
+const unidadEn = (x, q) => { const t = tiers(x.costo); if (DM.modo !== 'mayor') return { u: t[1], k: 1, t }; const k = q >= 12 ? 12 : q >= 6 ? 6 : q >= 3 ? 3 : 1; return { u: t[k], k, t }; };
+const lineas = () => Object.entries(DM.cart).map(([i, q]) => ({ i: +i, q, x: (DM.items || [])[+i] })).filter(l => l.x && !l.x.falta && l.q > 0);
+function cuentas() {
+  const L = lineas().map(l => { const { u, k, t } = unidadEn(l.x, l.q); return { ...l, u, k, t, sub: u * l.q, costo: l.x.costo * l.q }; });
+  const total = L.reduce((a, l) => a + l.sub, 0), costo = L.reduce((a, l) => a + l.costo, 0), n = L.reduce((a, l) => a + l.q, 0);
+  return { L, total, costo, gan: total - costo, n };
+}
+const pct = (g, c) => c > 0 ? Math.round(g / c * 100) : 0;
+function barraPedido() {
+  const C = cuentas(); if (!C.n) return '';
+  return `<button type="button" class="dm-cartbar" data-act="dm-pedido"><span>🛒 <b>${C.n} u.</b> · ${fmt(C.total)}</span><b>Ver pedido y tu ganancia →</b></button>`;
+}
+function pedidoHtml() {
+  const C = cuentas(); if (!C.n) return '';
+  const fila = l => { const sig = DM.modo === 'mayor' ? [3, 6, 12].find(k => k > l.q) : 0, falta = sig ? sig - l.q : 0;
+    return `<li class="dmp-l"><div class="dmp-top"><b>${esc(l.x.nombre)}</b><div class="dmc-step" role="group" aria-label="Cantidad"><button type="button" data-act="dm-q" data-i="${l.i}" data-d="-1" aria-label="Quitar uno">−</button><span>${l.q}</span><button type="button" data-act="dm-q" data-i="${l.i}" data-d="1" aria-label="Sumar uno">+</button></div></div>
+      <div class="dmp-pr">${l.q} × ${fmt(l.u)}${DM.modo === 'mayor' ? ` <small>precio x${l.k}${l.k === 12 ? '+' : ''}</small>` : ''}<b>${fmt(l.sub)}</b></div>
+      ${falta ? `<div class="dmp-sig">Sumando ${falta} más pasa a ${fmt(l.t[sig])} c/u</div>` : ''}
+      <div class="dmp-gan">Tu costo ${fmt(l.costo)} · ganás <b>${fmt(l.sub - l.costo)}</b> <em>+${pct(l.sub - l.costo, l.costo)} %</em></div></li>`; };
+  return `<div class="dmp-bg" data-act="dm-pedido-x"><div class="dmp" role="dialog" aria-modal="true" aria-labelledby="dmp-t" data-stop="1">
+    <div class="dmp-h"><b id="dmp-t">🛒 Tu pedido de prueba</b><button type="button" class="dmp-x" data-act="dm-pedido-x" aria-label="Cerrar">✕</button></div>
+    <ul class="dmp-ls">${C.L.map(fila).join('')}</ul>
+    <div class="dmp-tot"><span>Lo que paga tu cliente</span><b>${fmt(C.total)}</b></div>
+    <div class="dmp-vos"><p>🔒 <b>Solo lo ves vos.</b> Tu cliente ve el precio, nunca tu costo ni tu ganancia.</p>
+      <div><span>Tu costo</span><b>${fmt(C.costo)}</b></div><div class="g"><span>Tu ganancia</span><b>${fmt(C.gan)}</b></div><div><span>Rinde sobre tu costo</span><b>+${pct(C.gan, C.costo)} %</b></div></div>
+    <a class="btn btn-p" href="#/registro" data-act="dm-guardar">Guardar mi tienda gratis →</a><p class="hint">En tu tienda, este pedido te llega armado por WhatsApp.</p></div></div>`;
+}
+function pintarPedido() {
+  const b = $('#dm-cartb'); if (b) b.innerHTML = barraPedido();
+  let m = $('#dm-pedido');
+  if (!DM.pedido || !cuentas().n) { DM.pedido = false; if (m) m.remove(); return; }
+  if (!m) { m = document.createElement('div'); m.id = 'dm-pedido'; document.body.appendChild(m); }
+  m.innerHTML = pedidoHtml();
+}
+on('dm-q', d => {
+  const i = +d.i, x = DM.items && DM.items[i]; if (!x) return;
+  const q = Math.max(0, Math.min(99, (DM.cart[i] || 0) + Number(d.d))); if (q) DM.cart[i] = q; else delete DM.cart[i];
+  const g = $('#dm-grid'); if (g) g.innerHTML = grilla(); pintarPedido();
+});
+on('dm-pedido', () => { DM.pedido = true; pintarPedido(); const x = document.querySelector('#dm-pedido .dmp-x'); if (x) x.focus(); });
+on('dm-pedido-x', (d, el, ev) => { if (ev && ev.target && ev.target.closest && ev.target.closest('[data-stop]') && !ev.target.closest('.dmp-x')) return; DM.pedido = false; pintarPedido(); const b = document.querySelector('.dm-cartbar'); if (b) b.focus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && DM.pedido) { DM.pedido = false; pintarPedido(); } });
 const pintar = () => { const o = $('#dm-out'); if (o) o.innerHTML = salida(); const p = $('#dm-pasos'); if (p) p.innerHTML = pasosHtml(); const m = $('#dm-modo'); if (m) m.innerHTML = '<span>¿Cómo vendés?</span>' + modoHtml(); };
-on('dm-modo', d => { if (!MODOS.some(m => m[0] === d.v)) return; DM.modo = d.v; guardar(); pintar(); });
+on('dm-modo', d => { if (!MODOS.some(m => m[0] === d.v)) return; DM.modo = d.v; guardar(); pintar(); pintarPedido(); });
 // corregir a mano lo que se leyó mal, o cargar un producto desde cero (en el panel se edita todo, con fotos)
 on('dm-editar', d => { DM.edit = +d.i; pintar(); const n = $('#dm-e-n'); if (n) n.focus(); });
 function cerrarEdicion(i, quitar) {
   const x = DM.items && DM.items[i]; if (!x) return;
   if (!quitar) { const n = ($('#dm-e-n') || {}).value || '', c = Math.round(Number(String(($('#dm-e-c') || {}).value || '').replace(/[^\d]/g, ''))); if (n.trim().length >= 2 && c > 0) { x.nombre = n.trim().slice(0, 120); x.costo = c; x.falta = false; } else if (x.foto) { x.nombre = n.trim().slice(0, 120); x.costo = c > 0 ? c : 0; x.falta = true; } else quitar = !(x.nombre && x.costo > 0); }
-  if (quitar) DM.items.splice(i, 1);
+  if (quitar) { DM.items.splice(i, 1); DM.cart = {}; pintarPedido(); }
   DM.edit = -1; if (!DM.items.length) DM.items = null; guardar(); pintar();
 }
 on('dm-e-ok', d => cerrarEdicion(+d.i, false));
@@ -157,12 +205,12 @@ on('dm-e-foto', async (d, el) => {
   x.foto = foto; guardar(); pintar(); const m = $('#dm-e-n'); if (m) m.focus();
 });
 on('dm-e-quitar', d => cerrarEdicion(+d.i, true));
-on('dm-nuevo', () => { DM.err = ''; if (!DM.items) { DM.items = []; DM.fuente = 'lo que cargaste'; DM.aviso = ''; } DM.items.unshift({ nombre: '', costo: 0, categoria: '' }); DM.edit = 0; pintar(); const n = $('#dm-e-n'); if (n) n.focus(); });
+on('dm-nuevo', () => { DM.err = ''; DM.cart = {}; pintarPedido(); if (!DM.items) { DM.items = []; DM.fuente = 'lo que cargaste'; DM.aviso = ''; } DM.items.unshift({ nombre: '', costo: 0, categoria: '' }); DM.edit = 0; pintar(); const n = $('#dm-e-n'); if (n) n.focus(); });
 on('dm-pegar', () => { const d = document.querySelector('.lp-demo-txt'); if (d) { d.open = true; const t = $('#dm-txt'); if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'center' }); t.focus(); } } });
 on('dm-flyer', d => { const x = DM.items && DM.items[+d.i]; if (x) abrirFlyer({ modo: 'demo', items: [{ nombre: x.nombre, emoji: '🛍️', precio: tiers(x.costo)[1], img: x.foto || null }], badge: '✨ Nuevo Ingreso' }); });
 const calmo = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 async function correr(fn, fuente) {
-  DM.busy = true; DM.err = ''; DM.aviso = ''; DM.edit = -1; DM.items = null; DM.msg = ''; pintar();
+  DM.busy = true; DM.err = ''; DM.aviso = ''; DM.edit = -1; DM.items = null; DM.msg = ''; DM.cart = {}; DM.pedido = false; pintarPedido(); pintar();
   try {
     const t0 = Date.now(), L = await fn();
     if (L.length && !calmo() && Date.now() - t0 < 1300) await new Promise(r => setTimeout(r, 1300 - (Date.now() - t0)));   // que se llegue a ver la lectura
@@ -175,8 +223,8 @@ async function correr(fn, fuente) {
 on('dm-file', (d, el) => { const F = [...el.files].slice(0, 12); el.value = ''; if (F.length) correr(() => deArchivos(F), F.length === 1 ? 'tu archivo' : `tus ${F.length} archivos`); });
 on('dm-ej', () => correr(async () => deTexto(EJEMPLO), 'la lista de ejemplo'));
 on('dm-usar', () => { const t = ($('#dm-txt') || {}).value || ''; if (t.trim().length < 5) { DM.err = 'Pegá al menos un producto con su precio.'; DM.items = null; return pintar(); } correr(async () => deTexto(t), 'tu texto'); });
-on('dm-m', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; DM[d.k] = v; if (DM.edit >= 0) return; const g = $('#dm-grid'); if (g) g.innerHTML = grilla(); guardar(); });
-on('dm-guardar', () => guardar());
+on('dm-m', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; DM[d.k] = v; if (DM.edit >= 0) return; const g = $('#dm-grid'); if (g) g.innerHTML = grilla(); pintarPedido(); guardar(); });
+on('dm-guardar', () => { guardar(); DM.pedido = false; pintarPedido(); });
 
 /* ---- después del registro: ofrecer cargar los productos de la prueba ---- */
 export const demoPendiente = () => { const d = store.get(K, null); return d && Array.isArray(d.items) && d.items.length && Date.now() - (d.at || 0) < 7 * 864e5 ? d : null; };

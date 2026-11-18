@@ -8,7 +8,7 @@ import { ilus } from './ilus.js';
 
 const SIM = { costo: 10, dolar: 1200, m1: 50, m12: 20, ventas: 3000000 };
 const LP = { anual: false, perfil: 'mayorista' };
-const CTA = 'Crear mi tienda gratis', MICRO = '7 días gratis · sin tarjeta · sin permanencia';
+const CTA = 'Crear mi tienda gratis', MICRO = '<span class="dias-prueba">14</span> días gratis · sin tarjeta · sin permanencia';   // los días los actualiza cargarCupos() con la configuración
 // íconos del título (trazo, toman el color del texto)
 const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
 const ICO = {
@@ -88,7 +88,7 @@ function autoBarra() {
 on('lp-gb', d => { const corria = !!AUTO.t; AUTO.hecho = true; autoParar(); if (corria && d.d !== '0') GB.q = 0; gbPaso(d.d, true); });
 const lista = L => L.length <= 7 ? `<ul>${L.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : `<ul>${L.slice(0, 6).map(x => `<li>${esc(x)}</li>`).join('')}</ul><details class="lp-plan-mas"><summary>Ver ${L.length - 6} más</summary><ul>${L.slice(6).map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>`;
 const planesLanding = () => `<div class="lp-planes">${PLANES.map(p => { const pr = LP.anual && ANUAL ? p.precio * ANUAL : p.precio; return `<div class="lp-plan${p.destacado ? ' on glow' : ''}">${p.destacado ? '<span class="tag">Recomendado</span>' : ''}<h3>${esc(p.nombre)}</h3><p class="hint">${esc(p.para)}</p><div class="lp-precio">${fmt(pr)}<small>${LP.anual && ANUAL ? '/año' : '/mes'}</small></div>${LP.anual && ANUAL ? `<p class="pl-ahorro">Equivale a ${fmt(pr / 12)}/mes · ahorrás ${fmt(p.precio * 12 - pr)}</p>` : ''}
-      ${lista(p.incluye)}<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">${CTA}</a><small class="lp-plan-nota">7 días gratis · sin tarjeta</small></div>`; }).join('')}</div>`;
+      ${lista(p.incluye)}<a class="btn ${p.destacado ? 'btn-p' : 'btn-s'}" href="#/registro">${CTA}</a><small class="lp-plan-nota"><span class="dias-prueba">14</span> días gratis · sin tarjeta</small></div>`; }).join('')}</div>`;
 on('lp-periodo', d => { LP.anual = d.v === 'anual'; const b = $('#lp-planes-in'), s = $('#lp-periodo'); if (b) b.innerHTML = planesLanding(); if (s) s.querySelectorAll('button').forEach(x => { const on = (x.dataset.v === 'anual') === LP.anual; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); }); });
 const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mismo cálculo que la base de datos
 
@@ -128,7 +128,7 @@ const FAQ = [
   ['¿Sirve para ropa y calzado?', 'Sí. Cargás los talles con un toque (XS a XXL, 35 al 45, niños o jean) y el stock de cada uno: tu cliente elige el talle con un botón, los que se agotan aparecen tachados y nadie puede pedir más de lo que tenés. Puede llevar varios talles del mismo modelo y todos suman para el precio por cantidad. Y le mostrás tu guía de talles.'],
   ['¿Cómo cargo mi lista de precios?', 'Subís lo que te manda el proveedor: fotos, capturas, el chat de WhatsApp, un Excel, un PDF o el CSV de tu tienda actual. La app lee nombre y costo, vos revisás y elegís cómo publicarlo.'],
   ['¿Cómo me llegan los pedidos?', 'Tu cliente arma el carrito y te manda el ticket por WhatsApp con el detalle, el total, el envío y tu alias. Además te llega un aviso al celular apenas entra, y en el panel lo seguís por etapas.'],
-  ['¿Qué pasa cuando terminan los 7 días gratis?', 'Elegís el plan que te sirva para seguir: tus productos, pedidos y configuración quedan como estaban. No pedimos tarjeta para la prueba.'],
+  ['¿Qué pasa cuando terminan los días de prueba gratis?', 'Elegís el plan que te sirva para seguir: tus productos, pedidos y configuración quedan como estaban. No pedimos tarjeta para la prueba.'],
   ['¿Cómo pago el abono?', 'Mes a mes o por año (el anual tiene meses de regalo). Podés pagar por transferencia o, si está disponible, con suscripción de Mercado Pago. Unos días antes del vencimiento te avisamos en el panel.'],
   ['¿Mis datos y los de mis clientes están protegidos?', 'Cada tienda ve solo lo suyo, los precios y el stock los calcula el servidor (nadie puede cambiarlos desde el navegador) y las claves de pago se guardan protegidas. Leé la política de privacidad.']
 ];
@@ -220,7 +220,7 @@ export function inicio(app) {
 
   ${T.length ? `<section class="lp-sec" id="opiniones"><h2>Lo que dicen los que ya venden con ${N}</h2><div class="lp-testi">${T.map(t => `<figure><blockquote>“${esc(t.texto)}”</blockquote><figcaption><b>${esc(t.nombre)}</b>${t.rubro ? `<span>${esc(t.rubro)}</span>` : ''}${urlOk(t.url) ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">Ver su tienda →</a>` : ''}</figcaption></figure>`).join('')}</div></section>` : ''}
 
-  <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento en pesos. Probá 7 días con todo desbloqueado, sin tarjeta.</p>
+  <section class="lp-sec" id="planes"><h2>Planes</h2><p class="lp-sub">Precios de lanzamiento en pesos. Probá <span class="dias-prueba">14</span> días con todo desbloqueado, sin tarjeta.</p>
     ${ANUAL ? `<div class="seg pl-periodo" id="lp-periodo" role="group" aria-label="Forma de pago"><button class="${LP.anual ? '' : 'on'}" data-act="lp-periodo" data-v="mes" aria-pressed="${!LP.anual}">Mensual</button><button class="${LP.anual ? 'on' : ''}" data-act="lp-periodo" data-v="anual" aria-pressed="${LP.anual}">Anual · ${12 - ANUAL === 1 ? '1 mes gratis' : (12 - ANUAL) + ' meses gratis'}</button></div>` : ''}
     <div id="lp-planes-in">${planesLanding()}</div>
     <ul class="lp-gar">${GAR.map(([t, d]) => `<li><b>${t}</b>${d}</li>`).join('')}</ul></section>
@@ -234,7 +234,7 @@ export function inicio(app) {
 
   <footer class="lp-foot"><div><b class="lp-logo"><img src="/favicon.svg" alt="" width="22" height="22">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
     <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
-  <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b>7 días gratis · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
+  <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b><span class="dias-prueba">14</span> días gratis · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
   cargarCupos(); autoBarra();
   // en el celular, el botón queda fijo abajo cuando el del encabezado ya no se ve
   if (FIJO) { FIJO.disconnect(); FIJO = null; }
