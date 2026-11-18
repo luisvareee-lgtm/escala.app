@@ -1642,3 +1642,81 @@ input.fi.rev-pct{width:96px;flex:none}
 #pgrid.ptabla{padding:0;margin:8px max(14px,env(safe-area-inset-right,0px)) 24px max(14px,env(safe-area-inset-left,0px))}
 #vmodo{padding:0 max(14px,env(safe-area-inset-right,0px)) 0 max(14px,env(safe-area-inset-left,0px))}#vmodo:empty{display:none}
 .st-ret{margin:10px max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px))}
+/* v2.30 · Caja */
+.cj-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin-bottom:6px}
+.cj-nav{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cj-fecha{width:auto;min-width:150px;padding:6px 10px}
+.cj-tit{font-size:1.05rem;margin:6px 0 10px}
+.cj-sub{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.cj-acc{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.cj-tabla{width:100%;border-collapse:collapse;font-size:.86rem;font-variant-numeric:tabular-nums}
+.cj-tabla th,.cj-tabla td{padding:7px 6px;text-align:right;border-bottom:1px solid var(--bd)}
+.cj-tabla th[scope=row]{text-align:left;font-weight:600;color:var(--t1)}
+.cj-tabla thead th{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);font-weight:700}
+.cj-tabla tr.tot th,.cj-tabla tr.tot td{border-bottom:0;font-weight:800;color:var(--t1)}
+.cj-m{align-items:center;padding:7px 0;border-bottom:1px solid var(--bd)}
+.cj-m:last-of-type{border-bottom:0}
+.cj-i{font-size:1.05rem;width:24px;text-align:center;flex:none}
+.cj-t{flex:1;min-width:0;display:flex;flex-direction:column;color:var(--t1)}.cj-t small{font-size:.72rem}
+.cj-t .linkb{text-align:left;padding:0}
+.cj-med{width:auto;max-width:140px;padding:4px 6px;font-size:.74rem;flex:none}
+.cj-v{min-width:84px;text-align:right;font-variant-numeric:tabular-nums;flex:none}
+.cj-x{width:34px;flex:none}
+.cj-dia{display:grid;grid-template-columns:1fr auto auto auto;gap:12px;width:100%;border:0;border-bottom:1px solid var(--bd);background:none;color:var(--t2);font:inherit;font-size:.85rem;padding:8px 2px;cursor:pointer;text-align:right;font-variant-numeric:tabular-nums}
+.cj-dia span:first-child{text-align:left;color:var(--t1);text-transform:capitalize}.cj-dia:hover{background:var(--bg3)}
+.cj-pend{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:.86rem}
+.cj-form .seg label{cursor:pointer}
+@media (max-width:560px){.cj-m{flex-wrap:wrap}.cj-t{flex-basis:calc(100% - 34px)}.cj-med{margin-left:34px}.cj-v{margin-left:auto}}
+/* v2.30 · Presupuestos (panel) */
+.pr-top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin-bottom:12px}
+.pr-aviso{background:var(--acs);border-color:var(--ac);font-size:.88rem}
+.pr-card{display:flex;flex-direction:column;gap:10px}
+.pr-c1{display:flex;gap:10px;justify-content:space-between;align-items:flex-start}
+.pr-c1>div:first-child{min-width:0;display:flex;flex-direction:column;gap:2px}.pr-c1 small{font-size:.74rem}
+.pr-tot{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}.pr-tot b{font-size:1.1rem;font-variant-numeric:tabular-nums}
+.pr-est{font-size:.7rem;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--bg3);color:var(--t2);white-space:nowrap}
+.pr-est.env{background:var(--acs);color:var(--ac)}.pr-est.ok{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.pr-est.conv{background:var(--bg3);color:var(--t1)}.pr-est.venc,.pr-est.anu{background:color-mix(in srgb,var(--red) 12%,transparent);color:var(--red)}
+.pr-acc{display:flex;gap:6px;flex-wrap:wrap}
+.pr-edh{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.pr-edh h3{margin:0}
+.pr-busca{position:relative}
+.pr-res{border:1px solid var(--bd2);border-radius:10px;background:var(--bg2);margin-top:4px;max-height:300px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.pr-r{display:flex;justify-content:space-between;gap:10px;width:100%;border:0;border-bottom:1px solid var(--bd);background:none;color:var(--t1);font:inherit;font-size:.86rem;padding:9px 12px;cursor:pointer;text-align:left}
+.pr-r:last-child{border-bottom:0}.pr-r:hover,.pr-r:focus{background:var(--acs);outline:none}.pr-r small{color:var(--t3);white-space:nowrap}
+.pr-ls{display:flex;flex-direction:column;gap:0;margin:8px 0 14px;border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.pr-ls>.muted{padding:12px}
+.pr-l{display:grid;grid-template-columns:minmax(0,1fr) 84px 112px 92px 34px;gap:8px;align-items:end;padding:10px 12px;border-bottom:1px solid var(--bd)}
+.pr-l:last-child{border-bottom:0}
+.pr-ln{min-width:0;display:flex;flex-direction:column;gap:3px}.pr-ln small{font-size:.72rem}
+.pr-var{padding:4px 6px;font-size:.78rem}
+.pr-f{display:flex;flex-direction:column;gap:2px}.pr-f small{font-size:.68rem;color:var(--t3)}.pr-f .fi{padding:6px 8px;text-align:right}
+.pr-st{text-align:right;font-variant-numeric:tabular-nums;padding-bottom:8px}
+.pr-l>.btn{margin-bottom:2px}
+.pr-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.pr-total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--bd);padding:12px 0;margin-top:4px}
+.pr-total b{font-size:1.5rem;color:var(--ac);font-variant-numeric:tabular-nums}
+@media (max-width:620px){.pr-l{grid-template-columns:1fr 1fr 34px;grid-template-areas:"n n n" "q p x" "s s s"}.pr-ln{grid-area:n}.pr-l>label:nth-of-type(1){grid-area:q}.pr-l>label:nth-of-type(2){grid-area:p}.pr-st{grid-area:s;padding:0}.pr-l>.btn{grid-area:x}.pr-c1{flex-direction:column}.pr-tot{align-items:flex-start;flex-direction:row;align-items:center}}
+/* v2.30 · Presupuesto que ve el cliente */
+.ps{max-width:640px}
+.ps-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.ps-ls{background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r);overflow:hidden}
+.ps-l{display:flex;justify-content:space-between;gap:12px;padding:11px 14px;border-bottom:1px solid var(--bd);font-size:.9rem;color:var(--t1)}
+.ps-l>span{min-width:0;display:flex;flex-direction:column}.ps-l>span small{font-size:.76rem}.ps-l>b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ps-tot{border-bottom:0;background:var(--bg3);font-size:1.05rem}.ps-tot b{color:var(--ac);font-size:1.25rem}
+.ps-nota{margin:12px 2px 0;font-size:.86rem;color:var(--t2);white-space:pre-line}
+.ps-av{margin-top:12px;padding:11px 14px;border-radius:var(--r);background:color-mix(in srgb,var(--red) 10%,transparent);color:var(--t1);font-size:.86rem}
+.ps-av.ok{background:color-mix(in srgb,var(--green) 12%,transparent)}
+.ps-acc{display:flex;flex-direction:column;gap:8px;margin-top:16px}.ps-acc .btn{width:100%;text-align:center}
+.cj-nav{flex-wrap:nowrap}.cj-nav .btn{width:auto;flex:none}.cj-nav .cj-fecha{flex:0 1 170px;min-width:0}
+.cj-med{max-width:none;min-width:158px}
+.pr-acc .btn{width:auto}.pr-ed>.pr-acc{justify-content:flex-end}
+.pr-ln .pr-var{max-width:260px}
+@media (max-width:560px){.pr-ed>.pr-acc .btn{flex:1 1 100%}}
+@media (max-width:560px){.cj-med{min-width:0;max-width:calc(100% - 140px)}.cj-nav{flex-wrap:wrap}}
+@media (max-width:560px){
+  .cj-top{flex-direction:column;align-items:stretch}.cj-nav{flex-wrap:nowrap}.cj-nav .cj-fecha{flex:1 1 auto}
+  .cj-m{display:grid;grid-template-columns:24px minmax(0,1fr) auto;grid-template-areas:"i t x" ". m v";gap:6px 10px;flex-wrap:nowrap}
+  .cj-i{grid-area:i}.cj-t{grid-area:t;flex-basis:auto}.cj-med{grid-area:m;margin-left:0;max-width:none;min-width:0;width:100%}.cj-v{grid-area:v;margin-left:0;align-self:center}
+  .cj-m>.btn,.cj-m>.cj-x{grid-area:x;align-self:start}.cj-x{width:0}
+}
+.cj-m>.btn{width:auto;justify-self:end;flex:none}
