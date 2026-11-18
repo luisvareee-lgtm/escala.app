@@ -9,8 +9,9 @@ const R = { per: 'mes', cargado: false, lim: 20, cat: '' };
 export const CATS_GASTO = ['Mercadería', 'Envíos y fletes', 'Publicidad', 'Alquiler', 'Servicios', 'Sueldos', 'Comisiones', 'Impuestos', 'Packaging', 'Otros'];
 export async function cargarGastos(forzar) {
   if (R.cargado && !forzar) return;
-  try { P.gastos = await api.misGastos(); R.cargado = true; } catch (e) { P.gastos = P.gastos || []; toast(e.message); }
+  try { P.gastos = await api.misGastos(); R.cargado = true; } catch (e) { P.gastos = P.gastos || []; R.cargado = true; toast(e.message); }
 }
+export const gastosCargados = () => R.cargado;
 export const resetRes = () => Object.assign(R, { per: 'mes', cargado: false, lim: 20, cat: '' });
 
 const PER = [['mes', 'Este mes'], ['pasado', 'Mes pasado'], ['30', 'Últimos 30 días'], ['anio', 'Este año'], ['todo', 'Todo']];
@@ -49,12 +50,13 @@ export function calcularResultado() {
   const G = (P.gastos || []).filter(g => enRango(fechaG(g), rg));
   const gastos = G.filter(g => g.tipo === 'gasto').reduce((s, g) => s + Number(g.monto), 0);
   const compras = G.filter(g => g.tipo === 'compra').reduce((s, g) => s + Number(g.monto), 0);
+  const ingresos = G.filter(g => g.tipo === 'ingreso').reduce((s, g) => s + Number(g.monto), 0);   // v2.30: cargados en Caja
   const fijos = rg[2] ? Number(t.gastos_fijos || 0) * rg[2] : 0;
   const bruta = ventas - costo, neta = bruta - comisiones - gastos - fijos;
   const porCat = new Map(); G.filter(g => g.tipo === 'gasto').forEach(g => porCat.set(g.categoria, (porCat.get(g.categoria) || 0) + Number(g.monto)));
   // zonas: localidad o método de envío
   const zonas = new Map(); ped.forEach(o => { const z = (o.localidad || o.envio_nombre || 'Sin dato').trim() || 'Sin dato'; const x = zonas.get(z) || { v: 0, n: 0 }; x.v += Number(o.total_ars); x.n++; zonas.set(z, x); });
-  return { ped, ventas, envios, cobrado, porCobrar, costo, sinCosto, comisiones, gastos, compras, fijos, bruta, neta, G,
+  return { ped, ventas, envios, cobrado, porCobrar, costo, sinCosto, comisiones, gastos, compras, ingresos, fijos, bruta, neta, G,
     margen: ventas > 0 ? Math.round(neta / ventas * 100) : null,
     top: [...porProd.values()].sort((a, b) => b.v - a.v).slice(0, 8),
     cats: [...porCat.entries()].map(([label, v]) => ({ label, v })).sort((a, b) => b.v - a.v),
@@ -89,7 +91,7 @@ export function vistaResultado() {
   <div class="kpis"><div class="kpi"><small>Vendiste (productos)</small><b>${fmt(M.ventas)}</b><i>${M.ped.length} ${M.ped.length === 1 ? 'pedido' : 'pedidos'}${M.envios ? ' · + ' + fmt(M.envios) + ' de envíos' : ''}</i></div>
     <div class="kpi"><small>Ganancia neta</small><b class="${M.neta < 0 ? 'neg' : 'pos'}">${fmtS(M.neta)}</b><i>${M.margen == null ? 'sin ventas' : M.margen + '% de lo vendido'}</i></div>
     <div class="kpi"><small>Cobrado</small><b>${fmt(M.cobrado)}</b><i>${fmt(M.porCobrar)} por cobrar</i></div>
-    <div class="kpi"><small>Salidas (gastos, fijos y compras)</small><b>${fmt(M.gastos + M.compras + M.fijos)}</b><i>${M.G.length} ${M.G.length === 1 ? 'movimiento' : 'movimientos'}</i></div></div>
+    <div class="kpi"><small>Salidas (gastos, fijos y compras)</small><b>${fmt(M.gastos + M.compras + M.fijos)}</b><i>${M.G.filter(g => g.tipo !== 'ingreso').length} ${M.G.filter(g => g.tipo !== 'ingreso').length === 1 ? 'movimiento' : 'movimientos'}</i></div></div>
   <div class="grid2"><div class="cc"><h3>📒 Estado de resultado</h3>
     ${fila('Ventas de productos', fmt(M.ventas))}
     ${fila('− Costo de lo vendido', fmt(M.costo), '', 'Costo de cada producto al momento de la venta')}
@@ -101,11 +103,13 @@ export function vistaResultado() {
     <p class="hint" style="margin-top:6px">Los envíos cobrados (${fmt(M.envios)}) no cuentan como ganancia: se los pagás al transporte. Las compras de mercadería (${fmt(M.compras)}) tampoco se restan acá, porque el costo de lo vendido ya incluye la mercadería${M.sinCosto ? `. ${M.sinCosto} líneas sin costo conocido (producto borrado)` : ''}.</p></div>
   <div class="cc"><h3>💵 Caja del período</h3>
     ${fila('Entró (pedidos cobrados)', fmt(M.cobrado))}
+    ${M.ingresos ? fila('Otros ingresos (cargados en Caja)', fmt(M.ingresos)) : ''}
     ${fila('Salió en compras', fmt(M.compras))}
     ${fila('Salió en gastos' + (M.fijos ? ' y fijos' : ''), fmt(M.gastos + M.fijos))}
     ${M.comisiones ? fila('Comisiones', fmt(M.comisiones)) : ''}
-    ${fila('<b>Diferencia</b>', `<b class="${M.cobrado - M.compras - M.gastos - M.fijos - M.comisiones < 0 ? 'neg' : 'pos'}">${fmtS(M.cobrado - M.compras - M.gastos - M.fijos - M.comisiones)}</b>`, 'tot')}
-    <p class="hint" style="margin-top:6px">Es la plata que entró menos la que salió. Si compraste mercadería para stock, la caja baja aunque el negocio gane.</p></div></div>
+    ${fila('<b>Diferencia</b>', `<b class="${M.cobrado + M.ingresos - M.compras - M.gastos - M.fijos - M.comisiones < 0 ? 'neg' : 'pos'}">${fmtS(M.cobrado + M.ingresos - M.compras - M.gastos - M.fijos - M.comisiones)}</b>`, 'tot')}
+    <p class="hint" style="margin-top:6px">Es la plata que entró menos la que salió. Si compraste mercadería para stock, la caja baja aunque el negocio gane.</p>
+    <button class="btn btn-s btn-sm" style="margin-top:8px" data-act="p-tab" data-k="caja">💵 Ver la caja día por día (efectivo y transferencia)</button></div></div>
   <div class="cc"><h3>➕ Cargar gasto o compra</h3><div id="gm"></div>
     <form data-submit="r-gasto" class="gasto-f">
       <div class="seg" role="group" aria-label="Tipo"><label><input type="radio" name="tipo" value="gasto" checked> Gasto</label><label><input type="radio" name="tipo" value="compra"> Compra de mercadería</label></div>
@@ -113,11 +117,12 @@ export function vistaResultado() {
       <div class="fg"><label class="flabel" for="g-mon">Monto $</label><input class="fi" id="g-mon" name="monto" type="number" min="1" step="any" required inputmode="decimal"></div></div>
       <div class="row2"><div class="fg"><label class="flabel" for="g-cat">Categoría</label><select class="fi" id="g-cat" name="categoria">${CATS_GASTO.map(c => `<option>${c}</option>`).join('')}</select></div>
       <div class="fg"><label class="flabel" for="g-fec">Fecha</label><input class="fi" id="g-fec" name="fecha" type="date" value="${hoy}" max="${hoy}" required></div></div>
-      <div class="fg"><label class="flabel" for="g-prov">Proveedor (opcional)</label><input class="fi" id="g-prov" name="proveedor" maxlength="80"></div>
+      <div class="row2"><div class="fg"><label class="flabel" for="g-prov">Proveedor (opcional)</label><input class="fi" id="g-prov" name="proveedor" maxlength="80"></div>
+      <div class="fg"><span class="flabel">¿Cómo lo pagaste?</span><div class="seg" role="radiogroup" aria-label="Medio"><label><input type="radio" name="medio" value="efectivo" checked> 💵 Efectivo</label><label><input type="radio" name="medio" value="transferencia"> 🏦 Transferencia</label></div></div></div>
       <button class="btn btn-p btn-sm" type="submit">Guardar</button></form></div>
   <div class="grid2"><div class="cc"><h3>Gastos por categoría</h3>${barras(M.cats.map(c => ({ ...c, tip: c.label + ' · ' + fmt(c.v) })), fmt)}</div>
   <div class="cc"><h3>Movimientos ${R.cat ? '· ' + esc(R.cat) + ' <button class="tag" data-act="r-cat" data-c="">✕</button>' : ''}</h3>
-    ${GL.slice(0, R.lim).map(g => `<div class="srow"><span>${g.tipo === 'compra' ? '📦' : '🧾'} ${esc(g.concepto)}<br><small class="muted">${fechaG(g).toLocaleDateString('es-AR')} · <button class="linkb" data-act="r-cat" data-c="${esc(g.categoria)}">${esc(g.categoria)}</button>${g.proveedor ? ' · ' + esc(g.proveedor) : ''}</small></span><span style="display:flex;gap:6px;align-items:center"><span class="v">${fmt(g.monto)}</span><button class="btn btn-s btn-sm" data-act="r-del" data-id="${g.id}" aria-label="Borrar ${esc(g.concepto)}">✕</button></span></div>`).join('') || '<p class="muted">Sin gastos ni compras en este período.</p>'}
+    ${GL.slice(0, R.lim).map(g => `<div class="srow"><span>${g.tipo === 'compra' ? '📦' : g.tipo === 'ingreso' ? '➕' : '🧾'} ${esc(g.concepto)}<br><small class="muted">${fechaG(g).toLocaleDateString('es-AR')} · <button class="linkb" data-act="r-cat" data-c="${esc(g.categoria)}">${esc(g.categoria)}</button>${g.proveedor ? ' · ' + esc(g.proveedor) : ''}</small></span><span style="display:flex;gap:6px;align-items:center"><span class="v${g.tipo === 'ingreso' ? ' pos' : ''}">${g.tipo === 'ingreso' ? '+' : ''}${fmt(g.monto)}</span><button class="btn btn-s btn-sm" data-act="r-del" data-id="${g.id}" aria-label="Borrar ${esc(g.concepto)}">✕</button></span></div>`).join('') || '<p class="muted">Sin gastos ni compras en este período.</p>'}
     ${GL.length > R.lim ? `<button class="btn btn-s btn-sm" data-act="r-mas">Ver más (${GL.length - R.lim})</button>` : ''}</div></div>
   <div class="grid2"><div class="cc"><h3>🏆 Más rentables</h3>${barras(M.top.map(x => ({ label: x.label, v: Math.max(0, x.v), tip: x.label + ' · ' + x.u + ' u. · ganancia ' + fmt(x.v) + ' de ' + fmt(x.venta) })), fmt)}</div>
   <div class="cc"><h3>📍 Ventas por zona</h3>${barras(M.zonas, fmt)}</div></div>
@@ -133,6 +138,7 @@ on('r-gasto', async (d, f) => {
   const fd = new FormData(f), b = f.querySelector('button[type=submit]');
   const g = { tenant_id: P.t.id, tipo: fd.get('tipo') === 'compra' ? 'compra' : 'gasto', concepto: String(fd.get('concepto') || '').trim(), monto: Math.round(Number(fd.get('monto')) * 100) / 100,
     categoria: fd.get('tipo') === 'compra' ? 'Mercadería' : String(fd.get('categoria') || 'Otros'), fecha: fd.get('fecha'), proveedor: String(fd.get('proveedor') || '').trim() || null };
+  if (fd.get('medio')) g.medio = fd.get('medio') === 'transferencia' ? 'transferencia' : 'efectivo';   // v2.30 (Caja)
   if (!g.concepto || !(g.monto > 0)) { $('#gm').innerHTML = '<div class="err-box">Completá el concepto y un monto mayor a cero.</div>'; return; }
   b.disabled = true;
   try { await api.guardarGasto(null, g); await cargarGastos(true); toast('Guardado'); P.repintar(); }

@@ -7,6 +7,18 @@ export function htmlCatalogo({ nombre, logo, color, eslogan, titulo, nota, grupo
   ${grupos.map(g => `<h2>${esc(g.cat)}</h2><table><tr>${conSku ? '<th style="width:70px">Código</th>' : ''}<th>Producto</th>${conStock ? '<th>Stock</th>' : ''}<th class="r" style="width:90px">Precio</th></tr>${g.filas.map(f => `<tr>${conSku ? `<td>${esc(f.sku || '')}</td>` : ''}<td>${esc(f.nombre)}${f.variantes && f.variantes.length ? ' <span style="color:#777">(' + esc(f.variantes.join(', ')) + ')</span>' : ''}</td>${conStock ? `<td>${esc(f.stock)}</td>` : ''}<td class="r"><b>${fmt(f.precio)}</b></td></tr>`).join('')}</table>`).join('')}
   <p style="margin-top:14px;font-size:10px;color:#666">${esc(nota || 'Precios sujetos a cambio sin previo aviso.')}</p></div>`;
 }
+// v2.30 · Presupuesto en PDF (lo usan el panel y el enlace que ve tu cliente). v: lo que devuelve ver_presupuesto.
+const fechaAr = d => d ? new Date(String(d).length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('es-AR') : '';
+export function htmlPresupuesto(v) {
+  const t = v.tienda || {}, it = v.items || [];
+  return `<div class="catp" style="--pc:${esc(t.color || '#1d4ba8')}"><div style="display:flex;gap:12px;align-items:center">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:44px;border-radius:6px">` : ''}<div><h1>${esc(t.nombre || '')}</h1>${t.whatsapp ? `<div style="color:#555;font-size:12px">WhatsApp: ${esc(t.whatsapp)}</div>` : ''}</div><div style="margin-left:auto;text-align:right;font-size:12px"><b>Presupuesto N° ${esc(v.numero)}</b><br>${esc(fechaAr(v.fecha) || new Date().toLocaleDateString('es-AR'))}${v.vence ? `<br>Válido hasta el ${esc(fechaAr(v.vence))}` : ''}</div></div>
+  <p style="margin:14px 0 4px;font-size:13px">Para: <b>${esc(v.cliente || '')}</b></p>
+  <table><tr><th>Producto</th><th class="r" style="width:60px">Cant.</th><th class="r" style="width:90px">Precio</th><th class="r" style="width:100px">Subtotal</th></tr>${it.map(x => `<tr><td>${esc(x.nombre)}${x.variante ? ` <span style="color:#777">(${esc(x.variante)})</span>` : ''}</td><td class="r">${esc(x.cantidad)}</td><td class="r">${fmt(x.precio_unitario)}</td><td class="r">${fmt(x.subtotal)}</td></tr>`).join('')}
+  ${Number(v.envio_costo) > 0 ? `<tr><td colspan="3">Envío${v.envio_nombre ? ' · ' + esc(v.envio_nombre) : ''}</td><td class="r">${fmt(v.envio_costo)}</td></tr>` : ''}
+  <tr><td colspan="3" style="text-align:right"><b>Total</b></td><td class="r"><b>${fmt(v.total)}</b></td></tr></table>
+  ${v.nota ? `<p style="margin-top:12px;font-size:12px;white-space:pre-line">${esc(v.nota)}</p>` : ''}
+  <p style="margin-top:14px;font-size:10px;color:#666">Precios en pesos argentinos${v.vence ? `, válidos hasta el ${esc(fechaAr(v.vence))}` : ''}. Sujeto a disponibilidad de stock.</p></div>`;
+}
 export function imprimir(html) {
   let a = $('#print-area'); if (!a) { a = document.createElement('div'); a.id = 'print-area'; document.body.appendChild(a); }
   a.innerHTML = html; a.style.display = 'block';

@@ -126,6 +126,13 @@ export const api = {
   guardarPromo: async (id, datos) => ok(id ? await sb.from('promociones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('promociones').insert(datos).select().maybeSingle()),
   borrarPromo: async id => ok(await sb.from('promociones').delete().eq('id', id)),
   misCupones: async () => ok(await sb.from('cupones').select('*').order('created_at', { ascending: false })),
+  // v2.30 · Presupuestos (el total y el número los pone la base) y el enlace público para tu cliente
+  misPresupuestos: () => todo(() => sb.from('presupuestos').select('*').order('created_at', { ascending: false }).order('id')),
+  guardarPresupuesto: async (id, d) => id ? ok(await sb.from('presupuestos').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('presupuestos').insert(d).select().maybeSingle()),
+  borrarPresupuesto: async id => ok(await sb.from('presupuestos').delete().eq('id', id)),
+  presupuestoAPedido: async (id, medio) => ok(await sb.rpc('presupuesto_a_pedido', { p_id: id, p_medio: medio })),
+  verPresupuesto: async token => ok(await sb.rpc('ver_presupuesto', { p_token: token })),
+  aceptarPresupuesto: async token => ok(await sb.rpc('aceptar_presupuesto', { p_token: token })),
   guardarCupon: async (id, datos) => ok(id ? await sb.from('cupones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('cupones').insert(datos).select().maybeSingle()),
   borrarCupon: async id => ok(await sb.from('cupones').delete().eq('id', id)),
   promoProducto: async (pid, regla) => ok(await sb.rpc('promo_producto', { p_pid: pid, p_regla: regla })),

@@ -1,7 +1,7 @@
 // Tienda pública: catálogo, modo minorista/mayorista/híbrido, carrito, pedido y ticket por WhatsApp.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
-import { htmlCatalogo, imprimir } from './catalogo.js';
+import { htmlCatalogo, imprimir, htmlPresupuesto } from './catalogo.js';
 import { abrirFlyer } from './flyer.js';
 import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido, montoDesc, montoEscalon, montoTxt, cuponDesc, cuponTxt } from './promo.js';
 import { tiraCierreHtml } from './cuenta.js';
@@ -210,6 +210,9 @@ export async function mostrarTienda(slug, app) {
   S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null; S.rubro = null; S.foco = null; S.niveles = null; S.orden = 'dest';
   if (!S.previa) cargarPixel(S.tienda.pixel_id);
   document.title = S.tienda.nombre;
+  // v2.30: …/t/tienda?presupuesto=… abre el presupuesto que te mandaron (sin costos; se puede aceptar y bajar en PDF)
+  S.presu = null; S.presuTok = null;
+  try { const pt = new URLSearchParams(location.search).get('presupuesto'); if (pt && /^[a-f0-9]{32,80}$/.test(pt) && !S.previa) { S.presuTok = pt; S.vista = 'presu'; try { S.presu = await api.verPresupuesto(pt); } catch (e) { S.presu = null; } } } catch (e) { }
   pintar();
   if (S.previa) { if (S.prevMsg) aplicarPrevia(S.prevMsg); try { window.parent.postMessage({ t: 'eskalapp-previa-lista' }, location.origin); } catch (e) { } }
 }
@@ -256,7 +259,7 @@ function pintar() {
   app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}${L.compacto ? ' compacto' : ''}" style="${st}">
     <div id="hdr"${L.compacto ? ' class="hdr-c"' : ''}><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${L.compacto ? `<span class="hdr-nm">${esc(S.tienda.nombre)}${S.tienda.eslogan ? `<small>${esc(S.tienda.eslogan)}</small>` : ''}</span>` : esc(S.tienda.nombre)}</div>
       <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
-    ${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
+    ${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); iniciarVitrina(); }
 }
 
@@ -572,6 +575,35 @@ on('st-repetir', () => {
   S.avisoCart = false; guardarCarrito();
   toast(`🔁 Agregamos ${L.length} ${L.length === 1 ? 'producto' : 'productos'} con los precios de hoy${no ? ` · ${no} ya no ${no === 1 ? 'está disponible' : 'están disponibles'}` : ''}`);
   ir('cart');
+});
+
+/* ---------- v2.30 · presupuesto que te mandó la tienda ---------- */
+const fechaAr = d => d ? new Date(String(d).length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('es-AR') : '';
+function pantallaPresu() {
+  const v = S.presu;
+  if (!v) return `<div class="page"><div class="empty"><div class="ico">📝</div><p><b>Este presupuesto ya no está disponible.</b></p><p class="muted">Puede que la tienda lo haya anulado. Escribile para pedir uno nuevo.</p>
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px"><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${esc(waLink(normWsp(S.tienda.whatsapp), 'Hola! Quería pedirte un presupuesto.'))}">💬 Escribir por WhatsApp</a><button class="btn btn-s btn-sm" data-act="ps-tienda">Ver la tienda</button></div></div></div>`;
+  const est = v.estado === 'convertido' ? ['conv', '🧾 Ya es un pedido'] : v.estado === 'aceptado' ? ['ok', '✅ Aceptado'] : v.vencido ? ['venc', '⌛ Vencido'] : ['env', v.vence ? 'Válido hasta el ' + fechaAr(v.vence) : 'Presupuesto'];
+  const puede = !v.vencido && (v.estado === 'borrador' || v.estado === 'enviado');
+  return `<div class="page ps"><div class="ps-cab"><div><div class="view-title" style="margin:0">Presupuesto N° ${esc(v.numero)}</div><small class="muted">Para ${esc(v.cliente)} · ${esc(fechaAr(v.fecha))}</small></div><span class="pr-est ${est[0]}">${esc(est[1])}</span></div>
+    <div class="ps-ls">${(v.items || []).map(x => `<div class="ps-l"><span><span><b>${esc(x.nombre)}</b>${x.variante ? `<span class="muted"> · ${esc(x.variante)}</span>` : ''}</span><small class="muted">${esc(x.cantidad)} × ${fmt(x.precio_unitario)}</small></span><b>${fmt(x.subtotal)}</b></div>`).join('')}
+      ${Number(v.envio_costo) > 0 ? `<div class="ps-l"><span>🚚 Envío${v.envio_nombre ? ' · ' + esc(v.envio_nombre) : ''}</span><b>${fmt(v.envio_costo)}</b></div>` : ''}
+      <div class="ps-l ps-tot"><span>Total</span><b>${fmt(v.total)}</b></div></div>
+    ${v.nota ? `<p class="ps-nota">${esc(v.nota)}</p>` : ''}
+    ${v.vencido ? '<div class="ps-av">⌛ Este presupuesto venció: los precios pueden haber cambiado. Escribile a la tienda y te mandan uno nuevo.</div>' : ''}
+    ${v.estado === 'aceptado' || v.estado === 'convertido' ? '<div class="ps-av ok">✅ ¡Listo! La tienda ya sabe que lo aceptaste y te escribe para coordinar el pago y la entrega.</div>' : ''}
+    <div class="ps-acc">${puede ? '<button class="btn btn-p" data-act="ps-aceptar">✅ Aceptar presupuesto</button>' : ''}
+      <a class="btn btn-wa" target="_blank" rel="noopener" href="${esc(waLink(normWsp(S.tienda.whatsapp), `Hola! Te escribo por el presupuesto N° ${v.numero}${v.vencido ? ': venció, ¿me mandás uno actualizado?' : '.'}`))}">💬 Consultar por WhatsApp</a>
+      <button class="btn btn-s" data-act="ps-pdf">📄 Descargar PDF</button><button class="btn btn-s" data-act="ps-tienda">Ver la tienda</button></div></div>`;
+}
+on('ps-tienda', () => { S.vista = 'cat'; try { history.replaceState(history.state, '', location.pathname); } catch (e) { } pintar(); window.scrollTo(0, 0); });
+on('ps-pdf', () => { if (S.presu) imprimir(htmlPresupuesto(S.presu)); });
+on('ps-aceptar', async (d, b) => {
+  b.disabled = true;
+  try {
+    await api.aceptarPresupuesto(S.presuTok); S.presu.estado = 'aceptado'; pintar();
+    window.open(waLink(normWsp(S.tienda.whatsapp), `¡Hola! Acepto el presupuesto N° ${S.presu.numero} por ${fmt(S.presu.total)}. ¿Cómo seguimos con el pago y la entrega?`), '_blank', 'noopener');
+  } catch (e) { b.disabled = false; toast(e.message); if (/venció/.test(e.message)) { S.presu.vencido = true; pintar(); } }
 });
 
 /* ---------- talles sin stock (ropa y calzado) ---------- */

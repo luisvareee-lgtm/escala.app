@@ -11,7 +11,9 @@ import { vistaAjustes, resetAj } from './ajustes.js';
 import { redimensionar } from './img.js';
 import { fichaDesdeEnlace, promptFoto, limpiarNombre } from './webprov.js';
 import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
-import { vistaResultado, cargarGastos, resetRes } from './resultado.js';
+import { vistaResultado, cargarGastos, resetRes, gastosCargados } from './resultado.js';
+import { vistaCaja, resetCaja } from './caja.js';
+import { vistaPresupuestos, resetPresu, cargarPresupuestos, presusCargados } from './presupuestos.js';
 import { resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
@@ -35,7 +37,7 @@ const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
 export const setSalir = f => { salirFn = f; };
 const urlTienda = () => urlTiendaDe(P.t.slug);
-const TABS_BASE = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
+const TABS_BASE = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['presupuestos', '📝 Presupuestos'], ['caja', '💵 Caja'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
 const TABS_ADMIN = [['admin', '🛡️ Admin']];
 const tabs = () => (P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE).filter(([k]) => seMuestra(k));
 const todasTabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
@@ -49,11 +51,14 @@ export async function mostrarPanel(app) {
   P.esAdmin = await esAdmin(); resetAdmin();
   // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
   const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
-  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetDis(); resetInt(); resetAvisos(); P.gastos = [];
+  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetCaja(); resetPresu(); P.presus = []; resetDis(); resetInt(); resetAvisos(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; P.irSeccion = irSeccion; Q.fly = null; resetTT();
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
+  // v2.30: precios de lista de un producto (presupuestos): al público y x1 · x3 · x6 · x12, con combo y oferta
+  P.preciosProd = p => { const pr = preciosDe(p.costo_usd, p.margen_override), o = {}; Object.keys(pr).forEach(k => { o[k] = precioFinal(p, pr[k]); }); return o; };
   usarPrecioPromo(p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, pr.min); });   // promos: precio al público
   await cargar();
+  if (P.tab === 'caja' || P.tab === 'resultado') await cargarGastos(); if (P.tab === 'presupuestos') await cargarPresupuestos();
   if (qp) { const o = P.pedidos.find(x => x.id === qp); if (o) { P.tab = 'pedidos'; P.modal = { tipo: 'ped', o, items: P.items.filter(i => i.order_id === o.id) }; } }
   if (Q.stop) Q.stop();
   Q.stop = api.escucharPedidos(P.t.id, async () => { toast('🔔 Pedido nuevo'); await recargarPedidos(); if (P.modal || document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { Q.pendiente = true; return; } pintar(); });
@@ -70,8 +75,11 @@ async function cargar() {
 async function recargarPedidos() { try { [P.pedidos, P.items] = await Promise.all([api.pedidosTodos(), api.itemsTodos()]); P.t = await api.miTienda() || P.t; P.prods = await api.misProductos(); } catch (e) { } }
 
 function pintar() {
+  // v2.30: si se llegó a Caja, Resultado o Presupuestos desde la ayuda o la guía, se cargan sus datos y se vuelve a pintar
+  if ((P.tab === 'caja' || P.tab === 'resultado') && !gastosCargados()) cargarGastos().then(pintar);
+  if (P.tab === 'presupuestos' && !presusCargados()) cargarPresupuestos().then(pintar);
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
+  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, caja: vistaCaja, presupuestos: vistaPresupuestos, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
     <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
@@ -81,7 +89,7 @@ function pintar() {
 }
 
 const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], ['pedidos', '🧾', 'Pedidos'], ['tienda', '🎨', 'Tienda']];
-const MAS = [['asistente', '🧠', 'Asistente', 'Seguimiento de clientes, cobranzas y reposición'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
+const MAS = [['presupuestos', '📝', 'Presupuestos', 'Armalo, mandalo por WhatsApp y pasalo a pedido'], ['caja', '💵', 'Caja', 'Lo que entró y salió: efectivo y transferencia'], ['asistente', '🧠', 'Asistente', 'Seguimiento de clientes, cobranzas y reposición'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
   const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab) || P.tab === 'admin';
   return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
@@ -273,7 +281,7 @@ function abrirCombo(ids) {
 const mm = (t, ok) => { const e = $('#mm'); if (e) e.innerHTML = `<div class="${ok ? 'ok-box' : 'err-box'}">${esc(t)}</div>`; };
 
 /* ---------- acciones ---------- */
-on('p-tab', async d => { if (d.k !== P.tab) limpiarSel(); P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado') await cargarGastos(); pintar(); window.scrollTo(0, 0); });
+on('p-tab', async d => { if (d.k !== P.tab) limpiarSel(); P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado' || d.k === 'caja') await cargarGastos(); if (d.k === 'presupuestos') await cargarPresupuestos(); pintar(); window.scrollTo(0, 0); });
 on('p-salir', async () => { if (Q.stop) Q.stop(); Q.stop = null; await api.salir(); salirFn(); });
 on('p-copiar', d => copiar(d.v));
 on('p-cerrar', () => { P.modal = null; Q.pendiente = false; pintar(); });
