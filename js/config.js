@@ -15,6 +15,6 @@ window.CONFIG_MARCA = {
       TITULAR: 'Luis Varela',
       CUIT: '20-32960746-2',
       DOMINIO: 'eskalapp.com',
-      DEMO_URL: 'lua-beauty.eskalapp.com',
+      DEMO_URL: 'https://lua-beauty.eskalapp.com/',
       PLANES: { base: { link: '' }, pro: { link: '' }, api: { link: '' } }
     };
