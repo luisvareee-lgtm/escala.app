@@ -107,6 +107,12 @@ export const api = {
   adminPlan: async (slug, plan, meses, monto, medio, nota) => ok(await sb.rpc('admin_plan', { p_slug: slug, p_plan: plan, p_meses: meses, p_monto: monto, p_medio: medio, p_nota: nota })),
   adminEstado: async (slug, activa) => ok(await sb.rpc('admin_estado', { p_slug: slug, p_activa: activa })),
   adminPagos: async () => ok(await sb.rpc('admin_pagos')) || [],
+  // v2.31 · Demos con tiendas reales (con permiso de la dueña; la portada la elige el admin)
+  tiendaDemo: async slug => { try { return !!ok(await sb.rpc('tienda_demo', { p_slug: slug })); } catch (e) { return false; } },
+  listaMayoristaDemo: async slug => ok(await sb.rpc('catalogo_mayorista_demo', { p_slug: slug })) || [],
+  demosPublicas: async () => { try { return ok(await sb.rpc('demos_publicas')) || []; } catch (e) { return []; } },
+  adminDemos: async () => { try { return ok(await sb.rpc('admin_demos')) || []; } catch (e) { return []; } },
+  adminDemoPortada: async (slug, valor, orden) => ok(await sb.rpc('admin_demo_portada', { p_slug: slug, p_valor: valor, p_orden: orden ?? null })),
   adminSugEstado: async (id, estado) => { ok(await sb.rpc('admin_sugerencia_estado', { p_id: id, p_estado: estado })); },
   crearTienda: async d => ok(await sb.rpc('crear_tienda', { p_slug: d.slug, p_nombre: d.nombre, p_rubro: d.rubro, p_whatsapp: d.whatsapp, p_modalidad: d.modalidad, p_plan: d.plan })),
   guardarTienda: async (id, cambios) => ok(await sb.from('tenants').update(cambios).eq('id', id).select().maybeSingle()),

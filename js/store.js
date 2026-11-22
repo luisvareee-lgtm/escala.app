@@ -2,6 +2,7 @@
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir, htmlPresupuesto } from './catalogo.js';
+import { MARCA } from './marca.js';
 import { abrirFlyer } from './flyer.js';
 import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido, montoDesc, montoEscalon, montoTxt, cuponDesc, cuponTxt } from './promo.js';
 import { tiraCierreHtml } from './cuenta.js';
@@ -98,7 +99,9 @@ function pista() {
   });
   return mejor;
 }
-const guardarCarrito = () => { if (!S.previa) store.set('cart:' + S.slug, S.cart); };
+// v2.31: en la demo el carrito va aparte (no se mezcla con una compra real en la misma tienda)
+const claveCart = slug => (S.demo ? 'cart:demo:' : 'cart:') + slug;
+const guardarCarrito = () => { if (!S.previa) store.set(claveCart(S.slug), S.cart); };
 
 /* ---------- barra de escalas: cuánto falta para el próximo precio y cuánto se ahorra ---------- */
 // q = unidades que cuentan para la escala (las del producto o, si la tienda lo eligió, las de su categoría o todo el carrito)
@@ -185,7 +188,7 @@ function cargarPixel(id) {
   const s = document.createElement('script'); s.async = true; s.src = 'https://connect.facebook.net/en_US/fbevents.js'; document.head.appendChild(s);
   window.fbq('init', id); window.fbq('track', 'PageView');
 }
-const evento = (n, d) => { if (S.previa) return; try { if (window.fbq) window.fbq('track', n, d); } catch (e) { } };
+const evento = (n, d) => { if (S.previa || S.demo) return; try { if (window.fbq) window.fbq('track', n, d); } catch (e) { } };
 
 /* ---------- entrada ---------- */
 export async function mostrarTienda(slug, app) {
@@ -200,15 +203,19 @@ export async function mostrarTienda(slug, app) {
     S.vitSrv = {}; await Promise.all(modos.map(async m => { try { S.vitSrv[m] = await api.vitrinaIds(slug, m); } catch (e) { S.vitSrv[m] = null; } }));
   } catch (e) { app.innerHTML = '<div class="page"><div class="err-box">' + esc(e.message) + '</div></div>'; return; }
   S.previa = PREVIA;
-  S.cart = S.previa ? [] : (store.get('cart:' + slug, []) || []).filter(l => l && prod(l.id));
+  // v2.31 · …?demo: la tienda real prestada como demo (con permiso de la dueña). El pedido no se manda ni se guarda.
+  S.demo = false;
+  try { if (!PREVIA && new URLSearchParams(location.search).has('demo')) S.demo = await api.tiendaDemo(slug); } catch (e) { S.demo = false; }
+  S.cart = S.previa ? [] : (store.get(claveCart(slug), []) || []).filter(l => l && prod(l.id));
   // v2.29: vista elegida (tarjetas o pedido rápido), aviso de pedido sin terminar y el último pedido de este celular
   S.vmodo = store.get('vm:' + slug, 'tarj') === 'tabla' ? 'tabla' : 'tarj'; S.avisoCart = !S.previa && S.cart.length > 0; S.ultOculto = false;
-  S.ult = S.previa ? null : store.get('ult:' + slug, null);
+  S.ult = S.previa || S.demo ? null : store.get('ult:' + slug, null);
   try { const cp = new URLSearchParams(location.search).get('cupon'); if (cp && /^[A-Za-z0-9_-]{3,20}$/.test(cp)) S.cuponPend = cp.toUpperCase(); } catch (e) { }
   try { const pg = new URLSearchParams(location.search).get('pago'); S.avisoPago = ({ ok: '✅ ¡Gracias! Estamos confirmando tu pago con Mercado Pago. El comercio te avisa por WhatsApp.', pendiente: '⏳ Tu pago quedó pendiente. Cuando se acredite, el comercio lo confirma.', error: 'El pago no se completó. Podés volver a intentar o coordinar por WhatsApp.' })[pg] || ''; } catch (e) { S.avisoPago = ''; }
   try { const r = new URLSearchParams(location.search).get('r'); if (r && /^[A-Za-z0-9_-]{8,64}$/.test(r)) store.set('ref:' + slug, { r, ts: Date.now() }); const g = store.get('ref:' + slug, null); S.ref = g && g.r && Date.now() - g.ts < 30 * 864e5 ? g.r : null; } catch (e) { S.ref = null; }   // la atribución al revendedor vence a los 30 días
   S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null; S.rubro = null; S.foco = null; S.niveles = null; S.orden = 'dest';
-  if (!S.previa) cargarPixel(S.tienda.pixel_id);
+  if (!S.previa && !S.demo) cargarPixel(S.tienda.pixel_id);
+  if (S.demo && S.tienda.modalidad === 'hibrido') { try { const lista = await api.listaMayoristaDemo(slug); S.may = new Map(lista.map(r => [r.producto_id, r])); } catch (e) { } }
   document.title = S.tienda.nombre;
   // v2.30: …/t/tienda?presupuesto=… abre el presupuesto que te mandaron (sin costos; se puede aceptar y bajar en PDF)
   S.presu = null; S.presuTok = null;
@@ -259,7 +266,7 @@ function pintar() {
   app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}${L.compacto ? ' compacto' : ''}" style="${st}">
     <div id="hdr"${L.compacto ? ' class="hdr-c"' : ''}><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${L.compacto ? `<span class="hdr-nm">${esc(S.tienda.nombre)}${S.tienda.eslogan ? `<small>${esc(S.tienda.eslogan)}</small>` : ''}</span>` : esc(S.tienda.nombre)}</div>
       <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
-    ${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
+    ${demoBarra()}${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); iniciarVitrina(); }
 }
 
@@ -311,7 +318,7 @@ function ctHtml(p) {
    Visita = abrió la ficha. Al carrito = lo agregó. Cada navegador cuenta 1 vez por producto y por día; se mandan juntas cada pocos segundos. */
 const ACT = { v: new Set(), c: new Set(), t: null };
 function marcarAct(tipo, id) {
-  if (!id || !S.slug || S.previa) return;
+  if (!id || !S.slug || S.previa || S.demo) return;
   const hoy = new Date().toLocaleDateString('sv'), k = 'act:' + S.slug;
   let m = store.get(k, null); if (!m || m.d !== hoy) m = { d: hoy, v: [], c: [] };
   if (m[tipo].includes(id)) return;
@@ -817,10 +824,31 @@ function ticket(r, cliente) {
 }
 function pantallaOk() {
   const u = S.ultimo; if (!u) return '';
+  if (u.demo) return `<div class="page"><div class="center"><div class="ok-ring">🎬</div><h2 style="font-size:1.4rem">¡Pedido de prueba armado!</h2><p class="muted" style="margin:6px 0 14px">En la tienda real, acá tu cliente toca “Enviar por WhatsApp” y a ${esc(S.tienda.nombre)} le llega este ticket, con el total ya calculado. <b>En la demo no se mandó ni se guardó nada.</b></p></div>
+    <pre class="demo-tk">${esc(u.tk)}</pre>
+    <div class="stack"><a class="btn btn-p" href="${esc(urlRegistro())}">Crear mi tienda gratis</a><button class="btn btn-s" data-act="st-ir" data-v="cat">Seguir mirando la demo</button></div></div>`;
   return `<div class="page"><div class="center"><div class="ok-ring">✅</div><h2 style="font-size:1.4rem">¡Pedido registrado!</h2><p class="muted" style="margin:6px 0 18px">N° <b>${esc(u.r.numero)}</b> · ${fmt(u.r.total)}. Falta un paso: enviá el ticket por WhatsApp para que ${esc(S.tienda.nombre)} lo confirme.</p>${u.r.proxima_tanda ? '<p class="enc-note enc-co" id="ok-tanda">📦 Tu pedido entra en la próxima tanda.</p>' : ''}</div>
     <div class="stack">${u.mp ? `<a class="btn btn-p" id="mp-pagar" href="${esc(u.mp)}" rel="noopener">💳 Pagar ahora con Mercado Pago</a>` : ''}${u.mpError ? `<div class="err-box">${esc(u.mpError)} Podés coordinar el pago por WhatsApp.</div>` : ''}<a class="btn btn-wa" href="${esc(u.link)}" target="_blank" rel="noopener">📲 Enviar ticket por WhatsApp</a><pre class="ticket">${esc(u.tk)}</pre>
     <button class="btn btn-s" data-act="st-copiar">Copiar ticket</button><button class="btn btn-s" data-act="st-ir" data-v="cat">Seguir comprando</button></div>
     <p class="hint center" style="margin-top:12px">Si WhatsApp no se abrió solo, tu navegador bloqueó la ventana: usá el botón verde.</p></div>`;
+}
+
+/* ---------- v2.31 · demo con la tienda real ---------- */
+// el registro está en el sitio principal (si la tienda abre en su subdominio, se va al dominio de Eskalapp)
+const urlRegistro = () => (MARCA.DOMINIO ? 'https://' + MARCA.DOMINIO : location.origin) + '/#/registro';
+function demoBarra() {
+  if (!S.demo) return '';
+  return `<div class="demo-bar" role="note"><span>🎬 <b>Demo de Eskalapp</b> con la tienda real de ${esc(S.tienda.nombre)}. Armá un pedido de prueba: <b>no se manda ni se guarda</b>.</span><a class="btn btn-sm demo-bar-b" href="${esc(urlRegistro())}">Crear mi tienda gratis</a></div>`;
+}
+// el mismo ticket que le llega a la tienda, armado con los precios que ve el cliente (sin pasar por el servidor)
+function pedidoDemo(cliente) {
+  const T = totales(), e = envioSel(), env = costoEnvio(e, T.final);
+  const items = lineas().map(l => ({ producto_id: l.p.id, nombre: l.p.nombre, variante: l.vr || '', talles: (S.cart[l.i] || {}).ct, cantidad: l.qty, precio_unitario: l.pu, subtotal: l.sub, unidad: l.p.unidad, contenido: l.p.contenido }));
+  const r = { numero: 'DEMO', tienda: S.tienda.nombre, modo: vista() === 'may' ? 'mayorista' : 'minorista', items, total: T.final + env, subtotal: T.final, descuento_monto: T.dm, cupon: T.cupon ? T.cupon.codigo : null, descuento_cupon: T.dc,
+    envio: e ? e.nombre : null, envio_costo: env, alias_cobro: S.tienda.alias_cobro || '', whatsapp: S.tienda.whatsapp };
+  let tk = ''; try { tk = ticket(r, cliente); } catch (er) { tk = `*PEDIDO DE PRUEBA* · ${S.tienda.nombre}\nTotal: ${fmt(r.total)}`; }
+  S.ultimo = { r, tk, link: null, demo: true }; S.cart = []; S.cupon = null; S.cuponPend = ''; guardarCarrito();
+  S.vista = 'ok'; pintar(); window.scrollTo(0, 0);
 }
 
 /* ---------- acciones ---------- */
@@ -901,7 +929,8 @@ function repintarCo() { const v = CAMPOS.map(n => { const e = document.querySele
 on('st-pay', d => { S.pay = d.p; repintarCo(); });
 on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && e.required && !e.value) e.focus(); });
 
-on('may-abrir', async () => { if (S.tienda.requiere_codigo) { S.pedirCodigo = true; pintar(); const i = document.querySelector('#gremio-box input'); if (i) i.focus(); } else await activarMay(null); });
+on('may-abrir', async () => { if (S.demo) { try { const lista = await api.listaMayoristaDemo(S.slug); S.may = new Map(lista.map(r => [r.producto_id, r])); pintar(); toast('💼 Lista mayorista activada'); } catch (e) { toast(e.message); } return; }
+  if (S.tienda.requiere_codigo) { S.pedirCodigo = true; pintar(); const i = document.querySelector('#gremio-box input'); if (i) i.focus(); } else await activarMay(null); });
 on('may-codigo', async (d, f) => { await activarMay(new FormData(f).get('codigo')); });
 on('may-salir', () => { S.may = null; S.codigo = ''; S.pedirCodigo = false; pintar(); toast('Volviste a precios minoristas'); });
 async function activarMay(codigo) {
@@ -912,7 +941,7 @@ async function activarMay(codigo) {
 }
 
 const subirCarrito = debounce(async (nombre, wsp) => {
-  if (S.previa || !S.tienda.carritos_activos || soloDigitos(wsp).length < 8 || !S.cart.length) return;
+  if (S.previa || S.demo || !S.tienda.carritos_activos || soloDigitos(wsp).length < 8 || !S.cart.length) return;
   try { const T = totales(); await api.guardarCarrito(S.slug, nombre || 'Cliente', wsp, lineas().map(l => ({ n: l.p.nombre, v: l.vr, q: l.qty })), T.total); } catch (e) { }
 }, 1500);
 on('st-contacto', () => { const f = $('#co-form'); if (f) subirCarrito(f.nombre.value.trim(), f.whatsapp.value.trim()); });
@@ -929,6 +958,7 @@ on('st-pedir', async (d, f) => {
   const items = S.cart.map(l => l.ct ? { producto_id: l.id, variante: '', cantidad: l.qty, talles: l.ct } : { producto_id: l.id, variante: l.vr, cantidad: l.qty });
   if (S.cupon && S.cupon.ok) cliente.cupon = S.cupon.codigo;
   if (S.previa) { $('#co-err').innerHTML = '<div class="ok-box">👁 Vista previa: así lo ve tu cliente. Desde acá no se envían pedidos.</div>'; window.scrollTo(0, 0); return; }
+  if (S.demo) { pedidoDemo(cliente); return; }
   const btn = $('#co-go'); S.enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
   try {
     const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);

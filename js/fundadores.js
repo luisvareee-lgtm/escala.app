@@ -63,11 +63,22 @@ on('sg-enviar', async (d, f) => {
 
 /* ---------- administración de la plataforma ---------- */
 const AD = { tiendas: null, sugs: null, cfg: null, pagos: [], err: '', f: 'todas', q: '', cargando: false, planDe: '', pf: null };
+// v2.31: tiendas que prestaron la suya como demo (permiso de la dueña) y cuáles salen en la portada
+const demoDe = x => (AD.demos && AD.demos.get(x.slug)) || null;
+const demoTag = x => { const d = demoDe(x); return !d || !d.demo_activa ? '' : d.demo_portada ? '<span class="tag ok">🎬 En la portada</span>' : '<span class="tag">🎬 Prestó su tienda</span>'; };
+const demoBtn = x => { const d = demoDe(x); if (!d || !d.demo_activa) return ''; const s = esc(x.slug);
+  return d.demo_portada ? `<button class="btn btn-s btn-sm" data-act="ad-demo" data-s="${s}" data-v="0">Sacar de la portada</button><a class="btn btn-s btn-sm" href="${esc(urlTiendaDe(x.slug, '?demo'))}" target="_blank" rel="noopener">Ver demo</a>`
+    : `<button class="btn btn-p btn-sm" data-act="ad-demo" data-s="${s}" data-v="1">🎬 Mostrar en la portada</button><a class="btn btn-s btn-sm" href="${esc(urlTiendaDe(x.slug, '?demo'))}" target="_blank" rel="noopener">Ver demo</a>`; };
+on('ad-demo', async d => {
+  const orden = d.v === '1' ? [...(AD.demos || new Map()).values()].filter(x => x.demo_portada).length + 1 : null;
+  try { await api.adminDemoPortada(d.s, d.v === '1', orden); toast(d.v === '1' ? '🎬 Ya aparece en la portada' : 'La sacaste de la portada'); } catch (e) { toast(e.message); }
+  await recargarTiendas();
+});
 export const resetAdmin = () => Object.assign(AD, { tiendas: null, sugs: null, cfg: null, pagos: [], err: '', f: 'todas', q: '', cargando: false, planDe: '', pf: null });
 export async function esAdmin() { try { return !!(await api.esAdmin()); } catch (e) { return false; } }
 async function cargarAdmin() {
   AD.cargando = true; AD.err = '';
-  try { [AD.tiendas, AD.sugs, AD.cfg, AD.pagos] = await Promise.all([api.adminTiendas(), api.adminSugerencias(), api.cupos(), api.adminPagos().catch(() => [])]); }
+  try { let dm; [AD.tiendas, AD.sugs, AD.cfg, AD.pagos, dm] = await Promise.all([api.adminTiendas(), api.adminSugerencias(), api.cupos(), api.adminPagos().catch(() => []), api.adminDemos()]); AD.demos = new Map((dm || []).map(x => [x.slug, x])); }
   catch (e) { AD.err = e.message; }
   AD.cargando = false; P.repintar();
 }
@@ -198,7 +209,7 @@ function filaTienda(x) {
   const [tono, est] = estadoDe(x), d = diasDe(x), s = esc(x.slug);
   const wsp = x.whatsapp ? waLink(x.whatsapp, `Hola ${x.nombre}, te escribo de la plataforma de tu tienda.`) : '';
   return `<div class="adm-t" data-slug="${s}">
-    <div class="adm-h"><b>${esc(x.nombre)}</b>${x.fundador ? '<span class="tag ok">⭐ Fundador</span>' : ''}<span class="tag ${tono}">${esc(est)}</span>${x.estado !== 'activo' ? '<span class="tag warn">Suspendida</span>' : ''}${x.sugerencias ? `<span class="tag">💡 ${x.sugerencias}</span>` : ''}</div>
+    <div class="adm-h"><b>${esc(x.nombre)}</b>${x.fundador ? '<span class="tag ok">⭐ Fundador</span>' : ''}<span class="tag ${tono}">${esc(est)}</span>${x.estado !== 'activo' ? '<span class="tag warn">Suspendida</span>' : ''}${x.sugerencias ? `<span class="tag">💡 ${x.sugerencias}</span>` : ''}${demoTag(x)}</div>
     <div class="adm-m"><a href="${esc(urlTiendaDe(x.slug))}" target="_blank" rel="noopener">/${s}</a> · <span class="sel">${esc(x.email || 'sin email')}</span>${wsp ? ` · <a href="${esc(wsp)}" target="_blank" rel="noopener">WhatsApp</a>` : ''} · alta ${esc(fechaCorta(x.created_at))} · ${esc(x.rubro || '')} · ${esc(x.modalidad || '')}</div>
     ${x.ultimo_pago ? `<div class="adm-m">💳 Último pago: ${fmt(x.ultimo_pago.monto)} (${esc(PLAN_NOMBRE[x.ultimo_pago.plan] || x.ultimo_pago.plan)}, ${x.ultimo_pago.meses ? x.ultimo_pago.meses + (x.ultimo_pago.meses === 1 ? ' mes' : ' meses') : 'sin vencimiento'}) el ${esc(fechaCorta(x.ultimo_pago.fecha))}${x.plan_hasta ? ` · pago hasta ${esc(fechaCorta(x.plan_hasta))}` : ''}</div>` : x.plan_hasta ? `<div class="adm-m">💳 Pago hasta ${esc(fechaCorta(x.plan_hasta))}</div>` : ''}
     <div class="adm-u">📦 ${x.productos} productos · 🧾 ${x.pedidos} pedidos (${x.pedidos_30d} en 30 días) · 🕒 entró ${esc(hace(x.ultimo_ingreso))}${x.ultimo_pedido ? ` · último pedido ${esc(hace(x.ultimo_pedido))}` : ''}</div>
@@ -209,7 +220,7 @@ function filaTienda(x) {
       ${d > 0 ? `<button class="btn btn-s btn-sm" data-act="ad-prueba" data-s="${s}" data-a="terminar">Terminar prueba</button>` : ''}
       <button class="btn btn-s btn-sm" data-act="ad-fund" data-s="${s}" data-v="${x.fundador ? '0' : '1'}">${x.fundador ? 'Quitar fundador' : '⭐ Hacer fundador'}</button>
       <button class="btn btn-p btn-sm" data-act="ad-plan-abrir" data-s="${s}">💳 Activar plan</button>
-      ${recordarHtml(x)}
+      ${recordarHtml(x)}${demoBtn(x)}
       <button class="btn btn-s btn-sm" data-act="ad-estado" data-s="${s}" data-v="${x.estado === 'activo' ? '0' : '1'}">${x.estado === 'activo' ? '⏸ Pausar tienda' : '▶️ Reactivar tienda'}</button>
     </div>${AD.planDe === x.slug ? planForm(x) : ''}</div>`;
 }
@@ -223,7 +234,7 @@ function filaSug(s) {
 on('ad-recargar', () => { AD.tiendas = null; AD.err = ''; cargarAdmin(); P.repintar(); });
 on('ad-f', d => { AD.f = d.k; P.repintar(); });
 on('ad-q', (d, el) => { AD.q = el.value; P.repintar(); const i = document.getElementById('ad-q'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
-const recargarTiendas = async () => { try { [AD.tiendas, AD.cfg] = await Promise.all([api.adminTiendas(), api.cupos()]); } catch (e) { AD.err = e.message; } P.repintar(); };
+const recargarTiendas = async () => { try { let dm; [AD.tiendas, AD.cfg, dm] = await Promise.all([api.adminTiendas(), api.cupos(), api.adminDemos()]); AD.demos = new Map((dm || []).map(x => [x.slug, x])); } catch (e) { AD.err = e.message; } P.repintar(); };
 on('ad-prueba', async (d, b) => {
   if (d.a === 'terminar' && !confirmar(b, '¿Terminar la prueba? Tocá de nuevo')) return;
   b.disabled = true;

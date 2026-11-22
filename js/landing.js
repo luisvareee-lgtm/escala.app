@@ -1,7 +1,9 @@
 // Portada (v2.28: encabezado fijo, titular con el dolor y el resultado, perfiles, barra que se muestra sola, capturas reales,
 // testimonios desde config.js y un solo botón en toda la página): por qué elegir la plataforma, la barra del pedido en vivo, simuladores (precios por volumen y costo mensual), planes, preguntas y legales.
 import { esc, fmt, on, $ } from './util.js';
-import { MARCA, PLANES, REFERENCIA } from './marca.js';
+import { MARCA, PLANES, REFERENCIA, urlTiendaDe } from './marca.js';
+import { api } from './api.js';
+import { RUBROS } from './rubro.js';
 import { demoHtml } from './demo.js';
 import { cuposHtml, cargarCupos } from './fundadores.js';
 import { ilus } from './ilus.js';
@@ -184,7 +186,7 @@ export function inicio(app) {
     <span class="lp-top-acc"><a class="lp-in" href="#/login">Ingresar</a><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></span></div></div>
   <div class="lp">
   <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para mayoristas, importadores y marcas con revendedores</div>
-    <h1>Tu lista mayorista, siempre al día. <span>Sin PDF y sin comisión por venta.</span></h1>
+    <h1>Tu lista mayorista, siempre al día. <span>Sin PDF ni Excel, y sin comisión por venta.</span></h1>
     <div class="lp-perfil" role="group" aria-label="¿Cuál es tu caso?">${Object.entries(PERFILES).map(([k, v]) => `<button type="button" data-act="lp-perfil" data-k="${k}" class="${LP.perfil === k ? 'on' : ''}" aria-pressed="${LP.perfil === k}">${v[0]}</button>`).join('')}</div>
     <div id="lp-perfil-in">${perfilHtml()}</div>
     <div class="lp-cta" id="lp-cta">${cta()}<button type="button" class="btn btn-s" data-act="lp-ir" data-k="probar">Probar con mi lista</button></div>
@@ -210,7 +212,9 @@ export function inicio(app) {
   <section class="lp-sec lp-ver"><h2>Así se ve por dentro</h2><p class="lp-sub">Tu panel a la izquierda y tu tienda como la ve tu cliente. Capturas de una tienda de ejemplo.</p>
     <div class="lp-caps"><figure class="lp-cap-pc"><div class="lp-cap-bar" aria-hidden="true"><i></i><i></i><i></i></div><img src="/captura-panel.jpg" alt="El panel de ${N}: la tienda se edita viendo al costado cómo queda" loading="lazy" width="1400" height="875"><figcaption>El panel: editás y ves al costado cómo queda tu tienda.</figcaption></figure>
       <figure class="lp-cap-cel"><img src="/captura-tienda.jpg" alt="El carrito de una tienda con las barras de envío gratis y descuento" loading="lazy" width="390" height="760"><figcaption>La tienda en el celular de tu cliente.</figcaption></figure></div>
-    ${urlOk(MARCA.DEMO_URL) ? `<a class="btn btn-s lp-mid" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Mirá una tienda funcionando</a>` : ''}</section>
+    ${urlOk(MARCA.DEMO_URL) ? `<a class="btn btn-s lp-mid" id="lp-demo-url" href="${esc(MARCA.DEMO_URL)}" target="_blank" rel="noopener">Mirá una tienda funcionando</a>` : ''}</section>
+
+  <section class="lp-sec lp-demos" id="demos" hidden><h2>Tiendas reales funcionando</h2><p class="lp-sub">Comercios que ya venden con ${N} nos prestan su tienda. Entrá, mirá los precios por cantidad y armá un pedido de prueba: no se manda ni se guarda.</p><div class="lp-dms" id="lp-dms"></div></section>
 
   <section class="lp-sec" id="comparar"><h2>Compará antes de elegir</h2><p class="lp-sub">Las plataformas tradicionales cobran el abono más un porcentaje de cada venta. Nosotros, solo el abono.</p>
     <div class="lp-sim lp-costo"><label class="lp-range">Vendés por mes: <b id="lp-v">${fmt(SIM.ventas)}</b><input type="range" min="500000" max="30000000" step="500000" value="${SIM.ventas}" data-input="lp-ventas" aria-label="Ventas por mes"></label>
@@ -235,11 +239,24 @@ export function inicio(app) {
   <footer class="lp-foot"><div><b class="lp-logo"><img src="/favicon.svg" alt="" width="22" height="22">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
     <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
   <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b><span class="dias-prueba">14</span> días gratis · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
-  cargarCupos(); autoBarra();
+  cargarCupos(); autoBarra(); cargarDemos();
   // en el celular, el botón queda fijo abajo cuando el del encabezado ya no se ve
   if (FIJO) { FIJO.disconnect(); FIJO = null; }
   const c = $('#lp-cta'), f = $('#lp-fijo');
   if (c && f && typeof IntersectionObserver !== 'undefined') { FIJO = new IntersectionObserver(es => { const e = es[es.length - 1]; f.hidden = e.isIntersecting || e.boundingClientRect.top > 0; }); FIJO.observe(c); }
+}
+// v2.31: tiendas reales que prestaron la suya como demo (con permiso de la dueña; las elige el admin). Sin ninguna, la sección no aparece.
+const MODAL = { mayorista: 'Por mayor', minorista: 'Al público', hibrido: 'Por mayor y al público' };
+async function cargarDemos() {
+  const L = await api.demosPublicas(), sec = $('#demos'), box = $('#lp-dms'); if (!sec || !box || !Array.isArray(L) || !L.length) return;
+  box.innerHTML = L.map(d => { const f = (d.fotos || []).slice(0, 4), rub = RUBROS[d.rubro] && d.rubro !== 'otro' ? RUBROS[d.rubro] : '';
+    return `<a class="lp-dm" href="${esc(urlTiendaDe(d.slug, '?demo'))}" target="_blank" rel="noopener" style="--dc:${esc(/^#[0-9a-f]{3,8}$/i.test(d.color || '') ? d.color : '#1d4ba8')}">
+      <div class="lp-dm-f n${f.length}" aria-hidden="true">${f.map(u => `<img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer">`).join('') || '<span></span>'}</div>
+      <div class="lp-dm-t"><b>${d.logo_url ? `<img src="${esc(d.logo_url)}" alt="" class="lp-dm-logo" loading="lazy" referrerpolicy="no-referrer">` : ''}${esc(d.nombre)}</b>
+      <small>${[rub, MODAL[d.modalidad] || '', d.productos ? d.productos + ' productos' : ''].filter(Boolean).map(esc).join(' · ')}</small>
+      <span class="lp-dm-b">Ver la demo →</span></div></a>`; }).join('');
+  sec.hidden = false;
+  const u = $('#lp-demo-url'); if (u) u.hidden = true;   // con demos reales, el botón viejo sobra
 }
 on('lp-sim', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; SIM[d.k] = v; const b = $('#lp-sim1'); if (b) b.innerHTML = simPrecios(); });
 on('lp-ventas', (d, el) => { SIM.ventas = Number(el.value); const b = $('#lp-sim2'), t = $('#lp-v'); if (t) t.textContent = fmt(SIM.ventas); if (b) b.innerHTML = simCosto(); });

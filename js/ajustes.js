@@ -1,13 +1,13 @@
 // Pestañas "Tienda" (estilos), "Ajustes" (precios, cobro, integraciones), accesos y plan.
 import { datosHtml } from './planes.js';
 import { api } from './api.js';
-import { esc, fmt, on, toast, $ } from './util.js';
+import { esc, fmt, on, toast, $, copiar } from './util.js';
 import { P, can, aviso, planEf, PLAN_NOMBRE } from './state.js';
 import { redimensionar } from './img.js';
 import { asisSwitch } from './asistente.js';
 import { pruebaFrase } from './fundadores.js';
 import { vistaSimple, avanzadas } from './vista.js';
-import { MARCA } from './marca.js';
+import { MARCA, urlTiendaDe } from './marca.js';
 import { previaSync } from './vista_previa.js';
 import { RUBROS, inferirRubro } from './rubro.js';
 
@@ -108,8 +108,25 @@ export function vistaAjustes() {
   <div class="fg"><label class="flabel">Márgenes % (x1 / x3 / x6 / x12, de mayor a menor)</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${[1, 3, 6, 12].map(n => `<input class="fi" name="m${n}" type="number" min="0" max="900" step="1" value="${pc(n)}" aria-label="Margen x${n}" required>`).join('')}</div></div>
   ${camposPrecio(t, lock)}
   <button class="btn btn-p" type="submit" id="aj-go">Guardar cambios</button></form>
-  <div><form data-submit="p-codigo" class="cc" data-asistente="ajustes"${vistaSimple() && t.modalidad !== 'hibrido' && !t.codigo_hash ? ' hidden' : ''}><h3>🔑 Accesos mayoristas</h3><p class="hint" style="margin:4px 0 8px">Para el modo híbrido: tus revendedores ingresan este código para ver la lista mayorista. Sin código, el acceso es libre. El código se guarda protegido (no se puede leer ni desde el panel).</p><div id="cod-m"></div><input class="fi" name="codigo" placeholder="Nuevo código (mín. 6 letras/números)" autocomplete="off" style="margin-bottom:8px"><button class="btn btn-s" type="submit">${t.codigo_hash ? 'Cambiar código' : 'Activar código'}</button>${t.codigo_hash ? '<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-codigo-off">Quitar código</button>' : ''}</form>${vistaSimple() ? avanzadas(integraciones(), '🔌 Integraciones (Mercado Pago, webhooks, email)') : integraciones()}${plan}</div></div>`;
+  <div><form data-submit="p-codigo" class="cc" data-asistente="ajustes"${vistaSimple() && t.modalidad !== 'hibrido' && !t.codigo_hash ? ' hidden' : ''}><h3>🔑 Accesos mayoristas</h3><p class="hint" style="margin:4px 0 8px">Para el modo híbrido: tus revendedores ingresan este código para ver la lista mayorista. Sin código, el acceso es libre. El código se guarda protegido (no se puede leer ni desde el panel).</p><div id="cod-m"></div><input class="fi" name="codigo" placeholder="Nuevo código (mín. 6 letras/números)" autocomplete="off" style="margin-bottom:8px"><button class="btn btn-s" type="submit">${t.codigo_hash ? 'Cambiar código' : 'Activar código'}</button>${t.codigo_hash ? '<button type="button" class="btn btn-s" style="margin-top:8px" data-act="p-codigo-off">Quitar código</button>' : ''}</form>${vistaSimple() ? avanzadas(integraciones(), '🔌 Integraciones (Mercado Pago, webhooks, email)') : integraciones()}${demoCard(t)}${plan}</div></div>`;
 }
+
+// v2.31: prestar la tienda como demo de Eskalapp (permiso de la dueña). La portada la elige el admin.
+const urlDemo = t => urlTiendaDe(t.slug, '?demo');
+function demoCard(t) {
+  if (t.demo_activa === undefined) return '';   // la base todavía no tiene la migración 24
+  return `<div class="cc aj-demo"><h3>🎬 Prestar mi tienda como demo</h3>
+    <p class="hint" style="margin:4px 0 10px">Eskalapp la puede mostrar como ejemplo real a otros comercios, con un enlace especial. En la demo se ve tu tienda tal cual (también la lista mayorista, sin código) y se puede armar un pedido de prueba, pero <b>esos pedidos no te llegan ni se guardan</b>. Lo apagás cuando quieras.</p>
+    <label class="aj-sw"><input type="checkbox" data-change="aj-demo" ${t.demo_activa ? 'checked' : ''}> <span>${t.demo_activa ? 'Sí, presto mi tienda como demo' : 'No, mi tienda no es demo'}</span></label>
+    ${t.demo_activa ? `<div class="aj-demo-l"><span class="sel">${esc(urlDemo(t))}</span><button type="button" class="btn btn-s btn-sm" data-act="aj-demo-copiar">Copiar</button><a class="btn btn-s btn-sm" href="${esc(urlDemo(t))}" target="_blank" rel="noopener">Ver la demo</a></div>${t.demo_portada ? '<p class="ok-box" style="margin-top:8px">⭐ Aparece en la portada de Eskalapp como tienda real funcionando. ¡Gracias!</p>' : ''}` : ''}</div>`;
+}
+on('aj-demo', async (d, el) => {
+  const v = !!el.checked; el.disabled = true;
+  try { P.t = await api.guardarTienda(P.t.id, { demo_activa: v }) || P.t; toast(v ? '🎬 Tu tienda ya se puede ver como demo' : 'Listo: tu tienda ya no es demo'); }
+  catch (e) { toast(/demo_activa/.test(e.message) ? 'Falta actualizar la base: corré la migración 24 en Supabase.' : e.message); }
+  P.repintar();
+});
+on('aj-demo-copiar', () => copiar(urlDemo(P.t)));
 
 // v2.27: ¿Qué vendés? Decide las herramientas (talles en ropa, tonos en cosmética, sabores en almacén) y las promos sugeridas.
 function rubroCampo(t) {
