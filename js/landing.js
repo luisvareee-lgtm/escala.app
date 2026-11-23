@@ -134,10 +134,10 @@ const MAS = [
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
 const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu ganancia y tus clientes te mandan el pedido armado por WhatsApp.',
-  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes llevan mas, ahorran y sube tu ticket promedio! ', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']];
+  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes llevan mas, ahorran y sube tu ticket promedio! ', 'Plan Gratis hasta 100 productos · 0% comisión por venta']];
 const PERFILES = {
   nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
-    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']],
+    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Plan Gratis hasta 100 productos · 0% comisión por venta']],
   tienda: ['Tengo una tienda', 'Tus clientes ven tu catálogo con fotos y precios al día, eligen talle o color, arman el carrito y te mandan el pedido por WhatsApp.',
     ['Talles, colores y stock de cada uno', 'Promos, cupones y envío gratis desde el monto que elijas', 'Caja del día: efectivo y transferencia por separado']],
   mayorista: ['Vendo por mayor', 'Dejá de mandar el PDF. Tus clientes entran a tu tienda, ven el precio según cuánto llevan y te mandan el pedido armado por WhatsApp.',
