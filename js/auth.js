@@ -8,7 +8,7 @@ import { cuposHtml, cargarCupos } from './fundadores.js';
 // si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
 const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
-import { RUBROS } from './rubro.js';
+import { RUBROS, queAdapta } from './rubro.js';
 // v2.33: con dominio propio configurado, el enlace se ve como subdominio (bazar-luna.eskalapp.com), no como /t/…
 const dominioTienda = () => String(MARCA.DOMINIO || '').trim().toLowerCase().replace(/^www\./, '');   // la misma lista que usan las herramientas según el rubro
 export { RUBROS };
@@ -45,7 +45,7 @@ export function pantallaNuevaTienda(app) {
     <div class="fg"><label class="flabel" for="n">Nombre del negocio</label><input class="fi" id="n" name="nombre" maxlength="60" data-input="a-slug" required></div>
     <div class="fg"><label class="flabel" for="s">Tu enlace</label><input class="fi" id="s" name="slug" maxlength="30" minlength="3" required><div class="hint" id="sl">${dominioTienda() ? `<span id="slv">tu-negocio</span>.${esc(dominioTienda())}` : '/t/<span id="slv">tu-negocio</span>'}</div></div>
     <div class="fg"><label class="flabel" for="w">WhatsApp donde recibís pedidos</label><input class="fi" id="w" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" required></div>
-    <div class="fg"><label class="flabel" for="r">Rubro (cargamos 4 productos de ejemplo)</label><select class="fi" id="r" name="rubro">${Object.entries(RUBROS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="fg"><label class="flabel" for="r">Rubro (cargamos 4 productos de ejemplo)</label><select class="fi" id="r" name="rubro" data-change="a-rubro">${Object.entries(RUBROS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><div class="hint rub-que" id="r-que">${esc(queAdapta(Object.keys(RUBROS)[0]))}</div></div>
     <div class="fg"><label class="flabel" for="mo">¿Cómo vendés?</label><select class="fi" id="mo" name="modalidad">${[['hibrido', 'Híbrido (minorista + mayorista)'], ['mayorista', 'Solo mayorista'], ['minorista', 'Solo minorista']].map(([v, t]) => `<option value="${v}" ${v === modoDemo() ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <fieldset class="fg modo-st"><legend class="flabel">¿Cómo trabajás con la mercadería?</legend>
       <label><input type="radio" name="modo_stock" value="stock" checked><span><b>Tengo stock</b><small>Vendo lo que tengo en el depósito.</small></span></label>
@@ -78,3 +78,5 @@ on('a-tienda', (d, f) => envio(f, 'Creando…', async fd => {
   if (modo && modo !== 'stock') { try { const t = await api.miTienda(); if (t) await api.guardarTienda(t.id, { modo_stock: modo }); } catch (e) { } }   // si falla, queda "con stock" y se cambia en Ajustes
   irPanel();
 }));
+// v2.33.2: al elegir el rubro se explica qué se adapta (variantes y atajos)
+on('a-rubro', (d, el) => { const q = $('#r-que'); if (q) q.textContent = queAdapta(el.value); });

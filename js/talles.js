@@ -75,7 +75,19 @@ on('p-tl', (d, el) => {
   const t = $('#tl-tot'); if (t) t.textContent = suma(m);
   const st = document.querySelector('form[data-submit=p-prod] [name=stock]'); if (st && st.disabled) st.value = suma(m);
 });
-export const presetsHtml = v => conAtajos(v) ? `<div class="tl-pre"><span>Rápido:</span>${PRESETS.map(([k, n]) => `<button type="button" class="pill" data-act="p-talles" data-v="${k}">${n}</button>`).join('')}</div>` : '';
+// v2.33.2: atajos según el rubro (talles solo en ropa o si ya escribiste talles; en perfumería, ml y EDP/EDT; en almacén, gramos…)
+export const presetsHtml = v => {
+  if (conAtajos(v)) return `<div class="tl-pre"><span>Rápido:</span>${PRESETS.map(([k, n]) => `<button type="button" class="pill" data-act="p-talles" data-v="${k}">${n}</button>`).join('')}</div>`;
+  const a = varMeta(rubroPanel()).a || [];
+  return a.length ? `<div class="tl-pre"><span>Rápido:</span>${a.map(([n], i) => `<button type="button" class="pill" data-act="p-varpre" data-i="${i}">${esc(n)}</button>`).join('')}</div>` : '';
+};
+// suma los valores del atajo a lo que ya está escrito (sin repetir)
+on('p-varpre', d => {
+  const a = (varMeta(rubroPanel()).a || [])[+d.i], i = document.querySelector('form[data-submit=p-prod] [name=variantes]');
+  if (!a || !i || !P.modal) return;
+  i.value = parseVars([i.value, ...a[1]].filter(Boolean).join(', ')).join(', ');
+  repintar(m => { m.vars = parseVars(i.value); });
+});
 // el campo de la ficha según el rubro: "Talles o colores", "Tonos, colores o fragancias", "Sabores o presentaciones"…
 export const campoVar = () => varMeta(rubroPanel());
 export const resumenTalles = p => p.stock_talles && typeof p.stock_talles === 'object'

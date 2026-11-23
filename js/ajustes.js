@@ -9,7 +9,7 @@ import { pruebaFrase } from './fundadores.js';
 import { vistaSimple, avanzadas } from './vista.js';
 import { MARCA, urlTiendaDe } from './marca.js';
 import { previaSync } from './vista_previa.js';
-import { RUBROS, inferirRubro } from './rubro.js';
+import { RUBROS, inferirRubro, queAdapta } from './rubro.js';
 
 const S = { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' };
 export const resetAj = () => Object.assign(S, { integ: undefined, color: null, tema: null, eslogan: null, nombre: null, usd: null, logo: undefined, msg: '', err: '' });
@@ -155,10 +155,11 @@ on('aj-demo-copiar', () => copiar(urlDemo(P.t)));
 // v2.27: ¿Qué vendés? Decide las herramientas (talles en ropa, tonos en cosmética, sabores en almacén) y las promos sugeridas.
 function rubroCampo(t) {
   const r = RUBROS[t.rubro] ? t.rubro : 'otro', inf = r === 'otro' ? inferirRubro(P.prods) : null;
-  return `<div class="fg"><label class="flabel" for="aj-rub">¿Qué vendés?</label><select class="fi" id="aj-rub" name="rubro">${Object.entries(RUBROS).map(([k, n]) => `<option value="${k}" ${r === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
-    <div class="hint">Adapta tus herramientas: talles en ropa, tonos en cosmética, sabores en almacén, y las promos que te sugerimos.</div>
+  return `<div class="fg"><label class="flabel" for="aj-rub">¿Qué vendés?</label><select class="fi" id="aj-rub" name="rubro" data-change="aj-rub-que">${Object.entries(RUBROS).map(([k, n]) => `<option value="${k}" ${r === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+    <div class="hint" id="aj-rub-que">${esc(queAdapta(r))} También cambian las promos que te sugerimos.</div>
     ${inf ? `<div class="aj-sug">💡 Por tus productos parece <b>${esc(RUBROS[inf])}</b>. <button type="button" class="btn btn-s btn-sm" data-act="aj-rubro" data-k="${inf}">Usar ${esc(RUBROS[inf])}</button></div>` : ''}</div>`;
 }
+on('aj-rub-que', (d, el) => { const q = $('#aj-rub-que'); if (q) q.textContent = queAdapta(el.value) + ' También cambian las promos que te sugerimos.'; });
 on('aj-rubro', async d => {
   if (!RUBROS[d.k]) return;
   try { P.t = await api.guardarTienda(P.t.id, { rubro: d.k }) || P.t; toast(`Listo: tu tienda es de ${RUBROS[d.k]}`); P.repintar(); } catch (e) { toast(e.message); }

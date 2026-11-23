@@ -2,25 +2,27 @@
 // productos) decide las palabras y los atajos de las variantes: talles en ropa, tonos en cosmética, sabores en almacén.
 // Lo usan el panel y la tienda, así que no importa nada del panel.
 // v2.33: la clave 'cosmetica' no cambia (tiendas existentes); solo el nombre que se muestra.
-export const RUBROS = { cosmetica: 'Belleza y cuidado personal', indumentaria: 'Ropa y calzado', bijouterie: 'Accesorios y bijouterie', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', mascotas: 'Mascotas / Pet shop', jugueteria: 'Juguetería y bebés', libreria: 'Librería y papelería', ferreteria: 'Ferretería y herramientas', construccion: 'Construcción y pisos', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
+export const RUBROS = { cosmetica: 'Belleza y cuidado personal', perfumeria: 'Perfumería', indumentaria: 'Ropa y calzado', bijouterie: 'Accesorios y bijouterie', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', mascotas: 'Mascotas / Pet shop', jugueteria: 'Juguetería y bebés', libreria: 'Librería y papelería', ferreteria: 'Ferretería y herramientas', construccion: 'Construcción y pisos', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
 
 // w: la palabra (singular / plural / artículo) · campo y ej: el campo de la ficha · talles: atajos XS…XXL y guía de talles
+// a (v2.33.2): atajos de la ficha para ese rubro [texto del botón, valores] (se suman a lo que ya está escrito)
 const VAR = {
+  perfumeria: { w: ['tamaño', 'tamaños', 'el'], campo: 'Tamaños o versiones', ej: 'Ej: 50 ml, 100 ml · EDP, EDT · Tester', a: [['30 · 50 · 100 ml', ['30 ml', '50 ml', '100 ml']], ['EDP · EDT · Parfum', ['EDP', 'EDT', 'Parfum']], ['Decant 5 · 10 ml', ['Decant 5 ml', 'Decant 10 ml']], ['Sellado · Tester', ['Sellado', 'Tester']]] },
   indumentaria: { w: ['talle', 'talles', 'el'], campo: 'Talles o colores', ej: 'Ej: S, M, L, XL · 38, 39, 40 · Negro, Blanco', talles: true },
-  cosmetica: { w: ['tono', 'tonos', 'el'], campo: 'Tonos, colores o fragancias', ej: 'Ej: 01 Natural, 02 Beige, 03 Miel' },
-  alimentos: { w: ['sabor', 'sabores', 'el'], campo: 'Sabores o presentaciones', ej: 'Ej: Chocolate, Vainilla, Frutilla · 500 g, 1 kg' },
-  kiosco: { w: ['sabor', 'sabores', 'el'], campo: 'Sabores o variedades', ej: 'Ej: Chocolate, Dulce de leche, Frutilla' },
-  gastronomia: { w: ['opción', 'opciones', 'la'], campo: 'Opciones o tamaños', ej: 'Ej: Simple, Doble · Chica, Grande' },
-  hogar: { w: ['variante', 'variantes', 'la'], campo: 'Colores, modelos o medidas', ej: 'Ej: Blanco, Gris · 1,5 L, 2 L' },
-  electro: { w: ['variante', 'variantes', 'la'], campo: 'Colores o modelos', ej: 'Ej: Negro, Blanco · 64 GB, 128 GB' },
-  autopartes: { w: ['variante', 'variantes', 'la'], campo: 'Modelos o medidas', ej: 'Ej: Delantero, Trasero · 13", 14"' },
-  ferreteria: { w: ['medida', 'medidas', 'la'], campo: 'Medidas o modelos', ej: 'Ej: 6 mm, 8 mm, 10 mm · 1/2", 3/4" · 220 V, inalámbrico' },
-  construccion: { w: ['medida', 'medidas', 'la'], campo: 'Medidas, colores o terminaciones', ej: 'Ej: 60x60, 45x45 · Gris, Beige · Mate, Brillante' },
-  libreria: { w: ['variante', 'variantes', 'la'], campo: 'Colores, rayados o tamaños', ej: 'Ej: Azul, Negro, Rojo · Rayado, Cuadriculado · A4, Oficio' },
-  mascotas: { w: ['variante', 'variantes', 'la'], campo: 'Tamaños, sabores o pesos', ej: 'Ej: Cachorro, Adulto · Carne, Pollo · 3 kg, 15 kg' },
-  jugueteria: { w: ['variante', 'variantes', 'la'], campo: 'Modelos, colores o edades', ej: 'Ej: Rosa, Celeste · 0-6 meses, 6-12 meses · RN, P, M, G' },
-  bijouterie: { w: ['modelo', 'modelos', 'el'], campo: 'Colores, baños o largos', ej: 'Ej: Dorado, Plateado · Acero, Baño de oro · 45 cm, 50 cm' },
-  otro: { w: ['variante', 'variantes', 'la'], campo: 'Variantes (talles, colores, modelos…)', ej: 'Ej: S, M, L · Rojo, Azul · 500 ml, 1 L', talles: true },
+  cosmetica: { w: ['tono', 'tonos', 'el'], campo: 'Tonos, colores o fragancias', ej: 'Ej: 01 Natural, 02 Beige, 03 Miel' , a: [['Tonos 01 al 05', ['01', '02', '03', '04', '05']], ['Claro · Medio · Oscuro', ['Claro', 'Medio', 'Oscuro']], ['Piel seca · mixta · grasa', ['Piel seca', 'Piel mixta', 'Piel grasa']]] },
+  alimentos: { w: ['sabor', 'sabores', 'el'], campo: 'Sabores o presentaciones', ej: 'Ej: Chocolate, Vainilla, Frutilla · 500 g, 1 kg' , a: [['250 g · 500 g · 1 kg', ['250 g', '500 g', '1 kg']], ['Chico · Mediano · Grande', ['Chico', 'Mediano', 'Grande']]] },
+  kiosco: { w: ['sabor', 'sabores', 'el'], campo: 'Sabores o variedades', ej: 'Ej: Chocolate, Dulce de leche, Frutilla' , a: [['Chocolate · Dulce de leche · Frutilla', ['Chocolate', 'Dulce de leche', 'Frutilla']], ['Común · Sin azúcar', ['Común', 'Sin azúcar']]] },
+  gastronomia: { w: ['opción', 'opciones', 'la'], campo: 'Opciones o tamaños', ej: 'Ej: Simple, Doble · Chica, Grande' , a: [['Chica · Mediana · Grande', ['Chica', 'Mediana', 'Grande']], ['Simple · Doble · Triple', ['Simple', 'Doble', 'Triple']]] },
+  hogar: { w: ['variante', 'variantes', 'la'], campo: 'Colores, modelos o medidas', ej: 'Ej: Blanco, Gris · 1,5 L, 2 L' , a: [['Blanco · Negro · Gris', ['Blanco', 'Negro', 'Gris']], ['Chico · Mediano · Grande', ['Chico', 'Mediano', 'Grande']]] },
+  electro: { w: ['variante', 'variantes', 'la'], campo: 'Colores o modelos', ej: 'Ej: Negro, Blanco · 64 GB, 128 GB' , a: [['Negro · Blanco', ['Negro', 'Blanco']], ['64 · 128 · 256 GB', ['64 GB', '128 GB', '256 GB']]] },
+  autopartes: { w: ['variante', 'variantes', 'la'], campo: 'Modelos o medidas', ej: 'Ej: Delantero, Trasero · 13", 14"' , a: [['Delantero · Trasero', ['Delantero', 'Trasero']], ['Izquierdo · Derecho', ['Izquierdo', 'Derecho']]] },
+  ferreteria: { w: ['medida', 'medidas', 'la'], campo: 'Medidas o modelos', ej: 'Ej: 6 mm, 8 mm, 10 mm · 1/2", 3/4" · 220 V, inalámbrico' , a: [['6 · 8 · 10 mm', ['6 mm', '8 mm', '10 mm']], ['1/2" · 3/4" · 1"', ['1/2"', '3/4"', '1"']], ['Con cable · Inalámbrico', ['Con cable', 'Inalámbrico']]] },
+  construccion: { w: ['medida', 'medidas', 'la'], campo: 'Medidas, colores o terminaciones', ej: 'Ej: 60x60, 45x45 · Gris, Beige · Mate, Brillante' , a: [['30x30 · 45x45 · 60x60', ['30x30', '45x45', '60x60']], ['Mate · Brillante', ['Mate', 'Brillante']], ['Blanco · Gris · Beige', ['Blanco', 'Gris', 'Beige']]] },
+  libreria: { w: ['variante', 'variantes', 'la'], campo: 'Colores, rayados o tamaños', ej: 'Ej: Azul, Negro, Rojo · Rayado, Cuadriculado · A4, Oficio' , a: [['Rayado · Cuadriculado · Liso', ['Rayado', 'Cuadriculado', 'Liso']], ['A4 · A5 · Oficio', ['A4', 'A5', 'Oficio']], ['Azul · Negro · Rojo', ['Azul', 'Negro', 'Rojo']]] },
+  mascotas: { w: ['variante', 'variantes', 'la'], campo: 'Tamaños, sabores o pesos', ej: 'Ej: Cachorro, Adulto · Carne, Pollo · 3 kg, 15 kg' , a: [['Cachorro · Adulto · Senior', ['Cachorro', 'Adulto', 'Senior']], ['1 · 3 · 15 kg', ['1 kg', '3 kg', '15 kg']], ['Chico · Mediano · Grande', ['Chico', 'Mediano', 'Grande']]] },
+  jugueteria: { w: ['variante', 'variantes', 'la'], campo: 'Modelos, colores o edades', ej: 'Ej: Rosa, Celeste · 0-6 meses, 6-12 meses · RN, P, M, G' , a: [['RN · P · M · G · XG', ['RN', 'P', 'M', 'G', 'XG']], ['0-6 · 6-12 · 12-24 meses', ['0-6 meses', '6-12 meses', '12-24 meses']], ['Rosa · Celeste', ['Rosa', 'Celeste']]] },
+  bijouterie: { w: ['modelo', 'modelos', 'el'], campo: 'Colores, baños o largos', ej: 'Ej: Dorado, Plateado · Acero, Baño de oro · 45 cm, 50 cm' , a: [['Dorado · Plateado · Rosé', ['Dorado', 'Plateado', 'Rosé']], ['40 · 45 · 50 cm', ['40 cm', '45 cm', '50 cm']]] },
+  otro: { w: ['variante', 'variantes', 'la'], campo: 'Variantes (colores, modelos, tamaños…)', ej: 'Ej: Rojo, Azul · Chico, Grande · 500 ml, 1 L', a: [['Chico · Mediano · Grande', ['Chico', 'Mediano', 'Grande']], ['Blanco · Negro', ['Blanco', 'Negro']]] },
 };
 const sinTilde = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 // S, M, XL, 2XL, Único, T.U., 0-3 m · o números de talle (16 a 52, con medio número)
@@ -30,7 +32,8 @@ export const pareceTalle = vals => { const v = (vals || []).map(x => sinTilde(St
 
 // Qué vende la tienda, según sus productos (categoría + nombre). Devuelve el rubro o null si no está claro.
 const CLAVES = {
-  cosmetica: 'maquillaje labial gloss rubor sombra corrector iluminador delineador pestan rimel ceja brocha mascarilla serum tonico skincare facial rostro perfume fragancia colonia esmalte unas shampoo acondicionador cosmet belleza bronceador protector solar acne crema makeup polvo compacto contorno primer fijador',
+  perfumeria: 'perfume perfum parfum fragancia fragance fragrance colonia edp edt eau toilette extrait splash decant tester oud musk almizcle lattafa armaf afnan rasasi alhambra haramain ajmal zaafaran zimaya maison arabian asdaaf nabeel khamrah yara dior chanel versace herrera rabanne lancome givenchy armani gaultier banderas',
+  cosmetica: 'maquillaje labial gloss rubor sombra corrector iluminador delineador pestan rimel ceja brocha mascarilla serum tonico skincare facial rostro esmalte unas shampoo acondicionador cosmet belleza bronceador protector solar acne crema makeup polvo compacto contorno primer fijador',
   indumentaria: 'remera buzo campera pantalon jean short bermuda calza vestido pollera camisa chomba musculosa sweater sueter medias ropa calzado zapatilla zapato bota ojota sandalia pijama conjunto lenceria corpino bombacha boxer jogging canguro',
   alimentos: 'almacen yerba aceite fideo arroz harina azucar galletita conserva cafe leche queso fiambre mermelada legumbre condimento especia cereal',
   kiosco: 'golosina alfajor chicle caramelo chocolate gaseosa bebida cigarrillo encendedor snack chupetin turron',
@@ -61,10 +64,17 @@ export function rubroDe(t, prods) {
   return r !== 'otro' ? r : inferirRubro(prods) || 'otro';
 }
 export const varMeta = r => VAR[r] || VAR.otro;
+// v2.33.2: qué se adapta al elegir el rubro (en el alta y en Ajustes), para que se entienda en el momento
+export function queAdapta(r) {
+  const m = varMeta(r), ej = String(m.ej || '').replace(/^Ej:\s*/, '');
+  if (r === 'indumentaria') return 'Tus productos van a tener talles (con atajos XS a XXL, calzado, niños y jean), stock por talle y guía de talles.';
+  if (r === 'otro') return 'Te mostramos variantes generales (colores, modelos, tamaños). Cuando cargues tus productos, te sugerimos el rubro que mejor te queda.';
+  return `Tus productos van a tener ${m.campo.toLowerCase()} (${ej}), con atajos para cargarlos en un toque.`;
+}
 // la palabra para las variantes de un producto: si lo escrito son talles (S, M, 38…) es "talle" (o "número"); si no, la del rubro
 export function palabra(r, vals) {
   const m = varMeta(r), v = (vals || []).filter(x => String(x).trim()), propia = { w: m.w[0], ws: m.w[1], el: m.w[2] };
-  const fija = ['cosmetica', 'alimentos', 'kiosco', 'gastronomia', 'ferreteria', 'construccion', 'mascotas', 'bijouterie'].includes(r);   // en estos rubros un número es un tono, un sabor o una medida
+  const fija = ['perfumeria', 'cosmetica', 'alimentos', 'kiosco', 'gastronomia', 'ferreteria', 'construccion', 'mascotas', 'bijouterie'].includes(r);   // en estos rubros un número es un tono, un sabor o una medida
   if (!v.length) return propia;
   if (pareceTalle(v)) {
     if (!v.every(x => esNum(String(x).trim()))) return { w: 'talle', ws: 'talles', el: 'el' };   // S, M, L o Único: siempre talles

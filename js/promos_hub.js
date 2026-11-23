@@ -47,7 +47,7 @@ const tarjeta = k => { const [i, t, d] = TARJETAS[k]; return `<div class="ph-car
 const montoActual = () => (P.promos || []).find(r => r.tipo === 'monto');
 const TODAS = ['ult3', 'ult2', 'nx', 'cupon', 'monto', 'pct', 'montou', 'oferta', 'envio'];
 const SUGERIDAS = {
-  cosmetica: ['ult2', 'ult3', 'monto', 'cupon'], indumentaria: ['ult3', 'ult2', 'nx', 'cupon'],
+  cosmetica: ['ult2', 'ult3', 'monto', 'cupon'], perfumeria: ['ult2', 'ult3', 'nx', 'cupon'], indumentaria: ['ult3', 'ult2', 'nx', 'cupon'],
   alimentos: ['nx', 'pct', 'monto', 'cupon'], kiosco: ['nx', 'ult3', 'pct', 'cupon'], gastronomia: ['nx', 'ult3', 'cupon', 'monto'],
   hogar: ['monto', 'ult2', 'pct', 'cupon'], electro: ['monto', 'cupon', 'ult2', 'montou'], autopartes: ['monto', 'pct', 'cupon', 'nx'],
   ferreteria: ['monto', 'pct', 'cupon', 'nx'], construccion: ['monto', 'pct', 'cupon', 'envio'], libreria: ['nx', 'ult3', 'monto', 'cupon'],

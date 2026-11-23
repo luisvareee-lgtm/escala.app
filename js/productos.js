@@ -112,10 +112,18 @@ function barraSel() {
 const v216 = () => (P.prods || []).some(p => 'oferta_pct' in p);
 const proxDomingo = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7 || 7)); return d.toLocaleDateString('sv'); };
 const SECC = [['oferta', '🏷️ Oferta con fechas'], ['promo', '🎁 Promo por cantidad'], ['precio', '💲 Precio'], ['stock', '📦 Stock'], ['nombre', '✏️ Nombre'], ['variantes', '👕 Variantes / talles'], ['categoria', '🗂 Categoría'], ['marca', '🏷️ Marca'], ['activo', '👁 Visible en la tienda'], ['a_pedido', '🚚 Por encargo'], ['precio_unico', '🔢 Precio único']];
+// v2.33.2: precio en la edición masiva: un solo número, que cambia de significado (y de rótulo) según lo que elijas
+const PR_MODOS = [['pct', 'Subir o bajar lo que pagás (costo) un %'], ['usd', 'Poner el mismo costo en US$ a todos'], ['margen', 'Cambiar tu ganancia (%) solo en estos'], ['general', 'Volver a tu ganancia general de Ajustes']];
+const PR = {
+  pct: { lab: '¿Cuánto % cambia el costo?', ph: 'Ej: 10 (sube) o -5 (baja)', u: '%', que: 'Cambia lo que le pagás al proveedor (el costo en US$). El precio de venta se recalcula solo, con tu ganancia.' },
+  usd: { lab: 'Costo nuevo, en dólares', ph: 'Ej: 12,50', u: 'US$', que: 'Todos los elegidos quedan con este costo. El precio de venta sale del costo × tu ganancia × el dólar.' },
+  margen: { lab: 'Tu ganancia sobre el costo', ph: 'Ej: 45', u: '%', que: 'El costo no cambia: cambia cuánto ganás sobre él, solo en estos productos (por ejemplo 45 = vendés 45 % arriba del costo).' },
+  general: { lab: '', ph: '', u: '', que: '' },
+};
 const radio = (n, L, v) => L.map(([k, t]) => `<label class="mz-r"><input type="radio" name="${n}" value="${k}" ${k === v ? 'checked' : ''} data-change="mz-prev"> ${t}</label>`).join('');
 export function modalMasivo(m) {
   const n = PQ.sel.size, t = P.t, cats = [...new Set((P.prods || []).map(p => p.categoria))].sort(), marcas = [...new Set((P.prods || []).map(p => p.marca).filter(Boolean))].sort();
-  const secs = SECC.filter(([k]) => (k !== 'a_pedido' || t.modo_stock === 'mixto') && (k !== 'precio_unico' || t.modalidad !== 'minorista') && (k !== 'oferta' || v216()) && (k !== 'promo' || hayPromo()));
+  const secs = SECC.map(([k, tt]) => k === 'variantes' ? [k, '🔀 ' + campoVar().campo] : [k, tt]).filter(([k]) => (k !== 'a_pedido' || t.modo_stock === 'mixto') && (k !== 'precio_unico' || t.modalidad !== 'minorista') && (k !== 'oferta' || v216()) && (k !== 'promo' || hayPromo()));
   const cuerpo = {
     oferta: `${radio('of_modo', [['poner', 'Poner en oferta'], ['quitar', 'Quitar la oferta']], 'poner')}
       <div class="row2"><div class="fg"><label class="flabel" for="mz-ofp">Descuento %</label><input class="fi" id="mz-ofp" name="of_pct" type="number" min="1" max="90" step="any" placeholder="Ej: 15" data-input="mz-prev"></div>
@@ -123,10 +131,9 @@ export function modalMasivo(m) {
       <div class="fg"><label class="flabel" for="mz-ofd">Desde el (vacío = ya)</label><input class="fi" id="mz-ofd" name="of_desde" type="date"></div>
       <div class="hint">La tienda muestra el precio tachado, la etiqueta -% y el carrusel “Ofertas” si lo activaste. Al terminar vuelve sola al precio normal.</div><div class="mz-prev" id="mz-prev-of"></div>`,
     promo: `${camposPromo(null, true)}<div class="hint">Se cuentan todas las unidades de cada producto (${sumanTxt().replace(/ \(.*\)$/, '')}). Los combos elegidos quedan igual: ya tienen su descuento.</div>`,
-    precio: `${radio('pr_modo', [['pct', 'Subir o bajar el costo un %'], ['usd', 'Poner el mismo costo en USD'], ['margen', 'Poner un margen propio %'], ['general', 'Volver al margen general']], 'pct')}
-      <div class="row2"><div class="fg"><label class="flabel" for="mz-pct">% (negativo para bajar)</label><input class="fi" id="mz-pct" name="pr_pct" type="number" step="any" placeholder="Ej: 10 o -5" data-input="mz-prev"></div>
-      <div class="fg"><label class="flabel" for="mz-val">Costo USD o margen %</label><input class="fi" id="mz-val" name="pr_val" type="number" step="any" min="0" placeholder="Ej: 12,50 o 45" data-input="mz-prev"></div></div>
-      <div class="hint">Acá el precio sale del costo en USD, la cotización y el margen: así siguen al dólar cuando lo cambiás.</div><div class="mz-prev" id="mz-prev"></div>`,
+    precio: `${radio('pr_modo', PR_MODOS.map(([k, t]) => [k, t]), 'pct')}
+      <div class="fg mz-pr-campo" id="mz-pr-campo"><label class="flabel" for="mz-prn" id="mz-prl">${PR.pct.lab}</label><div class="mz-pr-in"><input class="fi" id="mz-prn" name="pr_num" type="number" step="any" placeholder="${PR.pct.ph}" data-input="mz-prev"><span class="mz-pr-u" id="mz-pru">${PR.pct.u}</span></div></div>
+      <p class="hint mz-pr-que" id="mz-prq">${PR.pct.que}</p><div class="mz-prev" id="mz-prev"></div>`,
     stock: `${radio('st_modo', [['fijar', 'Poner este stock'], ['sumar', 'Sumar o restar'], ['sin_control', 'Sin control de stock']], 'fijar')}<p class="hint">Los productos con stock por ${palTienda().w} no cambian acá: su stock se carga ${palTienda().w} por ${palTienda().w}, editando cada producto.</p>
       <div class="fg"><label class="flabel" for="mz-st">Cantidad</label><input class="fi" id="mz-st" name="st_val" type="number" step="1" placeholder="Ej: 10 (o -2 para restar)"></div>`,
     nombre: `${radio('nm_modo', [['prefijo', 'Agregar al principio'], ['sufijo', 'Agregar al final'], ['reemplazar', 'Reemplazar un texto']], 'sufijo')}
@@ -202,9 +209,9 @@ function cambiosDe(f) {
   }
   if (fd.get('on_precio')) {
     const m = fd.get('pr_modo');
-    if (m === 'pct') { const v = num('pr_pct'); if (!isFinite(v) || v <= -100 || v > 1000) err('Poné el % a subir (o negativo para bajar), entre -99 y 1000.'); c.costo = { modo: 'pct', valor: v }; }
-    else if (m === 'usd') { const v = num('pr_val'); if (!isFinite(v) || v < 0) err('Poné el costo en USD (0 o más).'); c.costo = { modo: 'fijar', valor: v }; }
-    else if (m === 'margen') { const v = num('pr_val'); if (!isFinite(v) || v < 0 || v > 1000) err('Poné el margen en % (de 0 a 1000).'); c.margen = { modo: 'fijar', valor: v }; }
+    if (m === 'pct') { const v = num('pr_num'); if (!isFinite(v) || v <= -100 || v > 1000) err('Poné cuánto % cambia el costo, entre -99 y 1000: 10 lo sube un 10 %, -5 lo baja un 5 %.'); c.costo = { modo: 'pct', valor: v }; }
+    else if (m === 'usd') { const v = num('pr_num'); if (!isFinite(v) || v < 0) err('Poné el costo nuevo en dólares (0 o más).'); c.costo = { modo: 'fijar', valor: v }; }
+    else if (m === 'margen') { const v = num('pr_num'); if (!isFinite(v) || v < 0 || v > 1000) err('Poné tu ganancia en % (de 0 a 1000).'); c.margen = { modo: 'fijar', valor: v }; }
     else c.margen = { modo: 'quitar' };
   }
   if (fd.get('on_stock')) {
@@ -234,7 +241,16 @@ function previa() {
   const L = ids().map(id => P.prods.find(p => p.id === id)).filter(Boolean).slice(0, 3);
   const nuevo = p => { const q = Object.assign({}, p); if (c.costo) q.costo_usd = c.costo.modo === 'fijar' ? c.costo.valor : Math.max(0, Number(p.costo_usd) * (1 + c.costo.valor / 100)); if (c.margen) q.margen_override = c.margen.modo === 'quitar' ? null : c.margen.valor / 100;
     if (c.oferta) { if (c.oferta.modo === 'quitar') q.oferta_pct = null; else Object.assign(q, { oferta_pct: c.oferta.pct, oferta_desde: null, oferta_hasta: c.oferta.hasta }); } return q; };
-  const html = `<div class="flabel">Así queda (precio por unidad)</div>${L.map(p => `<div class="mz-ej"><span>${esc(p.nombre)}</span><span>${fmt(H.precioDe(p))} → <b>${fmt(H.precioDe(nuevo(p)))}</b></span></div>`).join('')}${PQ.sel.size > 3 ? `<div class="hint">y ${PQ.sel.size - 3} más</div>` : ''}`;
+  // el campo único cambia de rótulo según lo elegido
+  const fm = f.querySelector('[name=pr_modo]:checked'), md = PR[fm ? fm.value : 'pct'] || PR.pct, campo = $('#mz-pr-campo');
+  if (campo) { campo.hidden = !md.lab; const l = $('#mz-prl'), i = $('#mz-prn'), u = $('#mz-pru'), q = $('#mz-prq');
+    if (l) l.textContent = md.lab; if (i) i.placeholder = md.ph; if (u) u.textContent = md.u;
+    if (q) q.textContent = fm && fm.value === 'general' ? `Se borra la ganancia propia de estos productos y vuelven a usar la de Ajustes (${Math.round(Number(P.t.margen_1) * 100)} %).` : md.que; }
+  const usd = n => 'US$ ' + (Math.round(Number(n || 0) * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const gan = p => Math.round((p.margen_override != null ? Number(p.margen_override) : Number(P.t.margen_1)) * 100) + ' %';
+  const fila = p => { const q = nuevo(p), cc = c.costo && Number(q.costo_usd) !== Number(p.costo_usd), cg = c.margen && gan(q) !== gan(p);
+    return `<div class="mz-ej"><span>${esc(p.nombre)}${cc ? `<small>costo ${usd(p.costo_usd)} → <b>${usd(q.costo_usd)}</b></small>` : ''}${cg ? `<small>ganancia ${gan(p)} → <b>${gan(q)}</b></small>` : ''}</span><span>${fmt(H.precioDe(p))} → <b>${fmt(H.precioDe(q))}</b></span></div>`; };
+  const html = `<div class="flabel">Así queda (precio de venta por unidad)</div>${L.map(fila).join('')}${PQ.sel.size > 3 ? `<div class="hint">y ${PQ.sel.size - 3} más</div>` : ''}`;
   const a = $('#mz-prev'), b = $('#mz-prev-of');
   if (a) a.innerHTML = c.costo || c.margen ? html : '';
   if (b) b.innerHTML = c.oferta && !c.costo && !c.margen ? html : '';
