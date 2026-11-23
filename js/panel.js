@@ -166,7 +166,7 @@ const precioFinal = (p, x) => conDesc(conDesc(x, p.combo_desc), ofertaVig(p));
 const hayV216 = () => (P.prods || []).some(p => 'oferta_pct' in p);
 const diaLocal = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('sv'); };
 const finDia = v => v ? new Date(v + 'T23:59:59').toISOString() : null, inicioDia = v => v ? new Date(v + 'T00:00:00').toISOString() : null;
-const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
+const UNIDADES_P = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro'], ['m2', 'Metro cuadrado (m²)'], ['rollo', 'Rollo'], ['placa', 'Placa / Hoja'], ['bolsa', 'Bolsa'], ['bidon', 'Bidón / Balde'], ['set', 'Juego / Set']];
 function filaProd(p, extra) {
   const pr0 = preciosDe(p.costo_usd, p.margen_override), may = P.t.modalidad !== 'minorista', pr = {};
   Object.keys(pr0).forEach(k => { pr[k] = precioFinal(p, pr0[k]); });

@@ -9,10 +9,13 @@ import { redimensionar } from './img.js';
 import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, queSePego, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
 
-const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro']];
+const UNIDADES = [['unidad', 'Unidad'], ['par', 'Par'], ['docena', 'Docena'], ['pack', 'Pack'], ['bulto', 'Bulto'], ['caja', 'Caja'], ['display', 'Display'], ['kg', 'Kilo (kg)'], ['gramos', 'Gramos'], ['litro', 'Litro'], ['metro', 'Metro'], ['m2', 'Metro cuadrado (m²)'], ['rollo', 'Rollo'], ['placa', 'Placa / Hoja'], ['bolsa', 'Bolsa'], ['bidon', 'Bidón / Balde'], ['set', 'Juego / Set']];
 export const CON_CONTENIDO = ['pack', 'bulto', 'caja', 'display'];
 const nuevoEstado = () => ({
   tablas: [],                 // [{archivo, filas, hojas, hoja, det, map, opts:{moneda,tipo,margen}}]
+  pdfs: [],                   // v2.33: nombres de los PDF leídos (para avisar que no traen fotos)
+  pdfTextos: [],              // v2.33.1: [{archivo, texto, fotos: Map(renglón → foto), descs: Map(renglón → descripción), idioma, trad, traducido}]
+  pdfDesc: false,             // v2.33.1: importar también las descripciones que trae el PDF (lo decide el cliente)
   fotos: [],                  // [{uid, archivo, foto(Blob), url, texto, leyenda, fuente}]
   texto: '', fotoModo: 'producto',
   opts: { moneda: 'ars', tipo: 'costo', margen: null },          // para texto pegado, fotos y WhatsApp
@@ -26,7 +29,7 @@ const nuevoEstado = () => ({
 const I = nuevoEstado();
 // Aviso para los clientes después de actualizar la lista (sobrevive al reinicio del importador)
 const AV = { texto: '', resumen: '', nuevos: [], bajan: [] };
-export const resetImp = () => { I.fotos.forEach(f => f.url && URL.revokeObjectURL(f.url)); Object.assign(I, nuevoEstado()); };
+export const resetImp = () => { I.fotos.forEach(f => f.url && URL.revokeObjectURL(f.url)); (I.pdfTextos || []).forEach(p => p.urls.forEach(u => URL.revokeObjectURL(u))); Object.assign(I, nuevoEstado()); };
 
 const cot = () => Number(P.t.cotizacion_usd) > 0 ? Number(P.t.cotizacion_usd) : 1;
 const pubDef = () => ({ margen: Math.round(Number(P.t.margen_1) * 100), unidad: 'unidad', contenido: '', unico: false, visible: true, categoria: '' });
@@ -58,6 +61,20 @@ function procesar() {
     return it;
   };
   if (I.texto.trim()) parsearLista(I.texto, c, 'General', I.destino === 'comp' ? 'ars' : I.opts.moneda).forEach((x, i) => out.push(ajuste({ ...x, uid: 'x' + i, fuente: 'texto pegado' })));
+  // v2.33.1: PDF → cada producto con la foto de su fila y (si el cliente quiere) su descripción; traducido si el PDF viene en otro idioma
+  I.pdfTextos.forEach((p, k) => {
+    const tr = p.traducido && p.trad;
+    parsearLista(p.texto, c, 'General', I.destino === 'comp' ? 'ars' : I.opts.moneda, { lineas: true }).forEach((x, i) => {
+      const ft = p.fotos.get(x._linea), d0 = p.descs.get(x._linea) || '';
+      if (ft && !p.urls.has(x._linea)) p.urls.set(x._linea, URL.createObjectURL(ft));
+      const it = { ...x, uid: 'p' + k + '-' + i, fuente: p.archivo + (tr && tr.nombres.get(x.nombre) ? ` · original: ${x.nombre}` : '') };
+      delete it._linea;
+      if (tr) { it.nombre = (tr.nombres.get(x.nombre) || x.nombre).slice(0, 160); if (x.categoria && tr.cats.get(x.categoria)) it.categoria = tr.cats.get(x.categoria).slice(0, 60); }
+      if (I.pdfDesc && d0) it.descripcion = ((tr && tr.descs.get(d0)) || d0).slice(0, 1500);
+      if (ft) { it.foto = ft; it.fotoUrl = p.urls.get(x._linea); }
+      out.push(ajuste(it));
+    });
+  });
   I.fotos.forEach(f => {
     if (I.fotoModo === 'lista' && !f.leyenda) {   // la foto es una LISTA con varios productos
       parsearLista(f.texto, c, 'General', I.opts.moneda).forEach((x, i) => out.push(ajuste({ ...x, uid: f.uid + '-' + i, fuente: f.archivo })));
@@ -197,7 +214,7 @@ function fila(x) {
   const costoArs = x.costo_usd > 0 ? Math.round(x.costo_usd * cot()) : '';
   return `<tr class="${x.incluir ? '' : 'off'}"><td><input type="checkbox" aria-label="Incluir" data-change="i-inc" data-u="${esc(x.uid)}" ${x.incluir ? 'checked' : ''}></td>
     <td>${x.fotoUrl ? `<img class="imp-th${x.usoFoto === 'no' ? ' imp-th-no' : ''}" src="${esc(x.fotoUrl)}" alt=""><select class="imp-uso" aria-label="Foto para la tienda" data-change="i-uso" data-u="${esc(x.uid)}"><option value="usar" ${x.usoFoto === 'usar' ? 'selected' : ''}>Usar foto</option><option value="no" ${x.usoFoto === 'no' ? 'selected' : ''}>Sin foto</option><option value="recortar">✂️ Recortar…</option></select>${x.captura ? '<small class="muted">captura</small>' : ''}` : x.imagen_url ? `<img class="imp-th" src="${esc(x.imagen_url)}" alt="" loading="lazy">` : ''}</td>
-    <td><input class="fi fi-s" maxlength="160" value="${esc(x.nombre || '')}" placeholder="Escribí el nombre" data-input="i-ed" data-u="${esc(x.uid)}" data-k="nombre">${x.revisar ? ' <span title="Leído de una foto: revisalo">🔎</span>' : ''}${x.variantes && x.variantes.length ? '<br><small class="muted">' + esc(x.variantes.join(', ')) + '</small>' : ''}<br><small class="muted">${esc(x.fuente || '')}${x.activo === false ? ' · estaba oculto' : ''}</small></td>
+    <td><input class="fi fi-s" maxlength="160" value="${esc(x.nombre || '')}" placeholder="Escribí el nombre" data-input="i-ed" data-u="${esc(x.uid)}" data-k="nombre">${x.revisar ? ' <span title="Leído de una foto: revisalo">🔎</span>' : ''}${x.variantes && x.variantes.length ? '<br><small class="muted">' + esc(x.variantes.join(', ')) + '</small>' : ''}${x.descripcion ? `<br><small class="muted imp-desc" title="${esc(x.descripcion)}">📝 ${esc(x.descripcion.length > 110 ? x.descripcion.slice(0, 110) + '…' : x.descripcion)}</small>` : ''}<br><small class="muted">${esc(x.fuente || '')}${x.activo === false ? ' · estaba oculto' : ''}</small></td>
     <td><input class="fi fi-s" type="number" min="0" step="any" value="${costoArs}" placeholder="$" data-input="i-ed" data-u="${esc(x.uid)}" data-k="costo" style="max-width:110px">${x.inferido ? '<br><small class="muted">número sin $: revisalo</small>' : ''}</td>
     ${I.destino === 'mis' ? `<td class="r">${x.costo_usd > 0 ? fmt(x.existente && !x.duda ? ventaDe(x.existente, x.costo_usd) : pv(x.costo_usd)) : '—'}</td>` : ''}<td>${estado}</td></tr>`;
 }
@@ -217,6 +234,18 @@ function vistaRestaurar() {
   return `<div class="lv lv-ok" id="w-rest"><b>💾 Tenés productos leídos que todavía no cargaste</b><p class="hint" style="margin:4px 0">${esc(partes.join(' · '))} · guardado ${hace(R.ts)} en este navegador.</p>
     <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-recuperar">Recuperar y seguir</button><button class="btn btn-s btn-sm" data-act="w-descartar">Descartar</button></div></div>`;
 }
+// v2.33 · v2.33.1: qué trajo cada PDF (fotos de cada fila, descripciones, idioma) y qué falta
+function vistaPdf() {
+  if (!I.pdfTextos || !I.pdfTextos.length) return '';
+  const sinFotos = I.pdfTextos.filter(p => !p.fotos.size), conFotos = I.pdfTextos.filter(p => p.fotos.size), nDesc = I.pdfTextos.reduce((a, p) => a + p.descs.size, 0);
+  const idioma = p => p.idioma && p.idioma !== 'es' && NOMBRE_IDIOMA[p.idioma] ? `<p class="hint imp-pdf-idioma" style="margin:6px 0 0">🌐 ${p.traducido ? `<b>${esc(p.archivo)}</b>: traducido del ${esc(NOMBRE_IDIOMA[p.idioma])} al español (los precios no cambian). <button type="button" class="linkb" data-act="i-pdf-orig" data-k="${I.pdfTextos.indexOf(p)}">Ver el original</button>`
+    : `<b>${esc(p.archivo)}</b> parece estar en ${esc(NOMBRE_IDIOMA[p.idioma])}. <button type="button" class="btn btn-s btn-sm" data-act="i-pdf-trad" data-k="${I.pdfTextos.indexOf(p)}">Traducir al español</button>`}</p>` : '';
+  return `<div class="lv imp-pdf" id="imp-pdf" role="note">
+    ${conFotos.length ? `<b>📄 ${conFotos.length === 1 ? esc(conFotos[0].archivo) : conFotos.length + ' PDF'}: ${conFotos.reduce((a, p) => a + p.fotos.size, 0)} fotos sacadas del PDF, cada una con el producto de su fila</b><p class="hint" style="margin:4px 0 0">Revisalas en la lista: si alguna no corresponde, elegí “Sin foto”.</p>` : ''}
+    ${sinFotos.length ? `<b${conFotos.length ? ' style="display:block;margin-top:8px"' : ''}>📄 ${sinFotos.length === 1 ? esc(sinFotos[0].archivo) : sinFotos.length + ' PDF'}: importamos nombres y precios, sin fotos</b><p class="hint" style="margin:4px 0 0">${sinFotos.some(p => p.ocr) ? 'Es un PDF escaneado (cada página es una foto), así que no hay fotos sueltas para sacar. ' : ''}Si tenés el Excel original (.xlsx) con las imágenes, o el chat de WhatsApp exportado (.zip), subilo también y traemos las fotos solas.</p>` : ''}
+    ${nDesc ? `<label class="chk" style="margin-top:8px"><input type="checkbox" id="i-pdf-desc" data-change="i-pdf-desc" ${I.pdfDesc ? 'checked' : ''}> Importar también las descripciones del PDF (${nDesc} ${nDesc === 1 ? 'producto' : 'productos'})</label>` : ''}
+    ${I.pdfTextos.map(idioma).join('')}</div>`;
+}
 function vistaElegir() {
   const E = I.web.elegir; if (!E) return '';
   const n = E.marcadas.length + (E.buscador && E.termino.trim() ? 1 : 0), es = E.nombresEs || {};
@@ -235,23 +264,14 @@ function vistaBloqueada() {
     <p class="hint" style="margin:4px 0">Abrila en tu navegador${linkWeb()}, copiá la página (<b>Ctrl+A</b> y <b>Ctrl+C</b>) y pegala en el recuadro <b>📋 Pegar</b> de abajo. Reconocemos cada producto con su foto y su precio.</p>
     <div class="lv-acc"><button class="btn btn-s btn-sm" data-act="w-ir-pegar">📋 Ir al recuadro para pegar</button></div></div>`;
 }
-// Un solo recuadro para pegar: texto de una lista (WhatsApp, mail, Excel) o una página web copiada del navegador.
+// Recuadro para pegar el texto de una lista (WhatsApp, mail, Excel). v2.33: ya no lee páginas web copiadas.
 // Lo que se pega se reconoce solo (ver el evento 'paste' más abajo).
 const SOLO_TABLAS = /\.(csv|tsv|xlsx|xlsm|xls|ods)$/i;
 function vistaPegado() {
   if (!can('ocr')) return '<p class="hint imp-solo" id="pegar-box">En el plan Gratis cargás desde Excel o CSV. Leer fotos, PDF y chats de WhatsApp es parte de Mayorista Pro.</p>';
-  const W = I.web, pp = W.pegado;
-  return `<div class="pegar-box" id="pegar-box" data-asistente="web"><label class="flabel" for="imp-t">📋 Pegar una lista o una página web</label>
-    <textarea class="fi" id="imp-t" rows="3" data-asis="w-pegar" data-input="i-texto" placeholder="Pegá acá el texto de la lista (uno por renglón: Perfume X 100ml $12.500) o la página de tu proveedor copiada con Ctrl+A y Ctrl+C">${esc(I.texto)}</textarea>
-    <p class="hint pegar-que">Nos damos cuenta solos de qué pegaste: <b>texto</b> de WhatsApp, mail o Excel → un producto por renglón · <b>página web</b> copiada del navegador → cada producto con su foto y su precio, en el panel 🌐 de ese proveedor.</p>
-    ${pp ? `<div class="lv lv-ok" id="w-pegado"><b>🌐 Pegaste una página de ${esc(pp.host)} con ${pp.productos.length} ${pp.productos.length === 1 ? 'producto' : 'productos'}</b>
-      <p class="hint" style="margin:4px 0">Para usar sus fotos y textos en tu tienda tenés que ser cliente o revendedor de este proveedor y <b>tener su permiso</b>.</p>
-      <div class="lv-acc"><button class="btn btn-p btn-sm" data-act="w-pegado-ok">✅ Tengo su permiso · cargar ${pp.productos.length}</button><button class="btn-link" data-act="w-pegado-no">cancelar</button></div></div>` : ''}
-    <details class="hint pegar-ayuda" id="pegar-web" ${W.pegar ? 'open' : ''}><summary>¿Cómo copio la página de un proveedor?</summary>
-      <ol class="wp-pasos"><li>Abrí la página del proveedor donde se ven los productos (una categoría o una búsqueda)${linkWeb()}.</li>
-        <li>Bajá hasta el final para que se carguen todos.</li>
-        <li>Apretá <b>Ctrl+A</b> y después <b>Ctrl+C</b> (en el celular: mantené apretado un texto → <b>Seleccionar todo</b> → <b>Copiar</b>).</li>
-        <li>Volvé acá, tocá el recuadro y pegá con <b>Ctrl+V</b> (o mantené apretado → <b>Pegar</b>). Repetí con cada página o categoría: se van sumando.</li></ol></details>
+  return `<div class="pegar-box" id="pegar-box"><label class="flabel" for="imp-t">📋 Pegar una lista</label>
+    <textarea class="fi" id="imp-t" rows="3" data-asis="w-pegar" data-input="i-texto" placeholder="Pegá acá el texto de la lista que te mandó tu proveedor (uno por renglón: Perfume X 100ml $12.500)">${esc(I.texto)}</textarea>
+    <p class="hint pegar-que">Texto de WhatsApp, mail o Excel: un producto por renglón, con su precio.</p>
     <details class="hint pegar-ayuda"><summary>¿Cómo traigo los productos de un canal o grupo de WhatsApp?</summary>
       <p><b>Grupo o chat:</b> en el celular abrí el grupo → ⋮ → Más → <b>Exportar chat</b> → <b>Incluir archivos</b> → guardalo y subí ese .zip arriba. Cada foto se une con su texto (nombre y precio).</p>
       <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen. Si el canal tiene la lista escrita, copiala y pegala acá.</p></details></div>`;
@@ -338,7 +358,7 @@ export function vistaImportar() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">📥 Cargar o actualizar productos</div><div id="mm">${I.err ? `<div class="err-box">${esc(I.err)}</div>` : ''}${I.msg && !I.busy ? `<div class="ok-box">${esc(I.msg)}</div>` : ''}</div>${I.busy ? '' : vistaAviso()}
     <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · ${can('ocr') ? 'Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista' : 'Excel o CSV (también el de Tiendanube / Shopify / Empretienda)'}</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
     <input id="i-file" type="file" hidden multiple data-change="i-file" accept="${can('ocr') ? '.csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*' : '.csv,.tsv,.xlsx,.xlsm,.xls,.ods'}">
-    ${vistaWeb()}
+    ${vistaPdf()}
     ${vistaPegado()}
     ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div>${I.webBusy ? '<button class="btn btn-s btn-sm" style="margin-top:6px" data-act="w-cancelar">Detener y quedarme con lo leído</button>' : ''}</div>` : ''}
     ${vistaTablas()}${vistaOpcionesLectura()}${(I.items || I.texto || I.tablas.length || I.fotos.length) ? destino : ''}${vistaListaViva()}${vistaPublicar(nuevos.length)}${tabla}
@@ -372,6 +392,7 @@ async function cargar(lista) {
   const imagenes = files.filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|webp|bmp)$/i.test(f.name));
   for (const f of files) {
     n++;
+    if (/\.pdf$/i.test(f.name) && !I.pdfs.includes(f.name)) I.pdfs.push(f.name);
     const esImg = imagenes.includes(f);
     progreso(esImg ? `Leyendo foto ${imagenes.indexOf(f) + 1} de ${imagenes.length}…` : `Leyendo ${f.name} (${n} de ${files.length})…`);
     try {
@@ -384,7 +405,7 @@ async function cargar(lista) {
         if (cap) I.uso['f' + (I.fotos.length - 1)] = null;
         continue;
       }
-      const r = await leerArchivo(f, progreso, { fotos: 2000, achicar: b => redimensionar(b, 900, .82) });
+      const r = await leerArchivo(f, progreso, { fotos: 2000, fotosPdf: true, achicar: b => redimensionar(b, 900, .82) });
       if (r.tipo === 'tabla') {
         // v2.31.1: moneda detectada en la planilla, fotos pegadas en el Excel e idioma de los nombres
         const tb = { archivo: f.name, filas: r.filas, hojas: r.hojas || null, hoja: 0, map: null, opts: { moneda: r.moneda && r.moneda !== 'ars' ? r.moneda : 'ars', tipo: 'costo', margen: null }, fotos: r.fotos || null, bloques: !!r.bloques };
@@ -393,6 +414,12 @@ async function cargar(lista) {
         I.tablas.push(tb);
       }
       else if (r.tipo === 'productos') r.items.forEach((x, i) => I.fotos.push({ uid: 'w' + I.fotos.length + '-' + i, archivo: x.archivoFoto || f.name, grupo: f.name, foto: x.foto || null, url: x.foto ? URL.createObjectURL(x.foto) : null, texto: '', leyenda: x.leyenda, fuente: 'WhatsApp ' + f.name }));
+      else if (/\.pdf$/i.test(f.name)) {   // v2.33.1: cada PDF por separado, con las fotos de su fila, sus descripciones y su idioma
+        const texto = r.texto.slice(0, 400000), muestra = texto.split('\n').filter(l => /[A-Za-zÀ-ÿ一-鿿]{3,}/.test(l)).slice(0, 400);
+        I.pdfTextos = I.pdfTextos.filter(p => p.archivo !== f.name);
+        I.pdfTextos.push({ archivo: f.name, texto, fotos: (r.pdf && r.pdf.fotos) || new Map(), descs: (r.pdf && r.pdf.descs) || new Map(), urls: new Map(), idioma: idiomaDe(muestra), trad: null, traducido: false, ocr: !!r.ocr });
+        if (r.ocr && r.total > r.paginas) errores.push(`${f.name}: es un PDF escaneado; leímos con OCR las primeras ${r.paginas} de ${r.total} páginas.`);
+      }
       else { I.texto = (I.texto ? I.texto + '\n' : '') + r.texto.slice(0, 400000); if (r.ocr && r.total > r.paginas) errores.push(`${f.name}: es un PDF escaneado; leímos con OCR las primeras ${r.paginas} de ${r.total} páginas.`); }
     } catch (e) { errores.push(f.name + ': ' + e.message); }
   }
@@ -420,6 +447,24 @@ on('i-trad', async (d, b) => {
     procesar(); refrescar(); toast(`🌐 Traducimos ${m.size} nombres`);
   } catch (e) { b.disabled = false; toast(e.message); }
 });
+on('i-pdf-desc', (d, el) => { I.pdfDesc = el.checked; procesar(); refrescar(); });
+// v2.33.1: traducir un PDF de un proveedor de afuera: nombres, categorías y descripciones (los precios y los códigos no se tocan)
+on('i-pdf-trad', async (d, b) => {
+  const p = I.pdfTextos[+d.k]; if (!p) return;
+  if (p.trad) { p.traducido = true; procesar(); refrescar(); return; }
+  b.disabled = true;
+  try {
+    const L = parsearLista(p.texto, cot(), 'General', I.opts.moneda), descs = [...p.descs.values()];
+    const tx = (lista, et) => traducirLista(lista, p.idioma, (t, de) => api.traducir(t, de), x => progreso(x), et);
+    const nombres = await tx(L.map(x => x.nombre), 'Traduciendo los nombres');
+    if (!nombres.size) throw new Error('El traductor no está disponible ahora. Probá más tarde.');
+    const cats = await tx([...new Set(L.map(x => x.categoria).filter(c => c && c !== 'General'))], 'Traduciendo las categorías');
+    const ds = descs.length ? await tx(descs, 'Traduciendo las descripciones') : new Map();
+    p.trad = { nombres, cats, descs: ds }; p.traducido = true; I.msg = '';
+    procesar(); refrescar(); toast(`🌐 Traducimos ${nombres.size} nombres${ds.size ? ' y ' + ds.size + ' descripciones' : ''}`);
+  } catch (e) { b.disabled = false; I.msg = ''; toast(e.message); refrescar(); }
+});
+on('i-pdf-orig', d => { const p = I.pdfTextos[+d.k]; if (!p) return; p.traducido = false; procesar(); refrescar(); });
 on('i-trad-x', d => { const tb = I.tablas[+d.t]; if (!tb || !tb.filasOrig) return; tb.filas = tb.filasOrig; tb.filasOrig = null; tb.traducida = false; tb.map = null; procesar(); refrescar(); });
 on('i-hoja', (d, el) => { const tb = I.tablas[+d.t]; tb.hoja = +el.value; tb.filas = tb.hojas[tb.hoja].filas; tb.map = null; procesar(); refrescar(); });
 on('i-map', (d, el) => { const tb = I.tablas[+d.t]; if (el.value === '') delete tb.map[d.k]; else tb.map[d.k] = +el.value; procesar(); refrescar(); });
@@ -593,17 +638,9 @@ async function sumarAlProveedor(r, pendiente) {
   meter(w);
   return w;
 }
-// Recuadro único de pegar: queSePego (webprov.js) decide si llegó una página web o el texto de una lista.
+// Recuadro de pegar: solo texto de una lista (v2.33).
 on('w-ir-pegar', () => { const t = $('#imp-t'), b = $('#pegar-web'); if (b) b.open = true; if (t) { t.scrollIntoView({ block: 'center', behavior: 'smooth' }); t.focus(); } });
-document.addEventListener('paste', e => {
-  if (!e.target || e.target.id !== 'imp-t') return;
-  const cd = e.clipboardData; if (!cd || I.busy) return;
-  const W = I.web, r = queSePego(cd.getData('text/html'), cd.getData('text/plain'), !!W.pegar, W.pegarUrl || W.url);
-  if (r.tipo !== 'web') return;                  // texto común: el navegador lo pega en el recuadro y se lee como lista
-  e.preventDefault();
-  if (!W.acepto) { W.pegado = r.p; I.err = ''; refrescar(); const b = $('#w-pegado'); if (b) b.scrollIntoView({ block: 'nearest' }); return; }
-  pegarPagina(r.p);
-});
+// v2.33: ya no se leen páginas web pegadas (riesgo de derechos de autor): lo que se pega en el recuadro se lee como texto de una lista.
 on('w-pegado-ok', () => { const p = I.web.pegado; if (!p) return; I.web.acepto = true; pegarPagina(p); });
 on('w-pegado-no', () => { I.web.pegado = null; refrescar(); });
 async function pegarPagina(p) {

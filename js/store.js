@@ -30,7 +30,7 @@ function tramos(p) {
   return { 1: +src.precio_1, 3: +src.precio_3, 6: +src.precio_6, 12: +src.precio_12 };
 }
 // "por caja x12", "por kg"… (vacío si se vende por unidad)
-const UNI = { par: 'par', docena: 'docena', pack: 'pack', bulto: 'bulto', caja: 'caja', display: 'display', kg: 'kg', gramos: 'gramo', litro: 'litro', metro: 'metro' };
+const UNI = { par: 'par', docena: 'docena', pack: 'pack', bulto: 'bulto', caja: 'caja', display: 'display', kg: 'kg', gramos: 'gramo', litro: 'litro', metro: 'metro', m2: 'm²', rollo: 'rollo', placa: 'placa', bolsa: 'bolsa', bidon: 'bidón', set: 'juego' };
 export const unidadTxt = (u, n) => !u || u === 'unidad' || !UNI[u] ? '' : UNI[u] + (n && ['pack', 'bulto', 'caja', 'display'].includes(u) ? ' x' + n : '');
 const porUnidad = p => { const u = unidadTxt(p.unidad, p.contenido); return u ? `<div class="flat-note">por ${esc(u)}</div>` : ''; };
 const unidad = (p, q) => { const t = tramos(p); if (!t) return +p.precio_1; return q >= 12 ? t[12] : q >= 6 ? t[6] : q >= 3 ? t[3] : t[1]; };

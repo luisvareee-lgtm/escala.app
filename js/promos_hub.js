@@ -50,6 +50,8 @@ const SUGERIDAS = {
   cosmetica: ['ult2', 'ult3', 'monto', 'cupon'], indumentaria: ['ult3', 'ult2', 'nx', 'cupon'],
   alimentos: ['nx', 'pct', 'monto', 'cupon'], kiosco: ['nx', 'ult3', 'pct', 'cupon'], gastronomia: ['nx', 'ult3', 'cupon', 'monto'],
   hogar: ['monto', 'ult2', 'pct', 'cupon'], electro: ['monto', 'cupon', 'ult2', 'montou'], autopartes: ['monto', 'pct', 'cupon', 'nx'],
+  ferreteria: ['monto', 'pct', 'cupon', 'nx'], construccion: ['monto', 'pct', 'cupon', 'envio'], libreria: ['nx', 'ult3', 'monto', 'cupon'],
+  mascotas: ['nx', 'monto', 'pct', 'cupon'], jugueteria: ['ult2', 'ult3', 'monto', 'cupon'], bijouterie: ['ult3', 'ult2', 'nx', 'cupon'],
   otro: ['ult3', 'ult2', 'nx', 'cupon'],
 };
 // tienda mayorista: las promos por cantidad y la barra de descuento por monto son para vender al público (híbrida)

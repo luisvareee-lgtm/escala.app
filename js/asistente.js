@@ -2,6 +2,7 @@
 // que explica para qué sirve, con un ejemplo. Cada comercio lo activa o desactiva (se recuerda en este dispositivo).
 // Solo actúa dentro de contenedores marcados con data-asistente="alta" | "ajustes" | "envios".
 import { esc, fmt, on, store } from './util.js';
+import { MARCA } from './marca.js';
 
 const CLAVE = 'escala:asistente';
 export const asisOn = () => store.get(CLAVE, true) !== false;
@@ -18,7 +19,7 @@ const margen = n => c => {
 const AYUDA = {
   // --- alta de la tienda ---
   'alta:nombre': { t: 'Nombre del negocio', d: 'Es lo que ven tus clientes arriba de la tienda y en el ticket que te llega por WhatsApp. Lo podés cambiar cuando quieras en Tienda → Estilo.', ej: 'Bazar Luna · Perfumería Central' },
-  'alta:slug': { t: 'Tu enlace', d: 'Es la dirección de tu tienda, la que vas a compartir en Instagram, en tus Estados y por WhatsApp. Se arma sola con el nombre: minúsculas, sin espacios ni acentos. Cuanto más corto, mejor.', ej: '/t/bazar-luna' },
+  'alta:slug': { t: 'Tu enlace', d: 'Es la dirección de tu tienda, la que vas a compartir en Instagram, en tus Estados y por WhatsApp. Se arma sola con el nombre: minúsculas, sin espacios ni acentos. Cuanto más corto, mejor.', ej: () => { const d = String(MARCA.DOMINIO || '').trim().toLowerCase().replace(/^www\./, ''); return d ? 'bazar-luna.' + d : '/t/bazar-luna'; } },
   'alta:whatsapp': { t: 'WhatsApp donde recibís pedidos', d: 'Cuando un cliente confirma la compra, se le abre WhatsApp con el pedido listo para mandártelo a este número. Poné el código de área sin el 0 y el número sin el 15.', ej: '11 2345-6789 (AMBA) · 351 555-1234 (Córdoba)' },
   'alta:rubro': { t: 'Rubro', d: 'Sirve para cargarte 4 productos de ejemplo y que veas enseguida cómo queda la tienda. Después los borrás o los reemplazás importando tu lista.' },
   modalidad: { t: '¿Cómo vendés?', d: '<b>Minorista:</b> un precio por unidad, para el público. <b>Mayorista:</b> precios por cantidad (x1 · x3 · x6 · x12) para revendedores. <b>Híbrido:</b> el público ve el precio minorista y tus revendedores entran con el botón “Acceso Mayorista” (con código, si querés).', ej: 'Si vendés por Instagram al público y también a revendedoras, elegí Híbrido.' },
@@ -63,7 +64,7 @@ const AYUDA = {
   'w-forzar': { t: 'Moneda de los precios', d: 'Lo detectamos solo: si la web muestra el precio en dólares (U$, US$) usamos ese aunque también figure en reales o guaraníes. Si ves que está mal (por ejemplo, tomó guaraníes como dólares), elegí acá la moneda correcta.' },
   'w-cot': { t: 'Dólar al que le pagás a este proveedor', d: 'Tu tienda pasa los dólares a pesos con la cotización de Ajustes. Si a este proveedor le pagás a otro valor (cripto/USDT, blue, transferencia), ponelo acá: el costo en pesos de sus productos se calcula con ese dólar y tu ganancia se suma encima.', ej: 'Tu cotización 1570, pero al proveedor le pagás en USDT a 1670 → poné 1670' },
   'w-q': { t: 'Buscar en lo encontrado', d: 'Filtra los productos leídos de este proveedor por nombre, marca, código o categoría. Solo se importan los que quedan a la vista (y que estén tildados en la tabla).', ej: 'perfume' },
-  'w-pegar': { t: 'Pegar una lista o una página web', d: 'Un solo recuadro para las dos cosas y se da cuenta solo de qué pegaste. Texto de una lista (WhatsApp, mail, Excel): un producto por renglón, con su precio. Página web: abrí la página del proveedor (una categoría o una búsqueda), bajá hasta el final, apretá Ctrl+A y Ctrl+C, y pegala acá con Ctrl+V: reconocemos cada producto con su foto y su precio, y va al panel de ese proveedor. Copiar y pegar la página sirve también para las webs que no dejan que las lea un programa.', ej: 'Perfume X 100ml $12.500 · o Ctrl+A → Ctrl+C en la web del proveedor → Ctrl+V acá' },
+  'w-pegar': { t: 'Pegar una lista', d: 'Pegá el texto de la lista que te mandó tu proveedor (WhatsApp, mail o Excel): un producto por renglón, con su precio. Si la tenés en archivo (Excel, CSV, PDF, fotos o el chat exportado en .zip), subilo arriba.', ej: 'Perfume X 100ml $12.500' },
   'p-wurl': { t: 'Foto y descripción desde un enlace', d: 'Pegá el enlace de la página del producto en la web oficial de la marca o en la de tu proveedor, o el enlace directo de una foto. Traemos la foto (achicada) y, si el campo está vacío, la descripción y la marca. Usá fotos ajenas solo con permiso.', ej: 'https://marca.com.ar/producto/serum-hialuronico-30ml' }
 };
 

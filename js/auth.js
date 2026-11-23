@@ -1,5 +1,6 @@
 // Registro, ingreso, recuperación y alta de la primera tienda.
 import { api } from './api.js';
+import { MARCA } from './marca.js';
 import { CONFIG } from './config.js';
 import { $, esc, on, toast, slugify, soloDigitos, normWsp, store } from './util.js';
 import { asisSwitch } from './asistente.js';
@@ -7,7 +8,9 @@ import { cuposHtml, cargarCupos } from './fundadores.js';
 // si probó la demo de la portada, el alta arranca con la forma de vender que eligió ahí
 const modoDemo = () => { const d = store.get('demo:prods', null), m = d && d.modo; return m === 'menor' ? 'minorista' : m === 'mayor' ? 'mayorista' : 'hibrido'; };
 
-import { RUBROS } from './rubro.js';   // la misma lista que usan las herramientas según el rubro
+import { RUBROS } from './rubro.js';
+// v2.33: con dominio propio configurado, el enlace se ve como subdominio (bazar-luna.eskalapp.com), no como /t/…
+const dominioTienda = () => String(MARCA.DOMINIO || '').trim().toLowerCase().replace(/^www\./, '');   // la misma lista que usan las herramientas según el rubro
 export { RUBROS };
 let irPanel = () => { };
 export const setIrPanel = f => { irPanel = f; };
@@ -40,7 +43,7 @@ export function pantallaNuevaClave(app) {
 export function pantallaNuevaTienda(app) {
   app.innerHTML = caja('Armemos tu tienda', `<div id="m"></div><form data-submit="a-tienda" data-asistente="alta">${asisSwitch()}
     <div class="fg"><label class="flabel" for="n">Nombre del negocio</label><input class="fi" id="n" name="nombre" maxlength="60" data-input="a-slug" required></div>
-    <div class="fg"><label class="flabel" for="s">Tu enlace</label><input class="fi" id="s" name="slug" maxlength="30" minlength="3" required><div class="hint" id="sl">/t/<span id="slv">tu-negocio</span></div></div>
+    <div class="fg"><label class="flabel" for="s">Tu enlace</label><input class="fi" id="s" name="slug" maxlength="30" minlength="3" required><div class="hint" id="sl">${dominioTienda() ? `<span id="slv">tu-negocio</span>.${esc(dominioTienda())}` : '/t/<span id="slv">tu-negocio</span>'}</div></div>
     <div class="fg"><label class="flabel" for="w">WhatsApp donde recibís pedidos</label><input class="fi" id="w" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" required></div>
     <div class="fg"><label class="flabel" for="r">Rubro (cargamos 4 productos de ejemplo)</label><select class="fi" id="r" name="rubro">${Object.entries(RUBROS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
     <div class="fg"><label class="flabel" for="mo">¿Cómo vendés?</label><select class="fi" id="mo" name="modalidad">${[['hibrido', 'Híbrido (minorista + mayorista)'], ['mayorista', 'Solo mayorista'], ['minorista', 'Solo minorista']].map(([v, t]) => `<option value="${v}" ${v === modoDemo() ? 'selected' : ''}>${t}</option>`).join('')}</select></div>

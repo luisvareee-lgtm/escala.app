@@ -1,7 +1,8 @@
 // Herramientas según lo que vendés (v2.27). El rubro de la tienda (o, si quedó en "Otro", el que se deduce de sus
 // productos) decide las palabras y los atajos de las variantes: talles en ropa, tonos en cosmética, sabores en almacén.
 // Lo usan el panel y la tienda, así que no importa nada del panel.
-export const RUBROS = { cosmetica: 'Cosmética', indumentaria: 'Ropa y calzado', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
+// v2.33: la clave 'cosmetica' no cambia (tiendas existentes); solo el nombre que se muestra.
+export const RUBROS = { cosmetica: 'Belleza y cuidado personal', indumentaria: 'Ropa y calzado', bijouterie: 'Accesorios y bijouterie', hogar: 'Hogar', electro: 'Electro', kiosco: 'Kiosco', alimentos: 'Almacén', mascotas: 'Mascotas / Pet shop', jugueteria: 'Juguetería y bebés', libreria: 'Librería y papelería', ferreteria: 'Ferretería y herramientas', construccion: 'Construcción y pisos', autopartes: 'Repuestos', gastronomia: 'Gastronomía', otro: 'Otro' };
 
 // w: la palabra (singular / plural / artículo) · campo y ej: el campo de la ficha · talles: atajos XS…XXL y guía de talles
 const VAR = {
@@ -13,6 +14,12 @@ const VAR = {
   hogar: { w: ['variante', 'variantes', 'la'], campo: 'Colores, modelos o medidas', ej: 'Ej: Blanco, Gris · 1,5 L, 2 L' },
   electro: { w: ['variante', 'variantes', 'la'], campo: 'Colores o modelos', ej: 'Ej: Negro, Blanco · 64 GB, 128 GB' },
   autopartes: { w: ['variante', 'variantes', 'la'], campo: 'Modelos o medidas', ej: 'Ej: Delantero, Trasero · 13", 14"' },
+  ferreteria: { w: ['medida', 'medidas', 'la'], campo: 'Medidas o modelos', ej: 'Ej: 6 mm, 8 mm, 10 mm · 1/2", 3/4" · 220 V, inalámbrico' },
+  construccion: { w: ['medida', 'medidas', 'la'], campo: 'Medidas, colores o terminaciones', ej: 'Ej: 60x60, 45x45 · Gris, Beige · Mate, Brillante' },
+  libreria: { w: ['variante', 'variantes', 'la'], campo: 'Colores, rayados o tamaños', ej: 'Ej: Azul, Negro, Rojo · Rayado, Cuadriculado · A4, Oficio' },
+  mascotas: { w: ['variante', 'variantes', 'la'], campo: 'Tamaños, sabores o pesos', ej: 'Ej: Cachorro, Adulto · Carne, Pollo · 3 kg, 15 kg' },
+  jugueteria: { w: ['variante', 'variantes', 'la'], campo: 'Modelos, colores o edades', ej: 'Ej: Rosa, Celeste · 0-6 meses, 6-12 meses · RN, P, M, G' },
+  bijouterie: { w: ['modelo', 'modelos', 'el'], campo: 'Colores, baños o largos', ej: 'Ej: Dorado, Plateado · Acero, Baño de oro · 45 cm, 50 cm' },
   otro: { w: ['variante', 'variantes', 'la'], campo: 'Variantes (talles, colores, modelos…)', ej: 'Ej: S, M, L · Rojo, Azul · 500 ml, 1 L', talles: true },
 };
 const sinTilde = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -31,6 +38,12 @@ const CLAVES = {
   electro: 'auricular cargador cable parlante celular funda smartwatch mouse teclado notebook tablet usb bluetooth lampara camara consola joystick electro gamer',
   autopartes: 'repuesto filtro bujia freno amortiguador correa embrague lubricante neumatico autoparte faro paragolpe escape',
   gastronomia: 'hamburguesa pizza empanada sandwich milanesa vianda postre torta picada lomito',
+  ferreteria: 'ferreteria herramienta taladro destornillador atornillador martillo pinza tornillo tuerca bulon arandela clavo mecha amoladora sierra serrucho lija silicona candado bisagra cerradura llave',
+  construccion: 'ceramica porcelanato piso revestimiento cemento ladrillo hierro durlock yeso membrana latex enduido sanitario griferia canilla azulejo pastina adhesivo cielorraso',
+  libreria: 'libreria papeleria cuaderno lapiz lapicera birome boligrafo resaltador marcador regla carpeta resma cartulina mochila cartuchera abrochadora plasticola tempera crayon agenda',
+  mascotas: 'mascota perro gato cachorro balanceado pretal sanitaria rascador comedero bebedero cucha antipulgas pipeta',
+  jugueteria: 'juguete jugueteria muneca peluche rompecabezas puzzle lego pelota sonajero mordillo bebe chupete mamadera panal cochecito andador babero',
+  bijouterie: 'bijou bijouterie aros collar pulsera anillo dije reloj lentes anteojos cartera billetera cinturon gorra hebilla broche vincha accesorio',
 };
 const RX = Object.fromEntries(Object.entries(CLAVES).map(([k, v]) => [k, new RegExp('\\b(' + v.split(' ').join('|') + ')', 'i')]));
 export function inferirRubro(prods) {
@@ -51,7 +64,7 @@ export const varMeta = r => VAR[r] || VAR.otro;
 // la palabra para las variantes de un producto: si lo escrito son talles (S, M, 38…) es "talle" (o "número"); si no, la del rubro
 export function palabra(r, vals) {
   const m = varMeta(r), v = (vals || []).filter(x => String(x).trim()), propia = { w: m.w[0], ws: m.w[1], el: m.w[2] };
-  const fija = ['cosmetica', 'alimentos', 'kiosco', 'gastronomia'].includes(r);   // en estos rubros un número es un tono o un sabor
+  const fija = ['cosmetica', 'alimentos', 'kiosco', 'gastronomia', 'ferreteria', 'construccion', 'mascotas', 'bijouterie'].includes(r);   // en estos rubros un número es un tono, un sabor o una medida
   if (!v.length) return propia;
   if (pareceTalle(v)) {
     if (!v.every(x => esNum(String(x).trim()))) return { w: 'talle', ws: 'talles', el: 'el' };   // S, M, L o Único: siempre talles

@@ -63,7 +63,8 @@ export function monedaDoc(t) {
   if (/(pre[cç]os?|valores|precios?)[^\n]{0,30}\b(em|en)\s*(r\$|reais|reales)/i.test(cab)) return 'brl';
   return null;
 }
-export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', sinSimbolo = 'usd') {
+// o.lineas (v2.33.1): cada producto trae _linea = el renglón del texto donde estaba (para unirle la foto del PDF)
+export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', sinSimbolo = 'usd', o = {}) {
   const cot = Number(cotizacion) > 0 ? Number(cotizacion) : 1;
   let t = String(texto || '');
   if (pareceChat(t)) t = limpiarChat(t);
@@ -72,7 +73,11 @@ export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', si
   t = t.replace(/💲/g, ' ');
   const bare = n => sinSimbolo === 'ars' ? Math.round(n / cot * 10000) / 10000 : n;   // 4 decimales (como la base): $25.000 sigue siendo $25.000
   const out = []; let cat = categoriaDefecto, huerfano = null;
+  let nLinea = -1;
+  // v2.33.1 (PDF): si casi todos los precios traen su signo ($, US$, R$…), un número suelto al final ("CATÁLOGO 2026", "Página 3") no es un precio
+  const conSigno = o.lineas && (t.match(/(US\$|U\$S|R\$|\$|USD|€)\s*\d/g) || []).length >= 5;
   for (let raw of t.split(/\r?\n/)) {
+    nLinea++;
     let l = raw.replace(EMOJI, ' ').replace(/[*_~`]+/g, '').replace(/\s+/g, ' ').trim();
     if (!l) { huerfano = null; continue; }
     if (META.test(l) || /^(c[oó]d\.?|codigo|sku)\s+(descri|produ|nombre|art)/i.test(l)) continue;   // encabezados del sistema y de columnas
@@ -95,7 +100,7 @@ export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', si
         // "… 100ML  $36,000  0" → el número suelto después del precio es el stock
         if (/^\s+\d{1,5}\s*$/.test(l.slice(i + p.tok.length))) nombre = l.slice(0, i);   // no se toma como stock: muchas listas ponen 0 en todos
       } else {
-        const m = l.match(/^(.*\D)[\s,:\-–]+([\d][\d.,]*)\s*$/);   // "Nombre - 7,5"  (número suelto = USD)
+        const m = conSigno ? null : l.match(/^(.*\D)[\s,:\-–]+([\d][\d.,]*)\s*$/);   // "Nombre - 7,5"  (número suelto = USD)
         if (m && !/^\d+$/.test(m[1]) && !/[A-Za-z]-\d+\s*$/.test(l) && num(m[2]) > 0 && num(m[2]) < 10000000) { nombre = m[1]; p = { usd: bare(num(m[2])) }; }   // "DL-5249" es un modelo, no un precio
       }
     }
@@ -109,7 +114,7 @@ export function parsearLista(texto, cotizacion, categoriaDefecto = 'General', si
     if (p && !nombre && huerfano) { nombre = huerfano.nombre; c = huerfano.c; }
     huerfano = null;
     nombre = nombre.replace(/\s*\/\s*$/, '').replace(/\s{2,}/g, ' ').trim();   // listas de sistema cortan el nombre con "/"
-    if (nombre) out.push({ ...(sku ? { sku: sku.slice(0, 60) } : {}), ...(stock != null ? { stock } : {}), nombre: nombre.slice(0, 160), categoria: (c || 'General').slice(0, 60), costo_usd: p && p.usd > 0 ? p.usd : null, precio_ars: p && p.usd > 0 ? (p.ars || Math.round(p.usd * cot)) : null, agotado, inferido: !!(p && p.inferido) });
+    if (nombre) out.push({ ...(sku ? { sku: sku.slice(0, 60) } : {}), ...(stock != null ? { stock } : {}), nombre: nombre.slice(0, 160), categoria: (c || 'General').slice(0, 60), costo_usd: p && p.usd > 0 ? p.usd : null, precio_ars: p && p.usd > 0 ? (p.ars || Math.round(p.usd * cot)) : null, agotado, inferido: !!(p && p.inferido), ...(o.lineas ? { _linea: nLinea } : {}) });
   }
   return out;
 }
@@ -352,6 +357,100 @@ const leerBuf = f => new Promise((res, rej) => { const r = new FileReader(); r.o
 export const decodificar = buf => { const b = new Uint8Array(buf); try { return new TextDecoder('utf-8', { fatal: true }).decode(b).replace(/^\ufeff/, ''); } catch (e) { return new TextDecoder('windows-1252').decode(b); } };
 const leerTexto = async f => decodificar(await leerBuf(f));
 
+/* ---------- v2.33.1 · PDF: fotos incrustadas, cada una con el producto de su fila ----------
+   Con pdf.js (el mismo lector del navegador, sin servidor) se recorre la lista de operaciones de cada página: dónde se dibuja
+   cada foto (x, y). Cada texto se une a la foto de su misma fila (la foto de la izquierda más cercana) o, en catálogos en grilla,
+   a la foto que tiene justo arriba. Lo que queda debajo del precio es la descripción (el cliente decide si la importa).
+   Si el PDF es una foto escaneada, no hay fotos sueltas para sacar: se lee el texto como siempre. */
+const PRECIO_RX = /(US\$|U\$S|R\$|\$|USD|ARS|€|¥|RMB)\s*\d|\d[\d.,]*\s*(USD|ARS|€|reais|pesos)\b/i;
+const mulM = (a, b) => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
+async function paginaConFotos(P, page, tc, maxFotos) {
+  const O = P.OPS, ol = await page.getOperatorList(), [vx0, vy0, vx1, vy1] = page.view, area = Math.abs((vx1 - vx0) * (vy1 - vy0));
+  let m = [1, 0, 0, 1, 0, 0]; const pila = [], imgs = [], usos = new Map();
+  for (let k = 0; k < ol.fnArray.length; k++) {
+    const fn = ol.fnArray[k], a = ol.argsArray[k];
+    if (fn === O.save) pila.push(m);
+    else if (fn === O.restore) m = pila.pop() || m;
+    else if (fn === O.transform) m = mulM(m, a);
+    else if (fn === O.paintFormXObjectBegin) { pila.push(m); if (a && a[0]) m = mulM(m, a[0]); }
+    else if (fn === O.paintFormXObjectEnd) m = pila.pop() || m;
+    else if (fn === O.paintImageXObject || fn === O.paintInlineImageXObject || (O.paintJpegXObject && fn === O.paintJpegXObject)) {
+      const xs = [m[4], m[0] + m[4], m[2] + m[4], m[0] + m[2] + m[4]], ys = [m[5], m[1] + m[5], m[3] + m[5], m[1] + m[3] + m[5]];
+      const im = { id: fn === O.paintInlineImageXObject ? null : a[0], inline: fn === O.paintInlineImageXObject ? a[0] : null, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+      const w = im.x1 - im.x0, h = im.y1 - im.y0;
+      if (w < 14 || h < 14 || w * h > area * 0.45) continue;            // íconos, viñetas y fondos de página: no son fotos de productos
+      imgs.push(im); if (im.id) usos.set(im.id, (usos.get(im.id) || 0) + 1);
+    }
+  }
+  const fotos = imgs.filter(im => !im.id || usos.get(im.id) < 3);      // la misma imagen repetida (logo, "sin foto") no es de un producto
+  if (!fotos.length) return null;
+  // textos de la página, en tramos (un renglón se corta donde hay un espacio grande: columnas de una tabla o tarjetas de una grilla)
+  const porY = new Map();
+  for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const tr = it.transform, b = Math.round(tr[5] / 3); (porY.get(b) || porY.set(b, []).get(b)).push(it); }
+  const tramos = [];
+  for (const [b, its] of porY) {
+    its.sort((x, y) => x.transform[4] - y.transform[4]); let t = null;
+    for (const it of its) {
+      const tr = it.transform, x = tr[4], w = Number(it.width) || 0, h = Number(it.height) || Math.hypot(tr[2], tr[3]) || 10;
+      if (!t || x - t.x1 > Math.max(12, h * 1.5)) { t = { b, y: tr[5], x0: x, x1: x + w, h, partes: [] }; tramos.push(t); }
+      t.partes.push([x, it.str]); t.x1 = Math.max(t.x1, x + w); t.h = Math.max(t.h, h);
+    }
+  }
+  tramos.forEach(t => { t.top = t.y + t.h * 0.8; t.bot = t.y - t.h * 0.25; t.texto = t.partes.map(p => p[1]).join(' ').replace(/\s+/g, ' ').trim(); });
+  // 1) misma fila: la foto de la izquierda más cercana (o la de la derecha si el texto está antes)
+  for (const t of tramos) {
+    const cy = (t.top + t.bot) / 2, fila = fotos.filter(im => cy >= im.y0 - 2 && cy <= im.y1 + 2);
+    if (!fila.length) continue;
+    const izq = fila.filter(im => im.x0 <= t.x0 + 5).sort((p, q) => q.x0 - p.x0);
+    t.img = izq[0] || fila.sort((p, q) => p.x0 - q.x0)[0];
+  }
+  // 2) grilla: si una foto no tiene texto al lado, toma lo que está justo debajo
+  const conFila = new Set(tramos.filter(t => t.img).map(t => t.img));
+  for (const t of tramos.filter(t => !t.img)) {
+    const cx = (t.x0 + t.x1) / 2;
+    const c = fotos.filter(im => !conFila.has(im) && cx >= im.x0 - (im.x1 - im.x0) * 0.1 && cx <= im.x1 + (im.x1 - im.x0) * 0.1 && t.top <= im.y0 + 2 && im.y0 - t.top <= Math.max((im.y1 - im.y0) * 1.3, 70))
+      .sort((p, q) => (p.y0 - t.top) - (q.y0 - t.top));
+    if (c[0]) t.img = c[0];
+  }
+  if (!tramos.some(t => t.img)) return null;
+  // unidades de texto: cada foto con su bloque (nombre + precio en un renglón, y la descripción aparte); el resto, renglón por renglón
+  const renglones = L => { const g = new Map(); L.forEach(t => (g.get(t.b) || g.set(t.b, []).get(t.b)).push(t)); return [...g.values()].map(r => ({ y: r[0].y, x: Math.min(...r.map(t => t.x0)), texto: r.sort((p, q) => p.x0 - q.x0).map(t => t.texto).join(' ') })).sort((p, q) => q.y - p.y || p.x - q.x); };
+  const unidades = renglones(tramos.filter(t => !t.img));
+  for (const im of fotos) {
+    const rs = renglones(tramos.filter(t => t.img === im)); if (!rs.length) continue;
+    const k = rs.findIndex(r => PRECIO_RX.test(r.texto));
+    let texto = rs.map(r => r.texto).join(' '), desc = '';
+    if (k >= 0) {
+      texto = rs.slice(0, k + 1).map(r => r.texto).join(' ');
+      desc = rs.slice(k + 1).map(r => r.texto).filter(x => !PRECIO_RX.test(x) && (x.match(/[A-Za-zÁÉÍÓÚÑáéíóúñÀ-ÿ一-鿿]{2,}/g) || []).length >= 3).join(' ').replace(/\s+/g, ' ').trim();
+    }
+    unidades.push({ y: rs[0].y, x: rs[0].x, texto: texto.replace(/[\r\n]+/g, ' '), desc: desc.length >= 15 ? desc.slice(0, 1500) : '', im: k >= 0 ? im : null });
+  }
+  unidades.sort((p, q) => q.y - p.y || p.x - q.x);
+  let n = 0;
+  for (const u of unidades) { if (!u.im || n >= maxFotos) continue; try { u.foto = await fotoDePdf(page, u.im); if (u.foto) n++; } catch (e) { } }
+  return unidades;
+}
+async function fotoDePdf(page, im) {
+  let d = im.inline;
+  if (!d) { const objs = String(im.id).startsWith('g_') ? page.commonObjs : page.objs; d = await Promise.race([new Promise(r => objs.get(im.id, r)), new Promise(r => setTimeout(() => r(null), 5000))]); }
+  if (!d || !(d.width >= 24 && d.height >= 24)) return null;
+  const W = d.width, H = d.height, k = Math.min(1, 900 / Math.max(W, H)), cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(W * k)); cv.height = Math.max(1, Math.round(H * k));
+  const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);   // fotos con transparencia: fondo blanco
+  if (d.bitmap) ctx.drawImage(d.bitmap, 0, 0, cv.width, cv.height);
+  else if (d.data) {
+    const src = document.createElement('canvas'); src.width = W; src.height = H;
+    const id = src.getContext('2d').createImageData(W, H), o = id.data, s = d.data;
+    if (d.kind === 3) o.set(s.length > o.length ? s.subarray(0, o.length) : s);
+    else if (d.kind === 2) for (let i = 0, j = 0; j < o.length && i + 2 < s.length; i += 3, j += 4) { o[j] = s[i]; o[j + 1] = s[i + 1]; o[j + 2] = s[i + 2]; o[j + 3] = 255; }
+    else if (d.kind === 1) { const fila = (W + 7) >> 3; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const v = (s[y * fila + (x >> 3)] >> (7 - (x & 7))) & 1 ? 255 : 0, j = (y * W + x) * 4; o[j] = o[j + 1] = o[j + 2] = v; o[j + 3] = 255; } }
+    else return null;
+    src.getContext('2d').putImageData(id, 0, 0); ctx.drawImage(src, 0, 0, cv.width, cv.height);
+  } else return null;
+  return await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+}
+
 // Devuelve {tipo:'texto', texto} o {tipo:'tabla', filas, hojas?}
 // o: { fotos: cuántas fotos sacar de un Excel (0 = ninguna), achicar: blob → blob|dataURL }
 export async function leerArchivo(f, progreso = () => { }, o = {}) {
@@ -379,12 +478,21 @@ export async function leerArchivo(f, progreso = () => { }, o = {}) {
   }
   if (/\.pdf$/.test(n)) {
     progreso('Leyendo PDF…'); const P = await cargarScript(LIB.pdf, 'pdfjsLib'); P.GlobalWorkerOptions.workerSrc = LIB.pdfWorker;
-    const doc = await P.getDocument({ data: await leerBuf(f) }).promise; let txt = '';
+    const doc = await P.getDocument({ data: await leerBuf(f) }).promise; let txt = '', nl = 0;
+    // v2.33.1: fotos incrustadas (PDF de Canva, Word, Excel/Sheets o de un sistema): cada foto va con el producto de su fila
+    const conFotos = !!o.fotosPdf && o.fotos > 0, pdf = conFotos ? { fotos: new Map(), descs: new Map() } : null;
     for (let i = 1; i <= Math.min(doc.numPages, 400); i++) {
-      progreso(`PDF: página ${i} de ${doc.numPages}`);
-      const c = await (await doc.getPage(i)).getTextContent(); const lin = new Map();
-      for (const it of c.items) { const y = Math.round(it.transform[5] / 3); (lin.get(y) || lin.set(y, []).get(y)).push([it.transform[4], it.str]); }
-      [...lin.entries()].sort((a, b) => b[0] - a[0]).forEach(([, p]) => { txt += p.sort((a, b) => a[0] - b[0]).map(x => x[1]).join(' ').trim() + '\n'; });
+      progreso(`PDF: página ${i} de ${doc.numPages}${pdf && pdf.fotos.size ? ` · ${pdf.fotos.size} fotos` : ''}`);
+      const page = await doc.getPage(i), c = await page.getTextContent();
+      let unidades = null;
+      if (conFotos && pdf.fotos.size < o.fotos) { try { unidades = await paginaConFotos(P, page, c, o.fotos - pdf.fotos.size); } catch (e) { unidades = null; } }
+      if (unidades) for (const u of unidades) { if (u.foto) pdf.fotos.set(nl, u.foto); if (u.desc) pdf.descs.set(nl, u.desc); txt += u.texto + '\n'; nl++; }
+      else {
+        const lin = new Map();
+        for (const it of c.items) { const y = Math.round(it.transform[5] / 3); (lin.get(y) || lin.set(y, []).get(y)).push([it.transform[4], it.str]); }
+        [...lin.entries()].sort((a, b) => b[0] - a[0]).forEach(([, p]) => { const l = p.sort((a, b) => a[0] - b[0]).map(x => x[1]).join(' ').trim(); txt += l + '\n'; nl += l.split('\n').length; });
+      }
+      if (conFotos) try { page.cleanup(); } catch (e) { }
     }
     if (txt.replace(/\s/g, '').length < 30) {
       // PDF escaneado (cada página es una foto): se lee con OCR página por página
@@ -399,7 +507,7 @@ export async function leerArchivo(f, progreso = () => { }, o = {}) {
       if (t2.replace(/\s/g, '').length < 30) throw new Error('No pudimos leer este PDF: no tiene texto y la imagen no se entiende. Probá con una captura más nítida.');
       return { tipo: 'texto', texto: t2, ocr: true, paginas: max, total: doc.numPages };
     }
-    return { tipo: 'texto', texto: txt };
+    return { tipo: 'texto', texto: txt, ...(pdf && pdf.fotos.size ? { pdf } : {}) };
   }
   if (/\.zip$/.test(n)) {   // exportación de WhatsApp "con archivos": buscamos el chat de texto
     progreso('Abriendo ZIP…'); const Z = await cargarScript(LIB.zip, 'JSZip'); const z = await Z.loadAsync(await leerBuf(f));
