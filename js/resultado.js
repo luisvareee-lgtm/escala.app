@@ -2,7 +2,7 @@
 // Más: valor del stock, productos más rentables, sin rotación, por agotarse y ventas por zona.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, confirmar } from './util.js';
-import { P, precioArs } from './state.js';
+import { P, precioArs, can, bloqueo } from './state.js';
 import { barras } from './charts.js';
 
 const R = { per: 'mes', cargado: false, lim: 20, cat: '' };
@@ -85,6 +85,7 @@ function stock() {
 const fmtS = n => n < 0 ? '−' + fmt(-n) : fmt(n);
 const fila = (t, v, cls = '', tip = '') => `<div class="srow ${cls}"${tip ? ` title="${esc(tip)}"` : ''}><span>${t}</span><span class="v">${v}</span></div>`;
 export function vistaResultado() {
+  if (!can('resultado')) return bloqueo('📊 Resultado del negocio', 'Tu ganancia real: ventas, costo de la mercadería y gastos del mes.', 'resultado');
   const M = calcularResultado(), S = stock(), hoy = new Date().toISOString().slice(0, 10);
   const GL = M.G.filter(g => !R.cat || g.categoria === R.cat);
   return `<div class="seg" role="group" aria-label="Período" style="margin-bottom:12px;flex-wrap:wrap">${PER.map(([k, n]) => `<button class="${R.per === k ? 'on' : ''}" data-act="r-per" data-k="${k}">${n}</button>`).join('')}</div>

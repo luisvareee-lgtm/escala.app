@@ -2,7 +2,7 @@
 // (días de stock y qué comprar a cada proveedor) y ventas en dólares (crecimiento real).
 import { api } from './api.js';
 import { esc, fmt, on, toast, copiar, normWsp, waLink, store } from './util.js';
-import { P, can, aviso } from './state.js';
+import { P, can, aviso, bloqueo } from './state.js';
 import { linea } from './charts.js';
 import { vistaCompras, calcCompra } from './compras.js';
 import { vistaSeguimiento, calcClientes, paraRecuperar, resetSeg } from './seguimiento.js';
@@ -16,6 +16,7 @@ const usd = n => 'US$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const pct = n => n == null || !isFinite(n) ? '—' : (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(Math.round(n)) + '%';
 
 export function vistaInteligente() {
+  if (!can('cobranzas')) return bloqueo('💸 Cobranzas, seguimiento y reposición', 'Quién te debe y recordatorios, clientes que dejaron de comprar, qué reponer y ventas en dólares.', 'cobranzas');
   // por encargo no tiene depósito: no se muestra Reposición
   const tabs = [['cobranzas', '💸 Cobranzas'], ['clientes', '👥 Seguimiento'], ['compras', '🛒 Pedido al proveedor'], ...((P.t.modo_stock || 'stock') === 'encargo' ? [] : [['reposicion', '📦 Reposición']]), ['dolares', '💵 En dólares']];
   if (!tabs.some(t => t[0] === I.vista)) I.vista = 'cobranzas';
@@ -148,6 +149,7 @@ on('ia-vista', d => { I.vista = d.k; P.repintar(); });
 
 // Avisos para el Resumen: lo urgente de cobranzas y reposición, con acceso directo.
 export function avisosInteligentes() {
+  if (!can('cobranzas')) return '';
   const D = deudas(), viejo = D.tramos[3].total + D.tramos[2].total, out = [];
   if (D.total > 0) out.push(`<button class="ia-aviso ${viejo ? 'bad' : ''}" data-act="ia-ir" data-k="cobranzas"><span class="ia-tx">💸 Te deben <b>${fmt(D.total)}</b>${viejo ? ` · ${fmt(viejo)} hace más de 15 días` : ''}</span><span class="ia-go">Cobrar →</span></button>`);
   if ((P.t.modo_stock || 'stock') !== 'stock') { const C = calcCompra(), u = C.grupos.reduce((a, g) => a + g.unidades, 0); if (u) out.push(`<button class="ia-aviso warn" data-act="ia-ir" data-k="compras"><span class="ia-tx">🛒 Tenés <b>${u} ${u === 1 ? 'unidad' : 'unidades'}</b> para encargar de ${C.ped.length} ${C.ped.length === 1 ? 'pedido' : 'pedidos'}</span><span class="ia-go">Armar pedido →</span></button>`); }

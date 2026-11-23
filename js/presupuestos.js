@@ -3,7 +3,7 @@
 // El número y el total los pone la base. El enlace no muestra costos.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, confirmar, normWsp, waLink, copiar } from './util.js';
-import { P } from './state.js';
+import { P, can, bloqueo } from './state.js';
 import { htmlPresupuesto, imprimir } from './catalogo.js';
 
 const Q = { ed: null, busca: '', filtro: 'activos', conv: null, cargado: false };
@@ -37,6 +37,7 @@ const totalEd = ed => ed.items.reduce((s, l) => s + (+l.cantidad || 0) * (+l.pre
 const etiquetaTramo = (l, ed) => { if (!l.producto_id) return 'renglón libre'; if (l.manual) return 'precio a mano'; if (ed.modalidad_precio !== 'mayorista') return 'al público'; const p = P.prods.find(x => x.id === l.producto_id); if (p && p.precio_unico) return 'precio único'; const tot = ed.items.filter(x => x.producto_id === l.producto_id).reduce((s, x) => s + (+x.cantidad || 0), 0); return 'precio x' + tramo(tot) + (tramo(tot) === 12 ? '+' : ''); };
 
 export function vistaPresupuestos() {
+  if (!can('presupuestos')) return bloqueo('📝 Presupuestos por WhatsApp', 'Armá presupuestos con tus precios, mandalos por WhatsApp y convertilos en pedido con un toque.', 'presupuestos');
   if (P.presus === null) return '<div class="cc"><h3>📝 Presupuestos</h3><p>Falta actualizar la base: corré la <b>migración 23</b> (23-migracion_v2.30.sql) en Supabase → SQL Editor y recargá.</p></div>';
   if (Q.ed) return editorHtml();
   const L = (P.presus || []).filter(r => Q.filtro === 'todos' || (Q.filtro === 'activos' ? !['convertido', 'anulado'].includes(r.estado) : Q.filtro === 'aceptados' ? r.estado === 'aceptado' : r.estado === 'convertido'));

@@ -3,7 +3,8 @@
 // Al crear la cuenta, el panel le ofrece cargar esos mismos productos.
 import { esc, fmt, on, $, store, toast } from './util.js';
 import { abrirFlyer } from './flyer.js';
-import { leerArchivo, parsearLista, detectarTabla, tablaAProductos, deTextoDeFoto, infoOcr, deArchivoNombre } from './importer.js';
+import { leerArchivo, parsearLista, detectarTabla, tablaAProductos, deTextoDeFoto, infoOcr, deArchivoNombre, usarTasas, esFlyer, tituloLindo } from './importer.js';
+import { api } from './api.js';
 import { ilus } from './ilus.js';
 import { redimensionar } from './img.js';
 
@@ -11,17 +12,23 @@ const K = 'demo:prods';
 const DM = { items: null, busy: false, msg: '', err: '', aviso: '', m1: 50, m12: 20, dolar: 1200, fuente: '', modo: 'mayor', edit: -1, cart: {}, pedido: false };   // modo: mayor | menor | dos
 const MODOS = [['mayor', 'Por mayor', 'precios por cantidad'], ['menor', 'Por menor', 'un precio por unidad'], ['dos', 'Las dos', 'minorista y mayorista']];
 const FORMATOS = 'image/*,.pdf,.xlsx,.xls,.ods,.csv,.txt,.zip';
-const EJEMPLO = `Perfume Asad 100ml EDP $38.500
-Perfume Yara 100ml $31.200
-Club de Nuit Intense 105ml $42.900
-Khamrah 100ml EDP $45.000
-Body splash vainilla 250ml $6.800
-Crema corporal karité 400ml $9.500
-Set de brochas x12 $14.300
-Labial mate larga duración $4.200`;
+// v2.32: la lista de ejemplo usa productos reales de Lua Beauty (con permiso de la dueña), con sus fotos.
+// Los costos son inventados (v2.32.1: no salen de los precios de Lua ni guardan una proporción fija con ellos): así se ve cómo queda tu tienda con tu ganancia.
+const LUA = '/img/lua/';
+const EJEMPLO = `Body splash Very Mango Thelma & Louise 80ml $6.890
+Set de brochas con bolsa 12 u. $2.940
+Gel de ducha Sunny Pistachio Thelma & Louise 200ml $6.460
+Parches de hidrogel colágeno Sadoer 30 pares $4.380
+Limpiador facial palta y aminoácidos Sadoer 120ml $6.590
+Manteca corporal de rosas Sadoer 200g $5.420
+Labial líquido doble matte Kobeleen $2.140
+Spray Cristalina Saniye para rostro y cuerpo $4.180`;
+const EJ_FOTOS = [['body splash very mango', 'very-mango'], ['set de brochas', 'brochas'], ['gel de ducha sunny', 'sunny-pistachio'], ['parches de hidrogel', 'parches-colageno'],
+  ['limpiador facial palta', 'limpiador-panda'], ['manteca corporal', 'manteca-rosas'], ['labial líquido', 'labial-kobeleen'], ['spray cristalina', 'spray-cristalina']];
+const conFotoEj = L => L.map(x => { const k = EJ_FOTOS.find(([n]) => x.nombre.toLowerCase().startsWith(n)); return k ? { ...x, foto: LUA + k[1] + '.jpg' } : x; });
 const precio = (costo, m) => Math.ceil(costo * (1 + m / 100) / 10) * 10;
 const tiers = c => { const m1 = DM.m1, m12 = DM.modo === 'menor' ? DM.m1 : DM.m12; return { 1: precio(c, m1), 3: precio(c, m12 + (m1 - m12) * 0.6), 6: precio(c, m12 + (m1 - m12) * 0.3), 12: precio(c, m12) }; };
-const limpio = L => L.filter(x => (x.nombre || '').trim().length >= 3 && x.costo_usd > 0).map(x => ({ nombre: x.nombre.trim().slice(0, 120), costo: x.precio_ars > 0 ? Math.round(x.precio_ars) : Math.round(x.costo_usd * DM.dolar), categoria: x.categoria && x.categoria !== 'General' ? x.categoria : '' })).slice(0, 300);
+const limpio = L => L.filter(x => (x.nombre || '').trim().length >= 3 && x.costo_usd > 0).map(x => ({ nombre: x.nombre.trim().slice(0, 120), costo: x.precio_ars > 0 ? Math.round(x.precio_ars) : Math.round(x.costo_usd * DM.dolar), categoria: x.categoria && x.categoria !== 'General' ? x.categoria : '', ...(x.foto ? { foto: x.foto } : {}) })).slice(0, 1000);
 
 function deTexto(texto) { return limpio(parsearLista(texto, DM.dolar, 'General', 'ars')); }
 // foto chica (máx. 640 px) como texto, para mostrarla y guardarla en este navegador hasta crear la cuenta
@@ -31,18 +38,32 @@ async function miniatura(f) {
 }
 // lo leído de una foto se usa solo si parece de verdad: un nombre con palabras y un precio razonable
 const creible = x => x && x.costo >= 100 && (String(x.nombre || '').match(/\p{L}{3,}/gu) || []).length >= 1;
+// cotizaciones del día (reales, yuanes, euros…) para las listas en otras monedas; si no hay conexión se usan unas de referencia
+let _tasas = null;
+async function tasasDelDia() { if (_tasas) return; try { const c = await api.cambio(); _tasas = (c && c.tasas) || {}; usarTasas(_tasas); } catch (e) { _tasas = {}; } }
 async function deArchivo(f, pre = '') {
-  const r = await leerArchivo(f, m => { DM.msg = pre + m; const e = $('#dm-prog'); if (e) e.textContent = pre + m; });
-  if (r.tipo === 'tabla') { const det = detectarTabla(r.filas); if (det.map.nombre == null || (det.map.precio == null && det.map.costo == null)) throw new Error('No encontramos las columnas de nombre y precio en esa planilla.'); return limpio(tablaAProductos(det, det.map, { moneda: 'ars', tipo: 'costo', cot: DM.dolar, margen: 0 })); }
+  const r = await leerArchivo(f, m => { DM.msg = pre + m; const e = $('#dm-prog'); if (e) e.textContent = pre + m; }, { fotos: 24, achicar: miniatura });   // en la demo alcanza con las fotos de las primeras tarjetas
+  if (r.tipo === 'tabla') {
+    const det = detectarTabla(r.filas); if (det.map.nombre == null || (det.map.precio == null && det.map.costo == null)) throw new Error('No encontramos las columnas de nombre y precio en esa planilla.');
+    const L = tablaAProductos(det, det.map, { moneda: r.moneda && r.moneda !== 'ars' ? r.moneda : 'ars', tipo: 'costo', cot: DM.dolar, margen: 0 });
+    if (r.fotos) L.forEach(x => { const ft = r.fotos[x._fila]; if (ft) x.foto = ft; });
+    return limpio(L);
+  }
   if (r.tipo === 'imagen') {
     // foto de una lista (varios renglones con precio), foto de UN producto con el precio escrito,
     // o foto de producto sin texto (zapatillas, ropa…): esa se guarda con su foto y se completa a mano
-    const L = deTexto(r.texto).filter(creible); if (L.length > 1) return L;
-    const d = L[0] || limpio([deTextoDeFoto(r.texto, DM.dolar, 'ars')]).filter(creible)[0], foto = await miniatura(f);
+    // un flyer de venta ("$38.500 abonando por transferencia · 3 cuotas de…") es UN producto, no una lista
+    const flyer = esFlyer(r.texto), L = flyer ? [] : deTexto(r.texto).filter(creible); if (L.length > 1) return L;
+    const u = deTextoDeFoto(r.texto, DM.dolar, 'ars', infoOcr().lineas); if (u) u.nombre = tituloLindo(u.nombre);   // "PLANCHITA DE PELO" → "Planchita de Pelo"
+    const d = L[0] || limpio([u]).filter(creible)[0], foto = await miniatura(f);
     if (d) return [{ ...d, foto }];
     // el nombre del archivo: "ZAPATILLA NIKE - PRECIO 70000.jpg" → nombre y costo
     const an = deArchivoNombre(f.name, DM.dolar, 'ars'), dn = an ? limpio([an]).filter(creible)[0] : null;
     if (dn && foto) return [{ ...dn, foto }];
+    // se leyó el precio pero no el nombre (letras decorativas): queda la foto con el precio, para poner el nombre.
+    // Solo un precio escrito tal cual ("$35.000"), no uno adivinado: un "$20" suelto entre manchas no es un precio.
+    const sn = deTextoDeFoto(r.texto, DM.dolar, 'ars', infoOcr().lineas), cs = sn ? (sn.precio_ars > 0 ? Math.round(sn.precio_ars) : Math.round(sn.costo_usd * DM.dolar)) : 0;
+    if (foto && sn && !sn.inferido && cs >= 1000 && !(sn.nombre || '').trim()) return [{ nombre: '', costo: cs, categoria: '', foto, falta: true }];
     if (infoOcr().palabras >= 8) return [];   // mucho texto legible pero sin precios: era una lista borrosa, no una foto de producto
     return foto ? [{ nombre: (an && an.nombre) || '', costo: 0, categoria: '', foto, falta: true }] : [];
   }
@@ -56,15 +77,17 @@ const guardar = () => {
 };
 // varios archivos de cualquier formato a la vez: se leen uno por uno y se juntan (sin repetir nombres)
 async function deArchivos(F) {
+  await tasasDelDia();
   const todo = [], vistos = new Set(), fallo = [];
   for (let i = 0; i < F.length; i++) {
     const pre = F.length > 1 ? `Archivo ${i + 1} de ${F.length}: ` : '';
-    try { DM.msg = pre + 'leyendo…'; const e = $('#dm-prog'); if (e) e.textContent = DM.msg; const L = await deArchivo(F[i], pre); if (!L.length) fallo.push(F[i].name); L.forEach(x => { const k = x.nombre.toLowerCase(); if (x.falta || !vistos.has(k)) { vistos.add(k); todo.push(x); } }); }
+    try { DM.msg = pre + 'leyendo…'; const e = $('#dm-prog'); if (e) e.textContent = DM.msg; const L = await deArchivo(F[i], pre); if (!L.length) fallo.push(F[i].name); L.forEach(x => { const k = (x.nombre + '|' + (x.categoria || '')).toLowerCase(); if (x.falta || !vistos.has(k)) { vistos.add(k); todo.push(x); } }); }
     catch (e) { fallo.push(F[i].name); }
   }
-  const sinDatos = todo.filter(x => x.falta).length;
+  const sinNombre = todo.filter(x => x.falta && x.costo > 0).length, sinDatos = todo.filter(x => x.falta).length - sinNombre;
   DM.aviso = todo.length && fallo.length ? `No pudimos leer ${fallo.length === 1 ? 'este archivo' : 'estos archivos'}: ${fallo.join(', ')}. Probá con una foto más nítida, pegá el texto o cargalo a mano acá abajo.`
-    : sinDatos ? `${sinDatos === 1 ? 'Una foto no tiene' : sinDatos + ' fotos no tienen'} el precio escrito: poné el nombre y tu costo en cada una, o completalo después en tu panel.` : '';
+    : sinDatos ? `${sinDatos === 1 ? 'Una foto no tiene' : sinDatos + ' fotos no tienen'} el precio escrito: poné el nombre y tu costo en cada una, o completalo después en tu panel.`
+    : sinNombre ? `${sinNombre === 1 ? 'En una foto leímos el precio pero no el nombre' : `En ${sinNombre} fotos leímos el precio pero no el nombre`} (las letras decorativas cuestan): tocá ✏️ y escribilo.` : '';
   return todo;
 }
 
@@ -78,7 +101,7 @@ function antesDespues(L, tarjetas, vivo) {
     <div class="dm-flecha" aria-hidden="true">→</div>
     <div class="dm-despues"><span class="dm-lbl on">Después · tu tienda</span><div class="dm-grid"${vivo ? ' id="dm-grid"' : ''}>${tarjetas}</div></div></div>`;
 }
-const MUESTRA = [{ nombre: 'Perfume Asad 100ml EDP', costo: 38500 }, { nombre: 'Body splash vainilla 250ml', costo: 6800 }];
+const MUESTRA = [{ nombre: 'Body splash Very Mango Thelma & Louise', costo: 6890, foto: LUA + 'very-mango.jpg' }, { nombre: 'Set de brochas con bolsa 12 u.', costo: 2940, foto: LUA + 'brochas.jpg' }];
 
 export function demoHtml() {
   return `<div class="lp-demo" id="lp-demo"><ol class="dm-pasos" id="dm-pasos" aria-label="Cómo funciona">${pasosHtml()}</ol><div class="lp-demo-acc">
@@ -221,7 +244,7 @@ async function correr(fn, fuente) {
   const o = $('#dm-out'); if (o && DM.items) o.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 on('dm-file', (d, el) => { const F = [...el.files].slice(0, 12); el.value = ''; if (F.length) correr(() => deArchivos(F), F.length === 1 ? 'tu archivo' : `tus ${F.length} archivos`); });
-on('dm-ej', () => correr(async () => deTexto(EJEMPLO), 'la lista de ejemplo'));
+on('dm-ej', () => correr(async () => conFotoEj(deTexto(EJEMPLO)), 'la lista de ejemplo'));
 on('dm-usar', () => { const t = ($('#dm-txt') || {}).value || ''; if (t.trim().length < 5) { DM.err = 'Pegá al menos un producto con su precio.'; DM.items = null; return pintar(); } correr(async () => deTexto(t), 'tu texto'); });
 on('dm-m', (d, el) => { const v = Number(el.value); if (!(v >= 0)) return; DM[d.k] = v; if (DM.edit >= 0) return; const g = $('#dm-grid'); if (g) g.innerHTML = grilla(); pintarPedido(); guardar(); });
 on('dm-guardar', () => { guardar(); DM.pedido = false; pintarPedido(); });

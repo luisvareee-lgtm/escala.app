@@ -68,7 +68,7 @@ function vistaEnvios() {
   <div class="dc-grid">${DATOS.map(([k, n]) => `<label class="flabel" for="dc-${k}">${n}</label><select class="fi" id="dc-${k}" data-change="dc-set" data-k="${k}">${[['no', 'No pedir'], ['opcional', 'Opcional'], ['obligatorio', 'Obligatorio']].map(([v, l]) => `<option value="${v}" ${(dc[k] || 'no') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`).join('')}</div>
   <h3 style="margin-top:12px">📏 Reglas de compra</h3>
   <div class="fg"><label class="flabel" for="en-gr">Envío gratis desde $ (0 = nunca)</label><input class="fi" id="en-gr" type="number" min="0" value="${E.gratis != null ? E.gratis : Number(t.envio_gratis_desde || 0)}" data-input="en-gr"></div>
-  <div class="fg"><label class="flabel" for="en-av">Mostrar “¡Últimas N!” cuando quedan (0 = no mostrar)${aviso('stock')}</label><input class="fi" id="en-av" type="number" min="0" max="1000" value="${E.aviso != null ? E.aviso : Number(t.aviso_stock || 0)}" data-input="en-av" ${can('stock') ? '' : 'disabled'}></div>
+  ${can('stock') ? `<div class="fg"><label class="flabel" for="en-av">Mostrar “¡Últimas N!” cuando quedan (0 = no mostrar)</label><input class="fi" id="en-av" type="number" min="0" max="1000" value="${E.aviso != null ? E.aviso : Number(t.aviso_stock || 0)}" data-input="en-av"></div>` : ''}
   ${t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" data-change="en-rev" ${(E.rev != null ? E.rev : t.reventa_activa) ? 'checked' : ''}> 💰 Mostrar “Tu ganancia”: a cuánto puede revender cada producto y cuánto gana</label>
     <div class="row2" style="align-items:end"><div class="fg"><label class="flabel" for="en-revm">Recargo sugerido para la reventa %</label><input class="fi" id="en-revm" type="number" min="5" max="500" value="${E.revM != null ? E.revM : Math.round(Number(t.reventa_margen || 0.6) * 100)}" data-input="en-revm"></div><p class="hint">Sobre tu precio x1. Si un producto tiene su “precio sugerido” cargado, se usa ese.</p></div></div>` : ''}
   <p class="hint">Compra mínima mayorista: <b>${Number(t.compra_minima) ? fmt(t.compra_minima) : 'sin mínimo'}</b> (se cambia en Ajustes). La tienda la muestra arriba y en el carrito con lo que falta.</p>
@@ -367,6 +367,7 @@ function limpio() {
   if (Object.keys(lk).length) o.look = lk;
   // destino de cada banner de portada (solo si sigue existiendo)
   if (o.banners) o.banners.forEach((y, i) => { const b = bn[i], ir = s(b && b.ir); if (ir && (ir === 'todo' ? rl.length : ir.startsWith('r:') ? rl.some(r => 'r:' + r.id === ir) : ir.startsWith('c:') && catsP.has(ir.slice(2)))) y.ir = ir.slice(0, 80); });
+  const nv = (P.t.diseno || {}).niveles; if (Array.isArray(nv) && nv.length === 4) o.niveles = nv;   // v2.33: se editan en Ajustes
   return o;
 }
 on('dz-guardar', async () => {

@@ -3,7 +3,7 @@
 // No toca la ganancia (eso es Resultado): acá es la plata que se movió.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, confirmar } from './util.js';
-import { P } from './state.js';
+import { P, can, bloqueo } from './state.js';
 import { cargarGastos, CATS_GASTO } from './resultado.js';
 
 const hoyStr = () => new Date().toLocaleDateString('sv');
@@ -36,6 +36,7 @@ const etiquetaMes = m => { const f = new Date(m + '-15T12:00:00').toLocaleDateSt
 const split = med => ['efectivo', 'transferencia', 'sin'].filter(k => med[k] || k !== 'sin');
 
 export function vistaCaja() {
+  if (!can('caja')) return bloqueo('💵 Caja diaria', 'Cuánto entró y salió hoy, en efectivo y por transferencia, y el cierre del día.', 'caja');
   const todos = movimientosCaja(), L = todos.filter(enRango), S = sumar(L), neto = S.ent - S.sal;
   const sub = (k) => split(S.med).map(m => { const d = S.med[m] || { ent: 0, sal: 0 }; const v = k === 'ent' ? d.ent : k === 'sal' ? d.sal : d.ent - d.sal; return `<span>${MEDIOS[m][0]} ${k === 'net' ? fmtS(v) : fmt(v)}</span>`; }).join('');
   const pc = (P.pedidos || []).filter(o => o.estado === 'pendiente'), pcT = pc.reduce((s, o) => s + Number(o.total_ars), 0);

@@ -72,6 +72,8 @@ export const api = {
   // carruseles "nuevos" / "más vendidos" (solo el orden) y medición de visitas / al carrito
   vitrinaIds: async (slug, modo) => (ok(await sb.rpc('vitrina_ids', { p_slug: slug, p_modo: modo })) || []).map(r => r.producto || r),
   actividad: async (slug, vistas, carrito) => { const { error } = await sb.rpc('registrar_actividad', { p_slug: slug, p_vistas: vistas, p_carrito: carrito }); if (error) throw new Error(error.message); },
+  // v2.33: visita anónima por día y por origen (entró → miró → carrito → pedido)
+  visita: async (slug, origen, etapas) => { const { error } = await sb.rpc('registrar_visita', { p_slug: slug, p_origen: origen, p_etapas: etapas }); if (error) throw new Error(error.message); },
   listaMayorista: async (slug, codigo) => {
     const filas = ok(await sb.rpc('catalogo_mayorista', { p_slug: slug, p_codigo: codigo || null })) || [];
     if (filas.length === 1 && !filas[0].producto_id) throw new Error('Código de revendedor incorrecto.');   // el servidor marca el error sin excepción
@@ -144,6 +146,14 @@ export const api = {
   promoProducto: async (pid, regla) => ok(await sb.rpc('promo_producto', { p_pid: pid, p_regla: regla })),
   cuponVer: async (slug, codigo, wsp) => ok(await sb.rpc('cupon_ver', { p_slug: slug, p_codigo: codigo, p_wsp: wsp || null })),
   statsVistas: async dias => ok(await sb.rpc('estadisticas_vistas', { p_dias: dias })) || [],
+  // v2.33: estadísticas del Resumen (en Gratis: visitas, más vistos; desde Pro: origen y embudo — el corte lo hace la base)
+  statsTienda: async dias => ok(await sb.rpc('estadisticas_tienda', { p_dias: dias })),
+  // v2.33: ¿la tienda ya usa estas herramientas? (para que la vista simple nunca esconda algo en uso)
+  usoHerramientas: async () => {
+    const hay = async (tabla, col) => { try { const { data, error } = await sb.from(tabla).select(col).limit(1); return !error && !!(data && data.length); } catch (e) { return false; } };
+    const [presupuestos, gastos, seguimiento] = await Promise.all([hay('presupuestos', 'id'), hay('gastos', 'id'), hay('clientes_seguimiento', 'wsp')]);
+    return { presupuestos, gastos, seguimiento };
+  },
   misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
   itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),
   estadoPedido: async (id, estado) => ok(await sb.from('orders').update({ estado }).eq('id', id).select().maybeSingle()),

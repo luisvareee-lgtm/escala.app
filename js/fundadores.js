@@ -92,7 +92,7 @@ const fechaCorta = s => s ? new Date(s).toLocaleDateString('es-AR', { day: 'nume
 const DIA = 864e5;
 const precioPlan = id => (PLANES.find(p => p.id === id) || {}).precio || 0;
 const ANUAL = (() => { const n = Number(MARCA.ANUAL_MESES); return n > 0 && n < 12 ? n : 0; })();
-const montoDe = (plan, meses) => plan === 'base' && precioPlan('base') === 0 ? 0 : meses === 12 && ANUAL ? precioPlan(plan) * ANUAL : precioPlan(plan) * meses;
+const montoDe = (plan, meses) => plan === 'base' ? 0 : meses === 12 && ANUAL ? precioPlan(plan) * ANUAL : precioPlan(plan) * meses;
 const diasHasta = x => x.plan_hasta ? Math.ceil((new Date(x.plan_hasta) - Date.now()) / DIA) : null;
 const porTransf = x => x.plan !== 'base' && !!x.plan_hasta && x.suscripcion_estado !== 'activa';
 // paga = tiene un plan pago vigente (suscripción activa, o pago anotado y no vencido)
@@ -121,7 +121,7 @@ function estadoDe(x) {
   }
   if (d > SIN_VENC) return ['ok', 'Prueba sin vencimiento'];
   if (d > 0) return ['', `Prueba: ${d} ${d === 1 ? 'día' : 'días'}`];
-  return ['warn', `${PLAN_NOMBRE[x.plan] || x.plan} · prueba vencida`];
+  return x.plan === 'base' ? ['', 'Gratis · prueba vencida'] : ['warn', `${PLAN_NOMBRE[x.plan] || x.plan} · prueba vencida`];
 }
 const inactiva = x => !(x.pedidos_30d > 0) && (!x.ultimo_ingreso || Date.now() - new Date(x.ultimo_ingreso) > 14 * 864e5);
 const FILTROS = [
@@ -178,7 +178,7 @@ function cobrosHtml(L) {
   const mes = new Date().toLocaleDateString('es-AR', { month: 'long' });
   return `<div class="cc adm" id="adm-cobros"><h3>💰 Cobros</h3>
     <div class="adm-kpis">
-      <div><b>${P2.length}</b><span>pagando${P2.length ? ` · Pro ${pro} · Automatización ${api}${base ? ` · Base ${base}` : ''}` : ''}</span></div>
+      <div><b>${P2.length}</b><span>pagando${P2.length ? ` · Pro ${pro} · IA ${api}` : ''}</span></div>
       <div><b>${fmt(mrr)}</b><span>facturación mensual estimada</span></div>
       <div><b>${fmt(este)}</b><span>cobrado en ${esc(mes)}${ant ? ` · mes pasado ${fmt(ant)}` : ''}</span></div>
       <button type="button" class="adm-kpi-btn${v5 ? ' warn' : ''}" data-act="ad-f" data-k="vencen"><b>${v5}</b><span>vencen en 5 días</span></button>
@@ -197,12 +197,12 @@ function planForm(x) {
   const f = AD.pf || {}, plan = f.plan || (x.plan !== 'base' ? x.plan : 'pro'), meses = f.meses != null ? f.meses : 1, h = hastaPrevio(x, plan, meses), s = esc(x.slug);
   const op = (v, t, cur) => `<option value="${v}" ${String(cur) === String(v) ? 'selected' : ''}>${t}</option>`;
   return `<form class="adm-cfg adm-plan" data-submit="ad-plan" data-s="${s}"><b>💳 Activar o renovar el plan de ${esc(x.nombre)}</b>
-    <label>Plan<select class="fi" name="plan" data-change="ad-pf" data-k="plan">${op('pro', 'Mayorista Pro', plan)}${op('api', 'Suite Automatización', plan)}${op('base', 'Catálogo Base', plan)}</select></label>
+    <label>Plan<select class="fi" name="plan" data-change="ad-pf" data-k="plan">${op('pro', 'Mayorista Pro', plan)}${op('api', 'Mayorista IA', plan)}${op('base', 'Gratis (hasta 100 productos, sin cobro)', plan)}</select></label>
     <label>Período<select class="fi" name="meses" data-change="ad-pf" data-k="meses">${op(1, '1 mes', meses)}${op(3, '3 meses', meses)}${op(6, '6 meses', meses)}${op(12, ANUAL ? `12 meses (anual: paga ${ANUAL})` : '12 meses', meses)}${op(0, 'Sin vencimiento', meses)}</select></label>
     <label>Monto cobrado ($)<input class="fi" name="monto" type="number" min="0" step="1" value="${Math.round(montoDe(plan, meses))}" required></label>
     <label>Medio<select class="fi" name="medio">${op('transferencia', 'Transferencia', 'transferencia')}${op('efectivo', 'Efectivo', '')}${op('mercadopago', 'Mercado Pago', '')}${op('otro', 'Otro', '')}</select></label>
     <label>Nota (opcional)<input class="fi" name="nota" maxlength="200" placeholder="Ej: comprobante del 12/11"></label>
-    <p class="hint" style="width:100%;margin:0">${plan === 'base' ? 'Pasa a Catálogo Base (sin vencimiento).' : h ? `Queda pago hasta el <b>${esc(h.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }))}</b>. Después tiene 3 días de tolerancia y, si no renueva, pasa sola a Base.` : 'Queda activo sin fecha de vencimiento.'}</p>
+    <p class="hint" style="width:100%;margin:0">${plan === 'base' ? 'Pasa al plan Gratis: publica hasta 100 productos y no se anota ningún cobro.' : h ? `Queda pago hasta el <b>${esc(h.toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }))}</b>. Después tiene 3 días de tolerancia y, si no renueva, pasa sola a Gratis.` : 'Queda activo sin fecha de vencimiento.'}</p>
     <button class="btn btn-p btn-sm" type="submit">Anotar pago y activar</button><button class="btn btn-s btn-sm" type="button" data-act="ad-plan-x">Cancelar</button></form>`;
 }
 function filaTienda(x) {

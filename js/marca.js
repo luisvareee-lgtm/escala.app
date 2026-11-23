@@ -43,18 +43,24 @@ const MARCA_BASE = {
 // Precios de lanzamiento en pesos por mes (los ves en la portada y en el panel). Cambiá los números y listo.
 // link o mp_plan_id (opcionales, se cargan en config.js): enlace de suscripción de Mercado Pago de ese plan, o el id del
 // plan de suscripción (preapproval_plan_id). Si no hay ninguno, “Quiero este plan” abre tu WhatsApp de soporte con el pedido armado.
+// v2.33: tres planes. Los ids (base, pro, api) no cambian: base es el plan Gratis.
+// Un ítem que termina en " · Próximamente" se muestra con esa etiqueta.
 const PLANES_BASE = [
-  { id: 'base', link: '', nombre: 'Catálogo Base', precio: 9900, para: 'Para empezar a vender por WhatsApp',
-    incluye: ['Productos y pedidos ilimitados', 'Precios por volumen x1 · x3 · x6 · x12', 'Importador inteligente (fotos, chats, Excel, PDF, CSV)', 'Pedidos por etapas, remito y mensajes de WhatsApp', 'Presupuestos por WhatsApp y caja diaria (efectivo y transferencia)', 'Aviso de cada pedido nuevo en tu celular', 'Envíos, “Cómo comprar” y diseño de tu tienda', 'Flyers para Estados de WhatsApp e Instagram (tuyos y de tus revendedores)', 'Cobranzas: quién te debe y recordatorios', 'Resultado del negocio: ganancia neta y gastos', 'Catálogo en PDF'] },
-  { id: 'pro', link: '', nombre: 'Mayorista Pro', precio: 29900, destacado: true, para: 'Para mayoristas y revendedores que crecen',
-    incluye: ['Todo lo de Base', 'Minorista + mayorista con código de acceso', 'Dashboard interactivo completo', 'Reposición inteligente: días de stock y qué comprar', 'Ventas y ganancia en dólares', 'Stock automático y “¡Últimas unidades!”', 'Comparador de proveedores y precios de mercado', 'Revendedores con enlace y comisión', 'Seguimiento de clientes: quién dejó de comprar', 'Carritos abandonados para recontactar'] },
-  { id: 'api', link: '', nombre: 'Suite Automatización', precio: 49900, para: 'Para automatizar y cobrar online',
-    incluye: ['Todo lo de Pro', 'Mercado Pago en el carrito (la plata va directo a tu cuenta)', 'Aviso de pedido nuevo por email', 'Webhooks firmados para n8n, Make o tu CRM'] }
+  { id: 'base', link: '', nombre: 'Gratis', precio: 0, badge: 'Para siempre', para: 'Para empezar a vender por WhatsApp, sin pagar',
+    incluye: ['Hasta 100 productos publicados', '1 precio por producto (sin escalas x3 · x6 · x12)', 'Carga rápida desde Excel o CSV', 'Pedidos por WhatsApp, 0% comisión', '3 flyers de prueba por mes', 'Estadísticas básicas en vivo (visitas y productos más vistos)', 'Firma discreta “Creado gratis con Eskalapp” en el pie de la tienda'] },
+  { id: 'pro', link: '', nombre: 'Mayorista Pro', precio: 29900, destacado: true, badge: 'Recomendado', para: 'Para escalar tus ventas sin tope de productos',
+    incluye: ['Productos y pedidos ilimitados', 'Precios por volumen x1 · x3 · x6 · x12 (con los nombres que quieras)', 'Importador inteligente (fotos, chats de WhatsApp, PDF, Excel y CSV)', 'Minorista + mayorista con código de acceso (modo híbrido)', 'Presupuestos por WhatsApp, caja diaria (efectivo y transferencia) y pedidos por etapas', 'Dashboard completo: ganancia real, cobranzas, reposición inteligente, ventas en dólares y stock automático', 'Estadísticas completas (origen de visitas y embudo) + Meta Pixel y Google Analytics 4', 'Flyers ilimitados, catálogo PDF para revendedores y sin marca Eskalapp'] },
+  { id: 'api', link: '', nombre: 'Mayorista IA', precio: 49900, para: 'Para importadores, equipos y automatización total',
+    incluye: ['Todo lo de Mayorista Pro', 'Auditor Comercial 24/7: detecta productos muy vistos que no venden, márgenes bajos y stock parado · Próximamente', 'Fichas comerciales con IA en 1 clic · Próximamente', 'Flyers con fondo IA y Shorts 9:16 para Estados y Grupos · Próximamente', 'Dominio propio (tutienda.com.ar) · Próximamente', 'Mercado Pago en el carrito (la plata va directo a tu cuenta), aviso por email y webhooks firmados (n8n, Make o CRM)'] }
 ];
+// Ítem de plan en HTML (escapado), con la etiqueta "Próximamente" si corresponde.
+export const itemPlan = (txt, esc) => { const m = /^(.*) · Próximamente$/.exec(txt); return m ? `${esc(m[1])} <span class="tag prox">Próximamente</span>` : esc(txt); };
 
 // Referencia para el simulador de costos: plan de una plataforma de tiendas líder que incluye listas de precios mayoristas.
 // Fuente: su página pública de planes y precios (pago mensual) y su tabla de costos por transacción. Revisalo cada tanto.
-const REFERENCIA_BASE = { plan: 79999, pctVenta: 1, fecha: 'noviembre de 2026' };
+// catalogo (v2.32): planes publicados de una app de catálogo con pedidos por WhatsApp (su plan inicial y el siguiente).
+const REFERENCIA_BASE = { plan: 79999, pctVenta: 1, fecha: 'noviembre de 2026',
+  catalogo: { precio: 20000, productos: 35, precio2: 35000, productos2: 150 } };
 
 // ---- Fusión con tus datos (config.js). Lo tuyo siempre gana; lo que no definas queda con el valor de fábrica. ----
 const esObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -82,6 +88,9 @@ export const PLANES = PLANES_BASE.map(p => {
   const m = fusionar(p, porId(_pl)[p.id]);
   m.id = p.id; m.precio = Number(m.precio) > 0 ? Number(m.precio) : p.precio;
   m.link = /^https:\/\//.test(String(m.link || '')) ? m.link : linkMp(m.mp_plan_id);   // link directo, o se arma con el id del plan de suscripción
+  // base es el plan Gratis: siempre $0, sin cobro ni suscripción, aunque config.js tenga un precio o un enlace viejo de "Base".
+  if (p.id === 'base') { m.precio = 0; m.link = ''; m.mp_plan_id = ''; m.nombre = p.nombre; m.para = p.para; m.incluye = p.incluye; m.badge = p.badge; }
+  if (p.id === 'api' && /automatizaci/i.test(String(m.nombre))) m.nombre = p.nombre;   // nombre viejo en config.js
   m.auto = !!m.link;
   return m;
 });

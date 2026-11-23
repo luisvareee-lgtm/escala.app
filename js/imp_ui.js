@@ -2,9 +2,9 @@
 // texto pegado, revisión producto por producto y cómo publicar (margen, unidad de venta, precio único o con escala, visible).
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, waLink } from './util.js';
-import { P, can, precioArs } from './state.js';
+import { P, can, precioArs, pausarFueraDeCupo, LIMITE_GRATIS } from './state.js';
 import { urlTiendaDe } from './marca.js';
-import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, deArchivoNombre, nombreCreible, ocr } from './importer.js';
+import { parsearLista, detectarTabla, tablaAProductos, leerArchivo, cruzar, CAMPOS, clave, deTextoDeFoto, nombreDeArchivo, deArchivoNombre, nombreCreible, ocr, usarTasas, infoOcr } from './importer.js';
 import { redimensionar } from './img.js';
 import { traerDeLaWeb, aFilas, enMoneda, traducirProductos, traducirLista, urlBusqueda, idiomaDe, queSePego, NOMBRE_IDIOMA, MAX_PRODUCTOS, MAX_FICHAS } from './webprov.js';
 import { asisSwitch } from './asistente.js';
@@ -46,7 +46,10 @@ function procesar() {
       .filter(x => x.nombre).forEach((x, i) => {
         if (W && k !== 1 && x.costo_usd > 0) { x.costo_usd = Math.round(x.costo_usd * k * 10000) / 10000; x.precio_ars = Math.round(x.costo_usd * c); }
         const pw = W && W.elegidos && W.elegidos[i];
-        out.push({ ...x, uid: pw ? 'w:' + W.host + ':' + (pw.url || pw.nombre) : 't' + ti + '-' + i, fuente: tb.archivo, ...(W ? { web: W.fotos, imagen_url: W.fotos === 'no' ? null : x.imagen_url } : {}) });
+        const ft = tb.fotos && tb.hoja === 0 && tb.fotos[x._fila];
+        if (ft && !tb.urls) tb.urls = new Map();
+        if (ft && !tb.urls.has(x._fila)) tb.urls.set(x._fila, URL.createObjectURL(ft));
+        out.push({ ...x, uid: pw ? 'w:' + W.host + ':' + (pw.url || pw.nombre) : 't' + ti + '-' + i, fuente: tb.archivo, ...(ft ? { foto: ft, fotoUrl: tb.urls.get(x._fila) } : {}), ...(W ? { web: W.fotos, imagen_url: W.fotos === 'no' ? null : x.imagen_url } : {}) });
       });
   });
   const ajuste = it => {      // texto / fotos: "el precio leído es mi costo / precio de venta / no usar"
@@ -63,7 +66,7 @@ function procesar() {
     // cada foto = un producto: primero el texto que la acompaña (WhatsApp), después lo escrito en la foto, después el nombre del archivo
     let d = null;
     if (f.leyenda) { const l = parsearLista(f.leyenda, c, 'General', I.opts.moneda).find(x => x.costo_usd > 0); if (l) d = { nombre: l.nombre, costo_usd: l.costo_usd, precio_ars: l.precio_ars, inferido: l.inferido }; else d = { ...deTextoDeFoto(f.leyenda, c, I.opts.moneda) }; }
-    const dOcr = f.texto ? deTextoDeFoto(f.texto, c, I.opts.moneda) : null;
+    const dOcr = f.texto ? deTextoDeFoto(f.texto, c, I.opts.moneda, f.lineas) : null;
     if (dOcr && !nombreCreible(dOcr.nombre)) dOcr.nombre = '';   // manchas de la foto leídas como letras ("au Eo"): no es un nombre
     const dArch = deArchivoNombre(f.archivo, c, I.opts.moneda);   // "ZAPATILLA NIKE - PRECIO 70000.jpg"
     // el nombre del archivo dice "precio …": se escribió a propósito, así que gana a lo que se lea en la foto
@@ -148,13 +151,20 @@ on('i-mismo', d => { (I.ed[d.u] = I.ed[d.u] || {}).mismo = d.v === '1'; if (d.v 
 
 /* ---------- vista ---------- */
 function vistaTablas() {
-  return I.tablas.map((tb, ti) => !tb.det ? '' : tb.web ? vistaCatalogoWeb(tb, ti) : `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · ${tb.web ? 'web del proveedor (' + esc(tb.web.plataforma) + ')' : 'reconocido como ' + esc(tb.det.plataforma)}</summary>
+  return I.tablas.map((tb, ti) => !tb.det ? '' : tb.web ? vistaCatalogoWeb(tb, ti) : avisosTabla(tb, ti) + `<details class="card" style="margin-top:10px" ${tb.det.reconocido && tb.map.nombre != null ? '' : 'open'}><summary><b>${esc(tb.archivo)}</b> · ${tb.web ? 'web del proveedor (' + esc(tb.web.plataforma) + ')' : 'reconocido como ' + esc(tb.det.plataforma)}</summary>
     ${tb.hojas && tb.hojas.length > 1 ? `<div class="fg" style="margin-top:8px"><label class="flabel">Hoja</label><select class="fi" data-change="i-hoja" data-t="${ti}">${tb.hojas.map((h, i) => `<option value="${i}" ${tb.hoja === i ? 'selected' : ''}>${esc(h.nombre)} (${h.filas.length} filas)</option>`).join('')}</select></div>` : ''}
     <p class="hint" style="margin:6px 0">Revisá que cada dato esté en la columna correcta:</p>
     <div class="row2">${CAMPOS.map(([k, n]) => `<div class="fg"><label class="flabel">${n}</label><select class="fi" data-change="i-map" data-t="${ti}" data-k="${k}"><option value="">— no importar —</option>${tb.det.head.map((h, i) => `<option value="${i}" ${tb.map[k] === i ? 'selected' : ''}>${esc(h || 'Columna ' + (i + 1))}</option>`).join('')}</select></div>`).join('')}</div>
-    <div class="row2"><div class="fg"><label class="flabel">Los precios están en</label><select class="fi" data-change="i-topt" data-t="${ti}" data-k="moneda"><option value="ars" ${tb.opts.moneda === 'ars' ? 'selected' : ''}>Pesos (ARS)</option><option value="usd" ${tb.opts.moneda === 'usd' ? 'selected' : ''}>Dólares (USD)</option></select></div>
+    <div class="row2"><div class="fg"><label class="flabel">Los precios están en</label><select class="fi" data-change="i-topt" data-t="${ti}" data-k="moneda"><option value="ars" ${tb.opts.moneda === 'ars' ? 'selected' : ''}>Pesos (ARS)</option><option value="usd" ${tb.opts.moneda === 'usd' ? 'selected' : ''}>Dólares (USD)</option><option value="brl" ${tb.opts.moneda === 'brl' ? 'selected' : ''}>Reales (R$)</option><option value="cny" ${tb.opts.moneda === 'cny' ? 'selected' : ''}>Yuanes (¥)</option><option value="eur" ${tb.opts.moneda === 'eur' ? 'selected' : ''}>Euros (€)</option></select></div>
     <div class="fg"><label class="flabel">Ese precio es</label><select class="fi" data-change="i-topt" data-t="${ti}" data-k="tipo"><option value="costo" ${tb.opts.tipo === 'costo' ? 'selected' : ''}>Mi costo (lo que pago)</option><option value="venta" ${tb.opts.tipo === 'venta' ? 'selected' : ''}>Mi precio de venta</option></select></div></div>
     ${tb.opts.tipo === 'venta' ? `<div class="fg"><label class="flabel">¿Qué ganancia tenía ese precio? (%) — la usamos para calcular tu costo</label><input class="fi" type="number" min="0" max="900" value="${esc(tb.opts.margen)}" data-input="i-topt" data-t="${ti}" data-k="margen"></div>` : ''}</details>`).join('');
+}
+// v2.31.1: lo que hay que ver aunque el detalle de columnas esté cerrado (fotos del Excel, hojas juntas, idioma)
+function avisosTabla(tb, ti) {
+  const nf = tb.fotos ? tb.fotos.filter(Boolean).length : 0;
+  return (tb.bloques ? `<p class="hint" style="margin:10px 0 0">📑 <b>${esc(tb.archivo)}</b>: juntamos ${tb.hojas && tb.hojas.length > 2 ? `las ${tb.hojas.length - 1} hojas` : 'los bloques de la planilla'} en una sola lista${nf ? ` · 📸 con <b>${nf} ${nf === 1 ? 'foto sacada' : 'fotos sacadas'} del Excel</b>` : ''}.</p>` : '')
+    + (tb.idioma && tb.idioma !== 'es' && !tb.traducida ? `<div class="warn-box" style="margin-top:8px">🌐 Los nombres de <b>${esc(tb.archivo)}</b> parecen estar en <b>${esc(NOMBRE_IDIOMA[tb.idioma] || tb.idioma)}</b>. <button type="button" class="btn btn-s btn-sm" data-act="i-trad" data-t="${ti}">Traducir al español</button> <span class="hint">Las marcas y los modelos pueden cambiar: revisalos.</span></div>` : '')
+    + (tb.traducida ? `<p class="hint" style="margin:8px 0 0">🌐 Nombres de ${esc(tb.archivo)} traducidos al español. <button type="button" class="linkb" data-act="i-trad-x" data-t="${ti}">Volver al original</button></p>` : '');
 }
 function vistaOpcionesLectura() {
   if (!I.texto.trim() && !I.fotos.length) return '';
@@ -227,7 +237,9 @@ function vistaBloqueada() {
 }
 // Un solo recuadro para pegar: texto de una lista (WhatsApp, mail, Excel) o una página web copiada del navegador.
 // Lo que se pega se reconoce solo (ver el evento 'paste' más abajo).
+const SOLO_TABLAS = /\.(csv|tsv|xlsx|xlsm|xls|ods)$/i;
 function vistaPegado() {
+  if (!can('ocr')) return '<p class="hint imp-solo" id="pegar-box">En el plan Gratis cargás desde Excel o CSV. Leer fotos, PDF y chats de WhatsApp es parte de Mayorista Pro.</p>';
   const W = I.web, pp = W.pegado;
   return `<div class="pegar-box" id="pegar-box" data-asistente="web"><label class="flabel" for="imp-t">📋 Pegar una lista o una página web</label>
     <textarea class="fi" id="imp-t" rows="3" data-asis="w-pegar" data-input="i-texto" placeholder="Pegá acá el texto de la lista (uno por renglón: Perfume X 100ml $12.500) o la página de tu proveedor copiada con Ctrl+A y Ctrl+C">${esc(I.texto)}</textarea>
@@ -245,6 +257,7 @@ function vistaPegado() {
       <p><b>Canal:</b> WhatsApp no permite exportarlos ni leerlos desde afuera (tampoco con un enlace). Guardá las fotos del canal (mantené apretada la foto → Guardar) y subilas todas juntas: cada foto será un producto y leemos el precio escrito en la imagen. Si el canal tiene la lista escrita, copiala y pegala acá.</p></details></div>`;
 }
 function vistaWeb() {
+  if (!can('ocr')) return vistaRestaurar();
   const W = I.web, listo = W.acepto && W.url.trim().length > 4, leidas = I.tablas.filter(t => t.web);
   return `${vistaRestaurar()}<details class="card web-prov" ${W.abierto || W.elegir ? 'open' : ''} data-asistente="web" id="web-prov"><summary data-act="w-abrir">🌐 <b>Traer productos desde la web del proveedor</b> <span class="tag ok">nuevo</span>${W.res ? `<br><small class="muted">${esc(W.res)}</small>` : ''}</summary>
     <p class="hint" style="margin:8px 0">Pegá el enlace de la tienda online de tu proveedor (la portada, “Productos”, una categoría o una búsqueda) y traemos nombre, costo, foto, categoría y, si querés, la descripción. Si la web está en otro idioma la traducimos, y si los precios están en dólares, reales o guaraníes los pasamos a tu moneda.</p>
@@ -323,8 +336,8 @@ export function vistaImportar() {
   const hay = ok.length > 0 && (I.destino === 'mis' || (I.nombre.trim().length >= 2 && upd.length > 0 && can(I.destino === 'prov' ? 'proveedores' : 'mercado')));
   const fuentes = [...I.tablas.map(t => t.archivo), ...new Set(I.fotos.map(f => f.grupo || f.archivo))];
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal modal-ancho" role="dialog" aria-modal="true"><div class="view-title">📥 Cargar o actualizar productos</div><div id="mm">${I.err ? `<div class="err-box">${esc(I.err)}</div>` : ''}${I.msg && !I.busy ? `<div class="ok-box">${esc(I.msg)}</div>` : ''}</div>${I.busy ? '' : vistaAviso()}
-    <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
-    <input id="i-file" type="file" hidden multiple data-change="i-file" accept=".csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*">
+    <label class="drop" id="drop" for="i-file">📎 <b>Subí la lista de tu proveedor</b> (uno o varios archivos) o arrastrala acá<br><small>Si ya tenés productos cargados, comparamos y te mostramos qué subió, qué bajó y qué hay de nuevo · ${can('ocr') ? 'Fotos de productos (del canal o grupo del proveedor) · chat de WhatsApp exportado (.zip, con las fotos) · CSV de Tiendanube / Shopify / Empretienda · Excel · PDF · captura de una lista' : 'Excel o CSV (también el de Tiendanube / Shopify / Empretienda)'}</small>${fuentes.length ? `<br><small><b>Cargados:</b> ${esc(fuentes.slice(0, 6).join(' · '))}${fuentes.length > 6 ? ' y ' + (fuentes.length - 6) + ' más' : ''}</small> <button class="btn-link" data-act="i-limpiar">empezar de nuevo</button>` : ''}</label>
+    <input id="i-file" type="file" hidden multiple data-change="i-file" accept="${can('ocr') ? '.csv,.tsv,.txt,.zip,.xlsx,.xlsm,.xls,.ods,.pdf,image/*' : '.csv,.tsv,.xlsx,.xlsm,.xls,.ods'}">
     ${vistaWeb()}
     ${vistaPegado()}
     ${I.busy ? `<div class="center" style="margin:10px 0"><span class="spin"></span><div class="hint" id="imp-prog">${esc(I.msg)}</div>${I.webBusy ? '<button class="btn btn-s btn-sm" style="margin-top:6px" data-act="w-cancelar">Detener y quedarme con lo leído</button>' : ''}</div>` : ''}
@@ -346,9 +359,16 @@ async function esCaptura(f) {
 }
 async function cargar(lista) {
   AV.texto = ''; AV.resumen = '';
-  const files = [...(lista || [])]; if (!files.length) return;
+  let files = [...(lista || [])]; if (!files.length) return;
+  // v2.33: en Gratis se importa desde Excel o CSV; fotos, PDF y chats (OCR) desde Mayorista Pro.
+  if (!can('ocr')) {
+    const fuera = files.filter(f => !SOLO_TABLAS.test(f.name)); files = files.filter(f => SOLO_TABLAS.test(f.name));
+    if (fuera.length) { I.err = `En el plan Gratis cargás desde Excel o CSV. Leer fotos, PDF y chats está en Mayorista Pro (${fuera.length === 1 ? fuera[0].name : fuera.length + ' archivos'} no se leyó).`; if (!files.length) { refrescar(); return; } }
+  }
   I.busy = true; I.err = ''; refrescar();
   const errores = []; let n = 0;
+  // v2.31.1: cotizaciones del día para listas en reales, yuanes o euros
+  if (!I.tasas) { try { const c = await api.cambio(); I.tasas = (c && c.tasas) || {}; usarTasas(I.tasas); } catch (e) { I.tasas = {}; } }
   const imagenes = files.filter(f => /^image\//.test(f.type) || /\.(png|jpe?g|webp|bmp)$/i.test(f.name));
   for (const f of files) {
     n++;
@@ -357,16 +377,23 @@ async function cargar(lista) {
     try {
       if (esImg) {
         let texto = '';
-        try { texto = await ocr(f, () => { }); } catch (e) { errores.push(f.name + ': no se pudo leer el texto (' + e.message + '). La cargamos igual con su foto.'); }
+        let lineas = null;
+        try { texto = await ocr(f, () => { }); lineas = infoOcr().lineas; } catch (e) { errores.push(f.name + ': no se pudo leer el texto (' + e.message + '). La cargamos igual con su foto.'); }
         const cap = await esCaptura(f);
-        I.fotos.push({ uid: 'f' + I.fotos.length + '-' + Date.now(), archivo: f.name, foto: f, url: URL.createObjectURL(f), texto, fuente: (cap ? 'captura ' : 'foto ') + f.name, captura: cap });
+        I.fotos.push({ uid: 'f' + I.fotos.length + '-' + Date.now(), archivo: f.name, foto: f, url: URL.createObjectURL(f), texto, lineas, fuente: (cap ? 'captura ' : 'foto ') + f.name, captura: cap });
         if (cap) I.uso['f' + (I.fotos.length - 1)] = null;
         continue;
       }
-      const r = await leerArchivo(f, progreso);
-      if (r.tipo === 'tabla') I.tablas.push({ archivo: f.name, filas: r.filas, hojas: r.hojas || null, hoja: 0, map: null, opts: { moneda: 'ars', tipo: 'costo', margen: null } });
+      const r = await leerArchivo(f, progreso, { fotos: 2000, achicar: b => redimensionar(b, 900, .82) });
+      if (r.tipo === 'tabla') {
+        // v2.31.1: moneda detectada en la planilla, fotos pegadas en el Excel e idioma de los nombres
+        const tb = { archivo: f.name, filas: r.filas, hojas: r.hojas || null, hoja: 0, map: null, opts: { moneda: r.moneda && r.moneda !== 'ars' ? r.moneda : 'ars', tipo: 'costo', margen: null }, fotos: r.fotos || null, bloques: !!r.bloques };
+        const det = detectarTabla(r.filas), nombres = det.map.nombre != null ? det.datos.slice(0, 300).map(x => String(x[det.map.nombre] || '')) : [];
+        tb.idioma = nombres.length ? idiomaDe(nombres) : 'es';
+        I.tablas.push(tb);
+      }
       else if (r.tipo === 'productos') r.items.forEach((x, i) => I.fotos.push({ uid: 'w' + I.fotos.length + '-' + i, archivo: x.archivoFoto || f.name, grupo: f.name, foto: x.foto || null, url: x.foto ? URL.createObjectURL(x.foto) : null, texto: '', leyenda: x.leyenda, fuente: 'WhatsApp ' + f.name }));
-      else I.texto = (I.texto ? I.texto + '\n' : '') + r.texto.slice(0, 400000);
+      else { I.texto = (I.texto ? I.texto + '\n' : '') + r.texto.slice(0, 400000); if (r.ocr && r.total > r.paginas) errores.push(`${f.name}: es un PDF escaneado; leímos con OCR las primeras ${r.paginas} de ${r.total} páginas.`); }
     } catch (e) { errores.push(f.name + ': ' + e.message); }
   }
   // fotos de WhatsApp sin texto: leemos el precio escrito en la imagen
@@ -382,6 +409,18 @@ document.addEventListener('dragover', e => { const z = e.target.closest && e.tar
 document.addEventListener('dragleave', e => { const z = e.target.closest && e.target.closest('#drop'); if (z) z.classList.remove('over'); });
 document.addEventListener('drop', e => { const z = e.target.closest && e.target.closest('#drop'); if (z) { e.preventDefault(); cargar(e.dataTransfer.files); } });
 on('i-limpiar', () => { const d = I.destino; borrarGuardado(); resetImp(); I.destino = d; I.restauraVisto = true; refrescar(); });
+// v2.31.1: traducir los nombres de una planilla (portugués, inglés, chino…) con el traductor de la app
+on('i-trad', async (d, b) => {
+  const tb = I.tablas[+d.t]; if (!tb) return; const det = detectarTabla(tb.filas), c = det.map.nombre; if (c == null) return;
+  b.disabled = true; const hi = tb.filas.indexOf(det.datos[0]) - 1;
+  try {
+    const m = await traducirLista(det.datos.map(x => String(x[c] || '')), tb.idioma, (t, de) => api.traducir(t, de), x => progreso(x), 'Traduciendo los nombres');
+    if (!m.size) throw new Error('El traductor no está disponible ahora. Probá más tarde.');
+    tb.filasOrig = tb.filas; tb.filas = tb.filas.map((f, i) => i > hi && f[c] && m.get(String(f[c])) ? Object.assign([...f], { [c]: m.get(String(f[c])).slice(0, 160) }) : f); tb.traducida = true; tb.map = null;
+    procesar(); refrescar(); toast(`🌐 Traducimos ${m.size} nombres`);
+  } catch (e) { b.disabled = false; toast(e.message); }
+});
+on('i-trad-x', d => { const tb = I.tablas[+d.t]; if (!tb || !tb.filasOrig) return; tb.filas = tb.filasOrig; tb.filasOrig = null; tb.traducida = false; tb.map = null; procesar(); refrescar(); });
 on('i-hoja', (d, el) => { const tb = I.tablas[+d.t]; tb.hoja = +el.value; tb.filas = tb.hojas[tb.hoja].filas; tb.map = null; procesar(); refrescar(); });
 on('i-map', (d, el) => { const tb = I.tablas[+d.t]; if (el.value === '') delete tb.map[d.k]; else tb.map[d.k] = +el.value; procesar(); refrescar(); });
 on('i-topt', (d, el) => { I.tablas[+d.t].opts[d.k] = el.value; procesar(); if (d.k !== 'margen') refrescar(); else { clearTimeout(on.t2); on.t2 = setTimeout(refrescar, 600); } });
@@ -658,6 +697,7 @@ on('i-ok', async () => {
       const filas = nuevos.map(x => ({ tenant_id: t.id, nombre: x.nombre.trim().slice(0, 160), categoria: ((x.categoria && x.categoria !== 'General' ? x.categoria : u.categoria.trim()) || 'General').slice(0, 60), marca: x.marca || null, sku: x.sku || null, descripcion: x.descripcion || null, costo_usd: x.costo_usd, variantes: x.variantes || [], imagen_url: x.imagen_url || null, stock: x.stock != null ? x.stock : (x.agotado ? 0 : null), activo: u.visible && x.activo !== false, emoji: '📦', margen_override: mOvr, unidad: u.unidad, contenido: cont, precio_unico: !!u.unico }));
       const vistos = new Set(); filas.forEach(f => { if (!f.sku) return; const k = clave(f.sku); if (vistos.has(k) || P.prods.some(p => p.sku && clave(p.sku) === k)) f.sku = null; else vistos.add(k); });
       progreso('Guardando productos…');
+      const fueraCupo = pausarFueraDeCupo(filas);   // v2.33: plan Gratis, hasta 100 publicados
       if (filas.length) await api.insertarProductos(filas);
       for (let i = 0; i < upd.length; i += 6) await Promise.all(upd.slice(i, i + 6).map(x => { const c = { costo_usd: x.costo_usd }; if (x.stock != null) c.stock = x.stock; else if (x.agotado) c.stock = 0; if (x.imagen_url && !x.existente.imagen_url) c.imagen_url = x.imagen_url; return api.guardarProducto(x.existente.id, c); }));
       for (let i = 0; i < ocultar.length; i += 6) await Promise.all(ocultar.slice(i, i + 6).map(p => api.guardarProducto(p.id, { activo: false })));
@@ -665,7 +705,7 @@ on('i-ok', async () => {
       AV.nuevos = filas.filter(f => f.activo).map(f => f.nombre); AV.bajan = DF.bajan.map(x => x.existente.id);
       AV.texto = armarAviso(DF, m); AV.resumen = AV.texto ? `${DF.suben.length} subieron, ${DF.bajan.length} bajaron, ${DF.nuevos.length} nuevos${ocultar.length ? ', ' + ocultar.length + ' ocultos' : ''}.` : '';
       const sinFoto = nuevos.filter(x => x.errorFoto).length;
-      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}${fallasWeb ? ' ' + fallasWeb + (fallasWeb === 1 ? ' foto quedó' : ' fotos quedaron') + ' con el enlace del proveedor (no se pudieron copiar).' : ''}`;
+      I.msg = `Listo: ${filas.length} productos nuevos${u.visible ? '' : ' (ocultos, para revisar)'} y ${upd.length} actualizados${ocultar.length ? ' · ' + ocultar.length + ' ocultos' : ''}.${fueraCupo ? ` ${fueraCupo} quedaron pausados porque el plan Gratis publica hasta ${LIMITE_GRATIS}: pasate a un plan pago para mostrarlos todos.` : ''}${sinFoto ? ' ' + sinFoto + ' fotos no se pudieron subir: agregalas desde cada producto.' : ''}${fallasWeb ? ' ' + fallasWeb + (fallasWeb === 1 ? ' foto quedó' : ' fotos quedaron') + ' con el enlace del proveedor (no se pudieron copiar).' : ''}`;
     } else {
       const items = ok.filter(x => x.existente);
       for (let i = 0; i < items.length; i += 1000) {

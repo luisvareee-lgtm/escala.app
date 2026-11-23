@@ -3,7 +3,7 @@
 // el panel agregado a la pantalla de inicio. El aviso viaja cifrado: solo este dispositivo lo puede leer.
 import { api } from './api.js';
 import { on, toast, store } from './util.js';
-import { P } from './state.js';
+import { P, can } from './state.js';
 
 // El aviso tocado con el panel ya abierto: el service worker pide ir al pedido.
 try {
@@ -60,6 +60,7 @@ const otros = n => n > 0 ? `<p class="hint">${n === 1 ? 'Hay 1 dispositivo' : `H
 export function avisosHtml(donde) {
   if (S.estado === null) { revisar(); return ''; }
   const e = S.estado, enPed = donde === 'pedidos';
+  if (!can('push') && e !== 'on') return '';   // v2.33: desde Mayorista Pro (en Gratis no se muestra: sin candados a la vista)
   if (e === 'on') return enPed
     ? `<div class="av-linea" id="av-card"><span>🔔 Te avisamos al celular de cada pedido.</span><button class="btn btn-s btn-sm" data-act="av-probar">Probar</button></div>`
     : `<div class="cc" id="av-card"><h3>🔔 Avisos de pedidos: activados en este dispositivo</h3><p class="hint" style="margin-bottom:8px">Cuando entra un pedido te llega un aviso con el total y el cliente, aunque tengas el panel cerrado. Lo tocás y se abre ese pedido.</p>${otros(S.cuantos)}
@@ -74,6 +75,7 @@ export function avisosHtml(donde) {
 }
 
 on('av-on', async (d, b) => {
+  if (!can('push')) return;
   if (S.ocupado) return; S.ocupado = true; if (b) b.disabled = true;
   try {
     // el permiso se pide primero, dentro del toque (iPhone lo exige así)

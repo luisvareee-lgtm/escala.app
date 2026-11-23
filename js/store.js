@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
 import { htmlCatalogo, imprimir, htmlPresupuesto } from './catalogo.js';
 import { MARCA } from './marca.js';
+import { origenDe } from './origen.js';
 import { abrirFlyer } from './flyer.js';
 import { promoOk, promoTxt, promoDesc, promoPartes, promoFalta, promosDelPedido, montoDesc, montoEscalon, montoTxt, cuponDesc, cuponTxt } from './promo.js';
 import { tiraCierreHtml } from './cuenta.js';
@@ -188,7 +189,47 @@ function cargarPixel(id) {
   const s = document.createElement('script'); s.async = true; s.src = 'https://connect.facebook.net/en_US/fbevents.js'; document.head.appendChild(s);
   window.fbq('init', id); window.fbq('track', 'PageView');
 }
-const evento = (n, d) => { if (S.previa || S.demo) return; try { if (window.fbq) window.fbq('track', n, d); } catch (e) { } };
+/* ---------- Google Analytics 4 (v2.33: desde Mayorista Pro, si el comercio cargó su ID G-…; nunca en la vista previa ni en la demo) ---------- */
+function cargarGa4(id) {
+  if (!id || window.gtag || !/^G-[A-Z0-9]{6,16}$/.test(id)) return;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function () { window.dataLayer.push(arguments); };
+  window.gtag('js', new Date()); window.gtag('config', id);
+  const s = document.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id); document.head.appendChild(s);
+}
+const GA4 = { ViewContent: 'view_item', AddToCart: 'add_to_cart', InitiateCheckout: 'begin_checkout', Purchase: 'purchase' };
+const ga4Datos = (n, d) => {
+  const o = { currency: 'ARS' };
+  if (d.value != null) o.value = Number(d.value) || 0;
+  if (d.content_name) o.items = [{ item_id: (d.content_ids || [])[0] || d.content_name, item_name: d.content_name }];
+  if (d.transaction_id) o.transaction_id = String(d.transaction_id);
+  return o;
+};
+// Etapas de la visita para las estadísticas del panel (v2.33)
+const ETAPA = { ViewContent: 'vio', AddToCart: 'carrito', Purchase: 'pedido' };
+const evento = (n, d = {}) => {
+  if (S.previa || S.demo) return;
+  if (ETAPA[n]) etapa(ETAPA[n]);
+  const fb = Object.assign({}, d); delete fb.transaction_id;
+  try { if (window.fbq) window.fbq('track', n, fb); } catch (e) { }
+  try { if (window.gtag && GA4[n]) window.gtag('event', GA4[n], ga4Datos(n, d)); } catch (e) { }
+};
+
+/* ---------- Estadísticas anónimas (v2.33): cada navegador cuenta 1 vez por día y por etapa: entró → miró → carrito → pedido ----------
+   Se guarda solo de dónde llegó (Instagram, WhatsApp, Google…); nada de la persona. Ni la vista previa ni la demo cuentan. */
+const ETAPAS = ['visita', 'vio', 'carrito', 'pedido'];
+const esDueno = () => { try { return document.cookie.split(/;\s*/).includes('esk_dueno=' + encodeURIComponent(S.slug)); } catch (e) { return false; } };
+function etapa(e) {
+  if (!S.slug || S.previa || S.demo || esDueno()) return;
+  const i = ETAPAS.indexOf(e); if (i < 0) return;
+  const hoy = new Date().toLocaleDateString('sv'), k = 'vis:' + S.slug;
+  let m = store.get(k, null);
+  if (!m || m.d !== hoy || !Array.isArray(m.e)) m = { d: hoy, o: origenDe(location.href, document.referrer, navigator.userAgent, location.host), e: [] };
+  const nuevas = ETAPAS.slice(0, i + 1).filter(x => !m.e.includes(x)); if (!nuevas.length) return;
+  m.e = m.e.concat(nuevas); store.set(k, m);
+  api.visita(S.slug, m.o, nuevas).catch(() => { });
+}
+const verProd = id => { marcarAct('v', id); const p = prod(id); if (p) evento('ViewContent', { content_name: p.nombre, content_ids: [p.id] }); };
 
 /* ---------- entrada ---------- */
 export async function mostrarTienda(slug, app) {
@@ -214,7 +255,7 @@ export async function mostrarTienda(slug, app) {
   try { const pg = new URLSearchParams(location.search).get('pago'); S.avisoPago = ({ ok: '✅ ¡Gracias! Estamos confirmando tu pago con Mercado Pago. El comercio te avisa por WhatsApp.', pendiente: '⏳ Tu pago quedó pendiente. Cuando se acredite, el comercio lo confirma.', error: 'El pago no se completó. Podés volver a intentar o coordinar por WhatsApp.' })[pg] || ''; } catch (e) { S.avisoPago = ''; }
   try { const r = new URLSearchParams(location.search).get('r'); if (r && /^[A-Za-z0-9_-]{8,64}$/.test(r)) store.set('ref:' + slug, { r, ts: Date.now() }); const g = store.get('ref:' + slug, null); S.ref = g && g.r && Date.now() - g.ts < 30 * 864e5 ? g.r : null; } catch (e) { S.ref = null; }   // la atribución al revendedor vence a los 30 días
   S.may = null; S.codigo = ''; S.vista = 'cat'; S.cat = 'Todas'; S.q = ''; S.limite = 60; S.pedirCodigo = false; S.vit = null; S.rubro = null; S.foco = null; S.niveles = null; S.orden = 'dest';
-  if (!S.previa && !S.demo) cargarPixel(S.tienda.pixel_id);
+  if (!S.previa && !S.demo) { cargarPixel(S.tienda.pixel_id); cargarGa4(S.tienda.ga4_id); etapa('visita'); }
   if (S.demo && S.tienda.modalidad === 'hibrido') { try { const lista = await api.listaMayoristaDemo(slug); S.may = new Map(lista.map(r => [r.producto_id, r])); } catch (e) { } }
   document.title = S.tienda.nombre;
   // v2.30: …/t/tienda?presupuesto=… abre el presupuesto que te mandaron (sin costos; se puede aceptar y bajar en PDF)
@@ -266,10 +307,12 @@ function pintar() {
   app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}${L.compacto ? ' compacto' : ''}" style="${st}">
     <div id="hdr"${L.compacto ? ' class="hdr-c"' : ''}><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${L.compacto ? `<span class="hdr-nm">${esc(S.tienda.nombre)}${S.tienda.eslogan ? `<small>${esc(S.tienda.eslogan)}</small>` : ''}</span>` : esc(S.tienda.nombre)}</div>
       <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
-    ${demoBarra()}${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div></div>`;
+    ${demoBarra()}${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div>${firmaGratis()}</div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); iniciarVitrina(); }
 }
 
+// v2.33: plan Gratis: firma discreta al pie (en los planes pagos, sin marca).
+const firmaGratis = () => S.tienda.plan_gratis ? `<p class="st-firma"><a href="${esc((MARCA.DOMINIO ? 'https://' + MARCA.DOMINIO : location.origin) + '/?ref=firma')}" target="_blank" rel="noopener">Creado gratis con ${esc(MARCA.NOMBRE)}</a></p>` : '';
 const fabHtml = T => (lookDe(S.tienda.diseno).compacto ? '🛒<span class="fab-tx"> Mi pedido</span>' : '🛒') + (T.n ? `<span id="cart-n">${T.n}</span>` : '');
 
 /* ---------- ofertas y combos (los precios ya vienen con el descuento desde la base) ---------- */
@@ -318,7 +361,7 @@ function ctHtml(p) {
    Visita = abrió la ficha. Al carrito = lo agregó. Cada navegador cuenta 1 vez por producto y por día; se mandan juntas cada pocos segundos. */
 const ACT = { v: new Set(), c: new Set(), t: null };
 function marcarAct(tipo, id) {
-  if (!id || !S.slug || S.previa || S.demo) return;
+  if (!id || !S.slug || S.previa || S.demo || esDueno()) return;
   const hoy = new Date().toLocaleDateString('sv'), k = 'act:' + S.slug;
   let m = store.get(k, null); if (!m || m.d !== hoy) m = { d: hoy, v: [], c: [] };
   if (m[tipo].includes(id)) return;
@@ -630,7 +673,11 @@ function selVar(p) {
 const chipsVar = (p, vi) => (p.variantes || []).map((v, i) => { const ag = varAgot(p, v); return `<button class="vchip ${vi === i && !ag ? 'on' : ''}${ag ? ' agot' : ''}" data-act="st-var" data-id="${p.id}" data-i="${i}"${ag ? ` disabled aria-disabled="true" title="Sin stock" aria-label="${esc(v)} sin stock"` : ''}>${esc(v)}</button>`; }).join('');
 const guiaHtml = p => (p.variantes || []).length && S.tienda.guia_talles && (rubroT() === 'indumentaria' || pareceTalle(p.variantes)) ? `<details class="guia-t"><summary>📏 Guía de talles</summary><div class="guia-t-in">${esc(S.tienda.guia_talles)}</div></details>` : '';
 /* ---------- barra del pedido con niveles (1u · 3u · 6u · 12u+): vibra, se sacude y avisa al desbloquear uno ---------- */
-const NIVELES = [[1, 'Inicial'], [3, 'Mayorista'], [6, 'Especial'], [12, '🏆 Super']];
+// v2.33: cada tienda puede cambiar los nombres en Ajustes (diseno.niveles); si no, los de siempre
+const NIV_DEF = ['Inicial', 'Mayorista', 'Especial', '🏆 Super'];
+const nivelesNom = () => { const n = S.tienda && S.tienda.diseno && S.tienda.diseno.niveles; return Array.isArray(n) && n.length === 4 && n.every(x => typeof x === 'string' && x.trim()) ? n : NIV_DEF; };
+const NIVELES = [1, 3, 6, 12].map((q, i) => [q, NIV_DEF[i]]);
+const niveles = () => { const n = nivelesNom(); return NIVELES.map(([q], i) => [q, n[i]]); };
 const gamiOn = () => lookDe(S.tienda.diseno).barra && vista() === 'may' && !!S.tienda.escalas_activas;
 const nivelDe = q => (q >= 12 ? 3 : q >= 6 ? 2 : q >= 3 ? 1 : 0);
 const posNivel = q => (q >= 12 ? 100 : q >= 6 ? 66.67 + (q - 6) / 6 * 33.33 : q >= 3 ? 33.33 + (q - 3) / 3 * 33.34 : Math.max(0, (q - 1) / 2 * 33.33));
@@ -655,9 +702,9 @@ function pintarGami(cb, T) {
   if (f) {
     const { p, e } = f, k = grupoDe(p), antes = S.niveles[k] === undefined ? -1 : S.niveles[k];
     nivel = nivelDe(e.q); subio = nivel > antes && nivel >= 1; S.niveles[k] = nivel;
-    msg = e.nx ? `Sumá <b>${e.falta} u.</b> más ${esc(deGrupo(p))} y desbloqueá el precio ${NIVELES[nivel + 1][1]} · <b>${fmt(e.pn)} c/u</b>`
-      : `🏆 ¡Desbloqueaste el precio Super!${e.ahorro > 0 ? ` · ahorrás <b>${fmt(e.ahorro)}</b>` : ''} ${esc(deGrupo(p).replace(/^de /, 'en '))}`;
-    track = `<div class="gb-track" aria-hidden="true"><div class="gb-rail"><i style="width:${posNivel(e.q).toFixed(1)}%"></i></div>${NIVELES.map(([n, nm], i) => `<span class="gb-cp${e.q >= n ? ' ok' : ''}${subio && i === nivel ? ' pop' : ''}" style="left:${[0, 33.33, 66.67, 100][i]}%"><b></b><small>${n}u${n === 12 ? '+' : ''} · ${nm}</small></span>`).join('')}</div>`;
+    msg = e.nx ? `Sumá <b>${e.falta} u.</b> más ${esc(deGrupo(p))} y desbloqueá el precio ${esc(niveles()[nivel + 1][1])} · <b>${fmt(e.pn)} c/u</b>`
+      : `🏆 ¡Desbloqueaste el precio ${esc(niveles()[3][1].replace(/^🏆\s*/u, ''))}!${e.ahorro > 0 ? ` · ahorrás <b>${fmt(e.ahorro)}</b>` : ''} ${esc(deGrupo(p).replace(/^de /, 'en '))}`;
+    track = `<div class="gb-track" aria-hidden="true"><div class="gb-rail"><i style="width:${posNivel(e.q).toFixed(1)}%"></i></div>${niveles().map(([n, nm], i) => `<span class="gb-cp${e.q >= n ? ' ok' : ''}${subio && i === nivel ? ' pop' : ''}" style="left:${[0, 33.33, 66.67, 100][i]}%"><b></b><small>${n}u${n === 12 ? '+' : ''} · ${esc(nm)}</small></span>`).join('')}</div>`;
   } else msg = mc && T.total < mc ? `Te faltan <b>${fmt(mc - T.total)}</b> para desbloquear la compra mayorista` : 'Tu pedido está listo para enviar';
   const mcTxt = mc ? (T.total >= mc ? '✓ Mínimo cubierto' : `Faltan ${fmt(mc - T.total)} para el mínimo`) : '';
   cb.className = `gami lvl${Math.max(0, nivel)}${mini ? ' mini' : ''}`;
@@ -852,7 +899,7 @@ function pedidoDemo(cliente) {
 }
 
 /* ---------- acciones ---------- */
-const ir = v => { if (v === 'cart') S.avisoCart = false; S.vista = v; S.det = null; pintar(); window.scrollTo(0, 0); };
+const ir = v => { if (v === 'cart') S.avisoCart = false; if (v === 'co' && S.vista !== 'co' && S.cart.length) evento('InitiateCheckout', { num_items: S.cart.reduce((a, l) => a + l.qty, 0) }); S.vista = v; S.det = null; pintar(); window.scrollTo(0, 0); };
 on('st-ir', d => ir(d.v));
 on('st-q', (d, el) => { S.q = el.value; S.limite = 60; pintarGrid(); });
 on('st-cat', d => { S.cat = d.c; S.limite = 60; pintarGrid(); });
@@ -860,7 +907,7 @@ on('st-mas', () => { S.limite += 60; pintarGrid(); });
 on('st-var', d => { const p = prod(d.id); if (p && varAgot(p, (p.variantes || [])[+d.i])) return toast(agotTxt(p)); S.sel[d.id] = +d.i; pintarGrid(); pintarDet(); });
 on('st-add', (d, b) => {
   const p = prod(d.id); if (!p || p.agotado) return;
-  if (pideTalles(p)) { marcarAct('v', p.id); S.det = p.id; pintarDet(); return; }   // combo con talles: se eligen en la ficha
+  if (pideTalles(p)) { verProd(p.id); S.det = p.id; pintarDet(); return; }   // combo con talles: se eligen en la ficha
   const vr = (p.variantes || [])[selVar(p)] || '';
   if (vr && varAgot(p, vr)) return toast(agotTxt(p));
   const ex = S.cart.find(l => l.id === p.id && l.vr === vr); ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1 }); S.foco = p.id;
@@ -907,7 +954,7 @@ on('st-add-ct', d => {
   ex ? ex.qty++ : S.cart.push({ id: p.id, vr, qty: 1, ct }); S.foco = p.id;
   guardarCarrito(); evento('AddToCart', { content_name: p.nombre }); marcarAct('c', p.id); refrescar(); toast('🧩 Combo agregado · ' + vr);
 });
-on('st-ver', d => { marcarAct('v', d.id); S.det = d.id; pintarDet(); if (d.mx) { const m = $('#mx'); if (m) m.scrollIntoView({ block: 'center' }); } });
+on('st-ver', d => { verProd(d.id); S.det = d.id; pintarDet(); if (d.mx) { const m = $('#mx'); if (m) m.scrollIntoView({ block: 'center' }); } });
 // matriz de variantes: cada opción con su cantidad; todas suman para la escala del producto
 const qtyVar = (id, vr) => { const l = S.cart.find(x => x.id === id && x.vr === vr); return l ? l.qty : 0; };
 function setVar(id, i, n) {
@@ -964,7 +1011,7 @@ on('st-pedir', async (d, f) => {
     const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
     const tk = ticket(r, cliente), link = waLink(normWsp(r.whatsapp), tk);
     if (!S.previa) { const u = { at: Date.now(), items: S.cart.map(l => JSON.parse(JSON.stringify(l))) }; store.set('ult:' + S.slug, u); S.ult = u; }
-    S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS' });
+    S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS', transaction_id: r.numero || r.id });
     if (S.pay === 'link' && S.tienda.mp_activo) {   // link de pago de Mercado Pago (el monto lo calcula el servidor)
       try { S.ultimo.mp = (await api.mpPreferencia(S.slug, r.id)).init_point; } catch (e) { S.ultimo.mpError = e.message; }
     }
@@ -988,7 +1035,8 @@ const NOTA_PDF = 'Precios en pesos argentinos, sujetos a cambio sin previo aviso
 function pdfOficial() { const t = S.tienda; imprimir(htmlCatalogo({ nombre: t.nombre, logo: t.logo_url, color: t.color, eslogan: t.eslogan, titulo: vista() === 'may' ? 'Lista mayorista' : 'Lista de precios', grupos: gruposPdf((p, tr) => tr ? tr[1] : +p.precio_1, true), conStock: false, nota: NOTA_PDF })); }
 const redondeo = (u, pct) => Math.ceil(u * (1 + pct / 100) / 100) * 100;
 const baseDe = (p, tr, b) => { if (!tr) return +p.precio_1; return tr[b] != null ? tr[b] : tr[1]; };
-const revOk = () => vista() === 'may';
+// catálogo PDF con los precios del revendedor: desde Mayorista Pro (en Gratis queda la lista de precios de la tienda)
+const revOk = () => vista() === 'may' && !S.tienda.plan_gratis;
 function revCfg() { const c = store.get('rev:' + S.slug, null) || {}; return { base: [1, 3, 6, 12].includes(+c.base) ? +c.base : (S.tienda.escalas_activas ? 12 : 1), pct: Number.isFinite(+c.pct) && c.pct !== '' ? Math.max(0, Math.min(500, +c.pct)) : 50, nombre: String(c.nombre || '').slice(0, 60), wsp: String(c.wsp || '').slice(0, 30) }; }
 function pintarRev() {
   let r = $('#rev-root'); if (!r) { r = document.createElement('div'); r.id = 'rev-root'; document.body.appendChild(r); }

@@ -1,13 +1,13 @@
 // Panel del comerciante (shell + productos + pedidos + carritos). Los demás módulos viven en archivos propios.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, store, confirmar } from './util.js';
-import { P, can, aviso, planEf, PLAN_NOMBRE, precioArs } from './state.js';
-import { vistaResumen } from './dash.js';
+import { P, can, aviso, bloqueo, usarFlyer, flyersUsados, FLYERS_GRATIS, planEf, PLAN_NOMBRE, precioArs, limiteProductos, idsEnCupo, pausarFueraDeCupo, LIMITE_GRATIS } from './state.js';
+import { vistaResumen, refrescarStats } from './dash.js';
 import { vistaImportar, resetImp } from './imp_ui.js';
 import { vistaCatalogo } from './catalogo.js';
 import { vistaPrecios } from './precios.js';
 import { vistaEquipo } from './equipo.js';
-import { vistaAjustes, resetAj } from './ajustes.js';
+import { vistaAjustes, resetAj, NIV_DEF } from './ajustes.js';
 import { redimensionar } from './img.js';
 import { fichaDesdeEnlace, promptFoto, limpiarNombre } from './webprov.js';
 import { vistaPedidos, modalPedido, resetPed } from './pedidos.js';
@@ -17,7 +17,7 @@ import { vistaPresupuestos, resetPresu, cargarPresupuestos, presusCargados } fro
 import { resetDis } from './diseno.js';
 import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
-import { urlTiendaDe } from './marca.js';
+import { urlTiendaDe, MARCA } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
 import { demoPendienteHtml, filasDemo, descartarDemo } from './demo.js';
 import { hayPromo, promoSecHtml, promoDe, promoChip, usarPrecio, propiaDe } from './promo_ui.js';
@@ -29,7 +29,7 @@ import { activarApp, instalarHtml } from './instalar.js';
 import { vistaProductos, setAyudas, modalMasivo, modalBorrar, resetProd, limpiarSel } from './productos.js';
 import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundadores.js';
 import { avisosHtml, resetAvisos } from './avisos.js';
-import { seMuestra, vistaSimple, vistaCard, tipVistaHtml } from './vista.js';
+import { seMuestra, vistaSimple, vistaCard, tipVistaHtml, escondidas } from './vista.js';
 import { initTalles, tallesHtml, tallesDatos, presetsHtml, parseVars, resumenTalles, guiaCardHtml, campoVar } from './talles.js';
 import { RUBROS } from './rubro.js';
 
@@ -43,11 +43,20 @@ const tabs = () => (P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE).filter
 const todasTabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
+// v2.33: este navegador es del dueño de la tienda → sus visitas no suman en las estadísticas (cookie sin datos personales,
+// compartida con los subdominios de las tiendas: nombre.eskalapp.com)
+function marcarDueno(slug) {
+  try {
+    const d = String(MARCA.DOMINIO || '').toLowerCase(), h = location.hostname.toLowerCase();
+    const dom = d && (h === d || h.endsWith('.' + d)) ? '; domain=' + d : '';
+    document.cookie = 'esk_dueno=' + encodeURIComponent(slug) + dom + '; path=/; max-age=31536000; samesite=lax' + (location.protocol === 'https:' ? '; secure' : '');
+  } catch (e) { }
+}
 export async function mostrarPanel(app) {
   app.innerHTML = '<div class="page center" style="padding-top:80px"><span class="spin"></span></div>';
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
   if (!P.t) return 'sin-tienda';
-  activarApp();
+  activarApp(); marcarDueno(P.t.slug);
   P.esAdmin = await esAdmin(); resetAdmin();
   // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
   const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
@@ -65,8 +74,9 @@ export async function mostrarPanel(app) {
   pintar();
 }
 async function cargar() {
-  const r = await Promise.allSettled([api.misProductos(), api.pedidosTodos(), api.itemsTodos(), api.misCarritos(), api.misRevendedores(), api.misProveedores()]);
-  [P.prods, P.pedidos, P.items, P.carritos, P.revs, P.provs] = r.map(x => x.value || []);
+  const r = await Promise.allSettled([api.misProductos(), api.pedidosTodos(), api.itemsTodos(), api.misCarritos(), api.misRevendedores(), api.misProveedores(), api.usoHerramientas()]);
+  [P.prods, P.pedidos, P.items, P.carritos, P.revs, P.provs, P.uso] = r.map(x => x.value || []);
+  if (Array.isArray(P.uso)) P.uso = {};
   const f = r.find(x => x.status === 'rejected'); if (f) toast(f.reason.message);
   // v2.26: Promociones y cupones (null = la base todavía no tiene la migración 21)
   const [pr, cu] = await Promise.allSettled([api.misPromos(), api.misCupones()]);
@@ -82,7 +92,7 @@ function pintar() {
   const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, caja: vistaCaja, presupuestos: vistaPresupuestos, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
   $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
-    <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}</div>
+    <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}${escondidas().length ? '<button class="ptab ptab-mas" data-act="p-herr" id="p-herr">＋ Más herramientas</button>' : ''}</div>
     <div class="page wide" style="padding-top:16px">${avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
   trasPintarTienda();
@@ -97,7 +107,7 @@ function navMovil() {
 function menuMas() {
   return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.filter(([k]) => seMuestra(k)).map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
     ${P.esAdmin ? '<button data-act="p-tab" data-k="admin"><span class="i">🛡️</span><span>Admin<small>Tiendas, pruebas, fundadores y sugerencias</small></span></button>' : ''}
-    ${vistaSimple() ? '<button data-act="vista-set" data-v="completa" id="mas-vista"><span class="i">🧰</span><span>Ver todas las herramientas<small>Precios inteligentes, resultado, revendedores, carritos…</small></span></button>' : '<button data-act="vista-set" data-v="simple" id="mas-vista"><span class="i">👁️</span><span>Vista simple<small>Solo lo esencial para vender</small></span></button>'}
+    ${vistaSimple() ? '<button data-act="p-herr" id="mas-vista"><span class="i">＋</span><span>Más herramientas<small>Caja, presupuestos, asistente, resultado, revendedores…</small></span></button>' : '<button data-act="vista-set" data-v="simple" id="mas-vista"><span class="i">👁️</span><span>Vista simple<small>Solo lo esencial para vender</small></span></button>'}
     <button data-act="p-ayuda"><span class="i">💬</span><span>Ayuda<small>Buscá una solución o escribinos</small></span></button>
     <button data-act="p-sugerir"><span class="i">💡</span><span>Sugerir una mejora<small>Contanos qué te falta</small></span></button>
     <button data-act="p-ver-tienda"><span class="i">👀</span><span>Ver mi tienda<small>Como la ven tus clientes</small></span></button>
@@ -105,22 +115,38 @@ function menuMas() {
     <button class="btn btn-s" style="margin-top:12px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
 on('p-menu', () => { P.modal = { tipo: 'mas' }; pintar(); });
+// v2.33 · "＋ Más herramientas": abre una herramienta escondida (queda en la barra mientras la usás) o pasa a la vista completa
+function menuHerr() {
+  const L = MAS.filter(([k]) => escondidas().includes(k));
+  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más herramientas"><div class="view-title">＋ Más herramientas</div><p class="hint" style="margin:-4px 0 10px">Están todas activas; las dejamos a un toque para que el panel se vea simple.</p><div class="menu-list" id="herr-list">${L.map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
+    <button data-act="vista-set" data-v="completa" id="herr-completa"><span class="i">🧰</span><span>Usar la vista completa<small>Todas las secciones en la barra, siempre</small></span></button></div>
+    <button class="btn btn-s" style="margin-top:12px" data-act="p-cerrar">Cerrar</button></div></div>`;
+}
+on('p-herr', () => { P.modal = { tipo: 'herr' }; pintar(); });
 on('dm-descartar', () => { descartarDemo(); pintar(); });
 on('dm-cargar', async (d, b) => {
   b.disabled = true;
   try {
     b.textContent = 'Cargando…';
-    const f = await filasDemo(P.t, (bl, n) => api.subirFoto(P.t.id, bl, n)); if (f.length) await api.insertarProductos(f);
-    descartarDemo(); P.prods = await api.misProductos(); const oc = f.filter(x => !x.activo).length;
-    toast(f.length + ' productos cargados' + (oc ? ` · ${oc} ocultos para completar` : '')); P.tab = 'productos'; pintar();
+    const f = await filasDemo(P.t, (bl, n) => api.subirFoto(P.t.id, bl, n)), oc = f.filter(x => x.activo === false).length, fz = pausarFueraDeCupo(f); if (f.length) await api.insertarProductos(f);
+    descartarDemo(); P.prods = await api.misProductos();
+    toast(f.length + ' productos cargados' + (oc ? ` · ${oc} ocultos para completar` : '') + (fz ? ` · ${fz} pausados (plan Gratis: hasta ${LIMITE_GRATIS})` : '')); P.tab = 'productos'; pintar();
   }
   catch (e) { b.disabled = false; toast(e.message); }
 });
 on('p-ver-tienda', () => { window.open(urlTienda(), '_blank', 'noopener'); });
 
 /* ---------- productos ---------- */
+let CUPO = null;   // v2.33: ids que se ven en la tienda con el plan Gratis (null = sin límite)
+function cupoHtml() {
+  const lim = limiteProductos(P.t); if (lim == null) return '';
+  const pub = (P.prods || []).filter(p => p.activo).length;
+  if (pub < Math.round(lim * 0.8)) return '';   // v2.33: el aviso aparece al acercarse al tope (desde 80 de 100)
+  return `<p class="cupo-g${pub > lim ? ' warn' : ''}" id="cupo-g">📦 Plan ${esc(PLAN_NOMBRE.base)}: <b>${Math.min(pub, lim)} de ${lim}</b> productos publicados${pub > lim ? ` · tenés ${pub} publicados y tu tienda muestra los primeros ${lim}` : pub >= lim ? ' · los que cargues ahora quedan pausados' : ''}. <button type="button" class="linkb" data-act="p-planes" data-p="pro">Publicar todos</button></p>`;
+}
 function productos() {
-  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button><button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button><button class="btn btn-s btn-sm${Q.fly ? ' on' : ''}" data-act="pf-modo" id="pf-modo">📸 Crear flyer</button></div>
+  CUPO = idsEnCupo(P.t, P.prods || []);
+  return `${cupoHtml()}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><button class="btn btn-p btn-sm" data-act="p-nuevo">+ Producto</button><button class="btn btn-s btn-sm" data-act="p-importar">📥 Cargar o actualizar lista</button>${can('pdf') ? '<button class="btn btn-s btn-sm" data-act="p-catalogo">📄 Catálogo PDF</button>' : ''}<button class="btn btn-s btn-sm${Q.fly ? ' on' : ''}" data-act="pf-modo" id="pf-modo">📸 Crear flyer</button></div>
   ${Q.fly ? `<div class="pf-bar" id="pf-bar"><span>${Q.fly.length ? `<b>${Q.fly.length}</b> ${Q.fly.length === 1 ? 'producto elegido' : 'productos elegidos'} (hasta 4)` : 'Tocá de 1 a 4 productos para tu flyer'}</span><button class="btn btn-p btn-sm" data-act="pf-crear" ${Q.fly.length ? '' : 'disabled'}>📸 Armar flyer</button><button class="btn btn-s btn-sm" data-act="pf-modo">Cancelar</button></div>` : ''}
   ${vistaProductos(!!Q.fly)}`;
 }
@@ -129,7 +155,9 @@ const usd = n => 'USD ' + (Math.round(Number(n) * 100) / 100).toLocaleString('es
 function preciosDe(costo, ovr) {
   const t = P.t, c = Number(costo) || 0, sh = ovr == null || ovr === '' ? 0 : Number(ovr) - Number(t.margen_1);
   const m1 = ovr == null || ovr === '' ? Number(t.margen_1) : Number(ovr);
-  return { min: precioArs(c, t.cotizacion_usd, m1), 1: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_1) + sh)), 3: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_3) + sh)), 6: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_6) + sh)), 12: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_12) + sh)) };
+  const o = { min: precioArs(c, t.cotizacion_usd, m1), 1: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_1) + sh)), 3: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_3) + sh)), 6: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_6) + sh)), 12: precioArs(c, t.cotizacion_usd, Math.max(0, Number(t.margen_12) + sh)) };
+  if (!can('escalas')) o[3] = o[6] = o[12] = o[1];   // v2.33: en Gratis, un solo precio para cualquier cantidad (igual que la base)
+  return o;
 }
 // mismo cálculo que la base: primero el descuento del combo y después la oferta vigente (redondeado a $10)
 const conDesc = (x, pct) => !(Number(pct) > 0) || x == null ? x : Math.ceil(x * (1 - Math.min(90, Number(pct)) / 100) / 10) * 10;
@@ -144,11 +172,11 @@ function filaProd(p, extra) {
   Object.keys(pr0).forEach(k => { pr[k] = precioFinal(p, pr0[k]); });
   const of = Number(p.oferta_pct) > 0 ? (ofertaVig(p) ? `🏷️ -${Math.round(p.oferta_pct)}% hasta ${new Date(p.oferta_hasta).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : p.oferta_desde && new Date(p.oferta_desde) > new Date() ? `🏷️ -${Math.round(p.oferta_pct)}% desde ${new Date(p.oferta_desde).toLocaleDateString('es-AR', { day: 'numeric', month: 'numeric' })}` : '') : '';
   const det = [Array.isArray(p.combo) && p.combo.length ? `🧩 combo de ${p.combo.reduce((a, c) => a + (+c.cant || 0), 0)} u.` : '', of, promoChip(p), p.categoria, p.unidad && p.unidad !== 'unidad' ? 'por ' + p.unidad + (p.contenido ? ' x' + p.contenido : '') : '', p.precio_unico ? 'precio único' : '', P.t.modo_stock === 'mixto' && p.a_pedido ? 'por encargo' : '', usd(p.costo_usd), p.margen_override != null ? 'margen propio ' + Math.round(p.margen_override * 100) + '%' : '', p.stock_talles ? resumenTalles(p) : p.stock != null ? (p.stock > 0 ? 'stock ' + p.stock : 'sin stock') : '', p.activo ? '' : 'oculto'].filter(Boolean).join(' · ');
-  const sel = Q.fly && Q.fly.includes(p.id);
-  return `<div class="prow${p.activo ? '' : ' off'}${sel ? ' sel' : ''}" data-act="${Q.fly ? 'pf-sel' : 'p-editar'}" data-id="${p.id}" role="button" tabindex="0" aria-label="${Q.fly ? 'Elegir' : 'Editar'} ${esc(p.nombre)}"${Q.fly ? ` aria-pressed="${!!sel}"` : ''}>
+  const sel = Q.fly && Q.fly.includes(p.id), fuera = CUPO && p.activo && !CUPO.has(p.id);
+  return `<div class="prow${p.activo ? '' : ' off'}${fuera ? ' fuera' : ''}${sel ? ' sel' : ''}" data-act="${Q.fly ? 'pf-sel' : 'p-editar'}" data-id="${p.id}" role="button" tabindex="0" aria-label="${Q.fly ? 'Elegir' : 'Editar'} ${esc(p.nombre)}"${Q.fly ? ` aria-pressed="${!!sel}"` : ''}>
     ${Q.fly ? `<span class="pf-chk" aria-hidden="true">${sel ? '✓' : ''}</span>` : ''}<span class="th">${p.imagen_url ? `<img src="${esc(p.imagen_url)}" alt="" loading="lazy">` : esc(p.emoji)}</span>
-    <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${esc(det)}</div>${extra || ''}</span>
-    <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
+    <span style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="ds">${fuera ? '<span class="tag warn">No se ve: plan Gratis (hasta 100)</span> ' : ''}${esc(det)}</div>${extra || ''}</span>
+    <span class="pr">${fmt(P.t.modalidad === 'mayorista' ? pr[1] : pr.min)}${may && can('escalas') ? `<small>x12: ${fmt(pr[12])}</small>` : ''}</span></div>`;
 }
 /* ---------- flyers del comercio (con su marca) ---------- */
 // Los precios que se estampan dependen de cómo vende la tienda: mayorista/híbrida → escalas; minorista → un solo precio.
@@ -156,7 +184,7 @@ function itemFlyer(p) {
   const b = preciosDe(p.costo_usd, p.margen_override), m = P.t.modalidad, may = m !== 'minorista', pr = {}; Object.keys(b).forEach(k => { pr[k] = precioFinal(p, b[k]); });
   const base = m === 'mayorista' ? b[1] : b.min, precio = m === 'mayorista' ? pr[1] : pr.min;
   return { nombre: p.nombre, categoria: p.categoria, img: p.imagen_url || '', emoji: p.emoji, precio, antes: precio < base ? base : 0, pct: Math.round(ofertaVig(p) || 0),
-    escalas: may && !p.precio_unico ? { 1: pr[1], 3: pr[3], 6: pr[6], 12: pr[12] } : null, min: m === 'hibrido' ? pr.min : 0 };
+    escalas: may && !p.precio_unico && can('escalas') ? { 1: pr[1], 3: pr[3], 6: pr[6], 12: pr[12] } : null, min: m === 'hibrido' ? pr.min : 0 };
 }
 const encargoP = p => P.t.modo_stock === 'encargo' || (P.t.modo_stock === 'mixto' && !!p.a_pedido);
 function flyerDe(ids, badge) {
@@ -167,7 +195,12 @@ function flyerDe(ids, badge) {
 }
 on('pf-modo', () => { Q.fly = Q.fly ? null : []; pintar(); });
 on('pf-sel', d => { if (!Q.fly) return; const i = Q.fly.indexOf(d.id); if (i >= 0) Q.fly.splice(i, 1); else if (Q.fly.length >= 4) { toast('Un flyer lleva hasta 4 productos'); return; } else Q.fly.push(d.id); pintar(); });
-on('pf-crear', () => { if (Q.fly && Q.fly.length) flyerDe(Q.fly); });
+on('pf-crear', () => {
+  if (!Q.fly || !Q.fly.length) return;
+  if (!usarFlyer()) { toast(`Usaste tus ${FLYERS_GRATIS} flyers de prueba de este mes: se renuevan el 1°. Con ${PLAN_NOMBRE.pro} son ilimitados.`); return; }
+  if (!can('flyers')) toast(`Flyer de prueba ${flyersUsados()} de ${FLYERS_GRATIS} este mes`);
+  flyerDe(Q.fly);
+});
 
 function carritos() {
   if (!can('carritos')) return '<div class="locked"><b>🛒 Carritos abandonados</b><p style="margin:6px 0">Recontactá por WhatsApp a quienes dejaron productos sin comprar.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>';
@@ -179,6 +212,7 @@ function carritos() {
 function modal() {
   const m = P.modal;
   if (m.tipo === 'mas') return menuMas();
+  if (m.tipo === 'herr') return menuHerr();
   if (m.tipo === 'ayuda') return ayudaHtml();
   if (m.tipo === 'sugerir') return sugerirHtml();
   if (m.tipo === 'planes') return planesHtml(m);
@@ -197,10 +231,10 @@ function modal() {
     <div class="row2"><div class="fg"><label class="flabel">Costo en USD</label><input class="fi" name="costo_usd" type="number" step="any" min="0" value="${p.costo_usd != null ? Number(p.costo_usd) : ''}" data-input="p-prev" required${(m.combo || []).length ? ' readonly title="En un combo, el costo es la suma de lo que trae"' : ''}></div><div class="fg"><label class="flabel">Marca</label><input class="fi" name="marca" value="${esc(p.marca || '')}" maxlength="60"></div></div>
     <div class="row2"><div class="fg"><label class="flabel">Se vende por</label><select class="fi" name="unidad" data-change="p-uni">${UNIDADES_P.map(([k, n]) => `<option value="${k}" ${(p.unidad || 'unidad') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
     <div class="fg" id="p-cont" ${['pack', 'bulto', 'caja', 'display'].includes(p.unidad) ? '' : 'hidden'}><label class="flabel">Unidades que trae</label><input class="fi" name="contenido" type="number" min="1" max="100000" value="${p.contenido || ''}" placeholder="Ej: 12"></div></div>
-    ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel"><input type="checkbox" name="precio_unico" ${p.precio_unico ? 'checked' : ''}> Precio único (sin descuento por cantidad x3 · x6 · x12)</label></div>` : ''}
+    ${P.t.modalidad !== 'minorista' && can('escalas') ? `<div class="fg"><label class="flabel"><input type="checkbox" name="precio_unico" ${p.precio_unico ? 'checked' : ''}> Precio único (sin descuento por cantidad x3 · x6 · x12)</label></div>` : p.precio_unico ? '<input type="hidden" name="precio_unico" value="on">' : ''}
     <div class="fg tl-box"><label class="flabel" for="p-vars">${esc(campoVar().campo)} (separados por coma)</label><input class="fi" id="p-vars" name="variantes" value="${esc(m.vars.join(', '))}" data-input="p-vars" placeholder="${esc(campoVar().ej)}"><div id="p-pre">${presetsHtml(m.vars)}</div><div id="p-tl">${tallesHtml(m)}</div></div>
     <div class="fg"><span class="flabel">Foto</span><div id="foto-box">${fotoHtml(foto)}</div></div>
-    <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${aviso('stock')}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"${(m.combo || []).length ? ' disabled title="El stock de un combo sale de lo que trae"' : porT ? ' disabled title="Se calcula solo: es la suma de los talles"' : ''}></div></div>
+    <div class="row2"><div class="fg"><label class="flabel">Emoji (si no hay foto)</label><input class="fi" name="emoji" value="${esc(p.emoji || '📦')}" maxlength="4"></div><div class="fg"><label class="flabel">Stock (vacío = sin control)${can('stock') ? '' : ' <small class="muted">· se descuenta solo desde Mayorista Pro</small>'}</label><input class="fi" name="stock" type="number" min="0" value="${p.stock != null ? p.stock : ''}"${(m.combo || []).length ? ' disabled title="El stock de un combo sale de lo que trae"' : porT ? ' disabled title="Se calcula solo: es la suma de los talles"' : ''}></div></div>
     <div class="fg"><label class="flabel">Margen propio % para este producto (vacío = el general)</label><input class="fi" name="margen_propio" type="number" min="0" max="900" step="any" value="${p.margen_override != null ? Math.round(Number(p.margen_override) * 10000) / 100 : ''}" data-input="p-prev" placeholder="General: ${Math.round(Number(P.t.margen_1) * 100)}%"></div>
     ${(P.t.modo_stock || 'stock') !== 'stock' ? `<div class="fg">${P.t.modo_stock === 'mixto' ? `<label class="flabel"><input type="checkbox" name="a_pedido" ${p.a_pedido ? 'checked' : ''}> Por encargo (no lo tengo en stock: lo compro cuando me lo piden)</label>` : '<div class="hint">Tu tienda trabaja por encargo: este producto se vende aunque no tengas stock.</div>'}
       <label class="flabel" for="p-dem" style="margin-top:6px">Demora propia en días (vacío = ${Number(P.t.demora_encargo || 7)})</label><input class="fi" id="p-dem" name="demora_dias" type="number" min="1" max="120" value="${p.demora_dias || ''}"></div>` : ''}
@@ -227,6 +261,7 @@ function prevHtml(costo, ovr) {
   if (!(Number(costo) > 0)) return '<div style="grid-column:1/-1"><small>Cargá el costo para ver los precios</small></div>';
   const pr = preciosDe(costo, ovr);
   if (P.t.modalidad === 'minorista') return `<div style="grid-column:1/-1"><small>Precio de venta</small><b>${fmt(pr.min)}</b></div>`;
+  if (!can('escalas')) return `<div style="grid-column:1/-1"><small>Precio de venta (cualquier cantidad)</small><b>${fmt(pr[1])}</b></div>`;
   return [1, 3, 6, 12].map(n => `<div><small>x${n}${n === 12 ? '+' : ''}</small><b>${fmt(pr[n])}</b></div>`).join('') + (P.t.modalidad === 'hibrido' ? `<div style="grid-column:1/-1"><small>Minorista (público)</small><b>${fmt(pr.min)}</b></div>` : '');
 }
 const fotoHtml = foto => `${foto ? `<img src="${esc(foto)}" alt="Foto actual" style="height:84px;border-radius:10px;display:block;margin-bottom:8px">` : ''}<label class="filebtn">📷 ${foto ? 'Cambiar foto' : 'Subir foto'}<input type="file" accept="image/*" data-change="p-foto"></label>${foto ? ' <button type="button" class="btn btn-s btn-sm" data-act="p-nofoto">Quitar</button>' : ''}<div class="hint" style="margin-top:4px">La achicamos automáticamente para que cargue rápido.</div>${fotoAlt()}`;
@@ -281,7 +316,7 @@ function abrirCombo(ids) {
 const mm = (t, ok) => { const e = $('#mm'); if (e) e.innerHTML = `<div class="${ok ? 'ok-box' : 'err-box'}">${esc(t)}</div>`; };
 
 /* ---------- acciones ---------- */
-on('p-tab', async d => { if (d.k !== P.tab) limpiarSel(); P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado' || d.k === 'caja') await cargarGastos(); if (d.k === 'presupuestos') await cargarPresupuestos(); pintar(); window.scrollTo(0, 0); });
+on('p-tab', async d => { if (d.k !== P.tab) limpiarSel(); if (d.k === 'resumen') refrescarStats(); P.tab = d.k; P.modal = null; Q.q = ''; Q.pq = ''; if (d.k === 'resultado' || d.k === 'caja') await cargarGastos(); if (d.k === 'presupuestos') await cargarPresupuestos(); pintar(); window.scrollTo(0, 0); });
 on('p-salir', async () => { if (Q.stop) Q.stop(); Q.stop = null; await api.salir(); salirFn(); });
 on('p-copiar', d => copiar(d.v));
 on('p-cerrar', () => { P.modal = null; Q.pendiente = false; pintar(); });
@@ -289,7 +324,7 @@ on('p-cerrar-bg', (d, b, e) => { if (e.target === b) { P.modal = null; pintar();
 on('p-nuevo', () => { P.modal = { tipo: 'prod', p: null }; pintar(); });
 on('p-editar', d => { P.modal = { tipo: 'prod', p: P.prods.find(p => p.id === d.id) }; pintar(); });
 on('p-importar', () => { resetImp(); P.modal = { tipo: 'imp' }; pintar(); });
-on('p-catalogo', () => { P.modal = { tipo: 'cat' }; pintar(); });
+on('p-catalogo', () => { if (!can('pdf')) { toast(`El catálogo PDF para revendedores está en ${PLAN_NOMBRE.pro}`); P.modal = { tipo: 'planes', plan: 'pro', periodo: 'mes', transf: '' }; pintar(); return; } P.modal = { tipo: 'cat' }; pintar(); });
 on('p-pedido', async d => {
   const o = P.pedidos.find(x => x.id === d.id); if (!o) return;
   try { const items = P.items.filter(i => i.order_id === o.id); P.modal = { tipo: 'ped', o, items: items.length ? items : await api.itemsPedido(o.id) }; pintar(); } catch (e) { toast(e.message); }
@@ -363,7 +398,7 @@ on('p-prod', async (d, f) => {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
     const g = await api.guardarProducto(id, datos), pid = id || (g && g.id), antes = id ? propiaDe(p0) : null;
     if (conPromo && pid && JSON.stringify(antes ? antes.regla : null) !== JSON.stringify(promoNueva)) { await api.promoProducto(pid, promoNueva); P.promos = await api.misPromos(); }
-    P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Producto guardado');
+    P.prods = await api.misProductos(); P.modal = null; pintar(); toast(g && datos.activo && g.activo === false ? `Se guardó pausado: el plan Gratis publica hasta ${LIMITE_GRATIS} productos` : 'Producto guardado');
   } catch (e) { mm(/stock_talles/.test(e.message) ? 'Para guardar el stock por talle falta correr la migración v2.24 en Supabase.' : /promo/.test(e.message) ? 'Revisá la promo por cantidad (o corré la migración v2.25 en Supabase).' : e.message); }
 });
 on('p-borrar', async (d, b) => { if (!confirmar(b, '¿Eliminar? Tocá de nuevo para confirmar')) return; try { await api.borrarProducto(d.id); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Eliminado'); } catch (e) { mm(e.message); } });
@@ -373,8 +408,18 @@ on('p-guardar', async (d, f) => {
   const c = { whatsapp: String(fd.get('whatsapp')).replace(/\D/g, ''), modalidad: fd.get('modalidad'), cotizacion_usd: Number(fd.get('cotizacion_usd')), compra_minima: Number(fd.get('compra_minima') || 0), gastos_fijos: Number(fd.get('gastos_fijos') || 0), margen_piso: Number(fd.get('margen_piso') || 0) / 100, alias_cobro: fd.get('alias_cobro').trim() || null, margen_1: m(1), margen_3: m(3), margen_6: m(6), margen_12: m(12) };
   if (RUBROS[fd.get('rubro')]) c.rubro = fd.get('rubro');
   if (fd.has('escala_grupo')) c.escala_grupo = ['categoria', 'carrito'].includes(fd.get('escala_grupo')) ? fd.get('escala_grupo') : 'producto';
+  if (fd.has('niv0')) {   // v2.33: nombres de los niveles (vacíos o iguales a los de siempre = se quitan)
+    const n = [0, 1, 2, 3].map(i => String(fd.get('niv' + i) || '').replace(/[<>\r\n\t]/g, '').trim().slice(0, 20)), d = Object.assign({}, P.t.diseno || {});
+    if (n.every(Boolean) && JSON.stringify(n) !== JSON.stringify(NIV_DEF)) d.niveles = n; else delete d.niveles;
+    if (JSON.stringify(d) !== JSON.stringify(P.t.diseno || {})) c.diseno = d;
+  }
   c.modo_stock = fd.get('modo_stock') || 'stock'; c.demora_encargo = Math.max(1, Math.min(120, Math.floor(Number(fd.get('demora_encargo')) || 7)));
   if (can('pixel')) c.pixel_id = (fd.get('pixel_id') || '').trim() || null;
+  if (can('pixel') && 'ga4_id' in P.t) {   // v2.33: Google Analytics 4
+    const g = String(fd.get('ga4_id') || '').trim().toUpperCase();
+    if (g && !/^G-[A-Z0-9]{6,16}$/.test(g)) { $('#aj-m').innerHTML = '<div class="err-box">El ID de Google Analytics 4 empieza con G- y sigue con letras y números (por ejemplo G-AB12CD34EF). Lo encontrás en Analytics → Administrar → Flujos de datos.</div>'; b.disabled = false; window.scrollTo(0, 0); return; }
+    c.ga4_id = g || null;
+  }
   if (can('webhook')) c.webhook_url = (fd.get('webhook_url') || '').trim() || null;
   try { P.t = await api.guardarTienda(P.t.id, c) || P.t; toast('Cambios guardados'); pintar(); }
   catch (e) { $('#aj-m').innerHTML = `<div class="err-box">${esc(e.message)}</div>`; b.disabled = false; window.scrollTo(0, 0); }

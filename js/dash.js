@@ -1,6 +1,8 @@
 // Dashboard interactivo: KPIs, ventas por día, top productos, categorías, clientes, equilibrio, stock y carritos.
 import { esc, fmt, on, $, waLink } from './util.js';
 import { P, can, aviso, precioArs } from './state.js';
+import { api } from './api.js';
+import { ORIGEN_NOMBRE } from './origen.js';
 import { linea, barras, dona } from './charts.js';
 
 const D = { rango: 30, metrica: 'ventas', cat: null };
@@ -41,6 +43,51 @@ function calcular() {
     mod: [...mod.entries()].map(([label, v]) => ({ label: label === 'mayorista' ? 'Mayorista' : 'Minorista', v })),
     margen: conCosto ? conCosto - costo : null, margenPct: conCosto ? Math.round((conCosto - costo) / conCosto * 100) : null };
 }
+/* ---------- v2.33 · Estadísticas de visitas (anónimas). En Gratis: el pulso de la semana y un anticipo de lo que trae Pro.
+   Desde Pro (y en la prueba): de dónde llegan y el embudo hasta el pedido. El corte por plan lo hace la base. ---------- */
+const ST = { tid: null, dias: null, d: null, at: 0, cargando: false };
+// Se piden al abrir el Resumen y se renuevan si tienen más de un minuto (mientras tanto se muestra lo último que llegó)
+export const refrescarStats = () => { ST.at = 0; };
+function stats(dias) {
+  if (ST.tid !== P.t.id) Object.assign(ST, { tid: P.t.id, dias: null, d: null, at: 0, cargando: false });
+  const mismo = ST.dias === dias;
+  if (!ST.cargando && (!mismo || Date.now() - ST.at > 60000)) {
+    ST.cargando = true;
+    api.statsTienda(dias).then(d => { ST.d = d || null; }).catch(() => { ST.d = null; })
+      .finally(() => { ST.dias = dias; ST.at = Date.now(); ST.cargando = false; if (P.tab === 'resumen' && !P.modal) P.repintar(); });
+  }
+  return mismo ? ST.d : null;
+}
+const nn = x => (Number(x) || 0).toLocaleString('es-AR');
+const plural = (n, a, b) => Number(n) === 1 ? a : b;
+const desdeTxt = s => s.medido_desde ? `Medimos desde el ${s.medido_desde.slice(8, 10)}/${s.medido_desde.slice(5, 7)}. ` : '';
+function pulsoHtml(s) {
+  const top = s.top || [];
+  return `<div class="cc est-pulso" id="est-pulso"><h3>📈 Tu tienda esta semana</h3>
+    <p class="est-frase">${s.visitas ? `Entraron <b>${nn(s.visitas)}</b> ${plural(s.visitas, 'persona', 'personas')} a tu tienda y miraron <b>${nn(s.vistas_producto)}</b> ${plural(s.vistas_producto, 'producto', 'productos')}.` : 'Todavía no hay visitas esta semana. Compartí tu enlace en tus estados, grupos e Instagram.'}</p>
+    <div class="est-mini"><span><b>${nn(s.visitas)}</b> visitas</span><span><b>${nn(s.vistas_producto)}</b> productos mirados</span><span><b>${nn(s.pedidos)}</b> ${plural(s.pedidos, 'pedido', 'pedidos')}</span></div>
+    ${top.length ? `<h4 class="est-h4">👀 Lo más visto</h4><ol class="est-top">${top.map(x => `<li><span>${esc(x.nombre)}</span><b>${nn(x.vistas)}</b></li>`).join('')}</ol>` : ''}
+    <p class="hint">${desdeTxt(s)}No cuentan tus propias visitas.</p></div>`;
+}
+// Anticipo (uno de los 3 momentos en que el plan Gratis ve Mayorista Pro): con sus datos reales, sin esconder la pestaña.
+const anticipoHtml = s => { const c = Number(s.carritos_sin_cerrar) || 0;
+  return `<div class="cc locked est-lock" id="est-lock"><b>🔒 Descubrí cuántas vinieron de Instagram, WhatsApp o Google${c ? ` y recuperá ${c} ${plural(c, 'carrito abandonado', 'carritos abandonados')}` : ' y recuperá los carritos abandonados'}</b>
+    <p style="margin:6px 0">Disponible en Mayorista Pro: el origen de cada visita, el embudo hasta el pedido, Meta Pixel y Google Analytics 4.</p>
+    <button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver Mayorista Pro</button></div>`; };
+const PASOS = [['visitas', '👥 Entraron'], ['vieron', '👀 Miraron productos'], ['carrito', '🛒 Agregaron al carrito'], ['pedido', '✅ Mandaron el pedido']];
+function statsProHtml(s, urlTienda) {
+  const e = s.embudo || {}, base = Number(e.visitas) || 0;
+  const emb = PASOS.map(([k, t]) => { const v = Number(e[k]) || 0, pct = base ? Math.round(v / base * 100) : 0;
+    return `<div class="hbar emb-paso" data-tip="${t.slice(2).trim()} · ${nn(v)}${base ? ' · ' + pct + '% de las visitas' : ''}"><span class="n">${t}</span><span class="tr"><i style="width:${Math.max(2, pct)}%"></i></span><span class="v">${nn(v)}${base && k !== 'visitas' ? ` <small>${pct}%</small>` : ''}</span></div>`; }).join('');
+  const org = (s.origen || []).map(o => ({ label: ORIGEN_NOMBRE[o.origen] || o.origen, v: Number(o.visitas) || 0, tip: `${ORIGEN_NOMBRE[o.origen] || o.origen} · ${nn(o.visitas)} visitas · ${nn(o.pedidos)} ${plural(o.pedidos, 'pedido', 'pedidos')}` }));
+  const con = (o, n) => `<button class="linkb" data-act="p-copiar" data-v="${esc(urlTienda + (urlTienda.includes('?') ? '&' : '?') + 'o=' + o)}">${n}</button>`;
+  return `<div class="grid2 est-pro"><div class="cc" id="est-origen"><h3>📍 De dónde llegan (${s.dias} d)</h3>
+      <p class="est-frase"><b>${nn(s.visitas)}</b> visitas · <b>${nn(s.vistas_producto)}</b> productos mirados</p>
+      ${org.length ? barras(org, nn) : '<p class="muted">Todavía no hay visitas en este período. Compartí tu enlace para empezar.</p>'}
+      <p class="hint">Para saberlo exacto, copiá tu enlace para ${con('ig', 'Instagram')} · ${con('wa', 'WhatsApp')} · ${con('fb', 'Facebook')}. ${desdeTxt(s)}No cuentan tus propias visitas.</p></div>
+    <div class="cc" id="est-embudo"><h3>🔻 De la visita al pedido</h3>${base ? emb : '<p class="muted">Cuando entren visitas vas a ver cuántas miran productos, cuántas llegan al carrito y cuántas te mandan el pedido.</p>'}
+      ${(s.top || []).length ? `<h4 class="est-h4">👀 Lo más visto</h4><ol class="est-top">${s.top.map(x => `<li><span>${esc(x.nombre)}</span><b>${nn(x.vistas)}</b></li>`).join('')}</ol>` : ''}</div></div>`;
+}
 const delta = (a, b) => b > 0 ? (a >= b ? '▲ ' : '▼ ') + Math.abs(Math.round((a - b) / b * 100)) + '% vs. período anterior' : 'sin período anterior';
 
 export function vistaResumen(urlTienda) {
@@ -52,10 +99,11 @@ export function vistaResumen(urlTienda) {
     <div class="kpi"><small>Cobrado / por cobrar</small><b>${fmt(M.cobrado)}</b><i>${fmt(M.pend)} pendiente</i></div>
     ${pro ? `<div class="kpi" title="Ganancia sobre lo vendido, usando el costo actual de cada producto"><small>Ganancia estimada${D.cat ? ' · ' + esc(D.cat) : ''}</small><b>${M.margen == null ? '—' : fmt(M.margen)}</b><i>${M.margenPct == null ? 'sin datos' : M.margenPct + '% de lo vendido'}</i></div>
     <div class="kpi"><small>Recompra</small><b>${M.recompra}%</b><i>${M.nCli} clientes</i></div>` : ''}</div>`;
-  const enlace = `<div class="card"><b>Tu enlace para clientes</b><div class="hint" style="word-break:break-all;margin:6px 0">${esc(urlTienda)}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p btn-sm" data-act="p-copiar" data-v="${esc(urlTienda)}">Copiar enlace</button><a class="btn btn-s btn-sm" href="${esc(urlTienda)}" target="_blank" rel="noopener">Ver mi tienda</a><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${esc(waLink('', 'Mirá mi catálogo: ' + urlTienda).replace('phone=&', ''))}">Compartir por WhatsApp</a></div></div>`;
+  const enlace = `<div class="card"><b>Tu enlace para clientes</b><div class="hint" style="word-break:break-all;margin:6px 0">${esc(urlTienda)}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p btn-sm" data-act="p-copiar" data-v="${esc(urlTienda)}">Copiar enlace</button><a class="btn btn-s btn-sm" href="${esc(urlTienda)}" target="_blank" rel="noopener">Ver mi tienda</a><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${esc(waLink('', 'Mirá mi catálogo: ' + urlTienda + (urlTienda.includes('?') ? '&' : '?') + 'o=wa').replace('phone=&', ''))}">Compartir por WhatsApp</a></div></div>`;
   const ctl = `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;margin-bottom:12px"><div class="seg" role="group" aria-label="Período">${[7, 30, 90].map(n => `<button class="${D.rango === n ? 'on' : ''}" data-act="d-rango" data-n="${n}">${n} días</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Métrica">${[['ventas', 'Ventas $'], ['pedidos', 'Pedidos'], ['unidades', 'Unidades']].map(([k, n]) => `<button class="${D.metrica === k ? 'on' : ''}" data-act="d-met" data-k="${k}">${n}</button>`).join('')}</div></div>`;
-  if (!pro) return enlace + kp + `<div class="locked"><b>📈 Dashboard completo</b><p style="margin:6px 0">Gráficos de ventas, top productos, categorías, clientes, margen y punto de equilibrio.</p><span class="tag warn">🔒 Plan Mayorista Pro</span><br><button class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="pro">Ver planes y activar</button></div>` + ultimos();
+  if (!pro) { const s = stats(7); return enlace + kp + (s ? `<div class="grid2 est-g">${pulsoHtml(s)}${anticipoHtml(s)}</div>` : '') + ultimos(); }
+  const st = stats(D.rango);
   const f = D.metrica === 'ventas' ? fmt : n => String(Math.round(n));
   const pts = [...M.dias.entries()].map(([k, b]) => ({ x: corto(k), v: b[D.metrica], tip: corto(k) + ' · ' + (D.metrica === 'ventas' ? fmt(b.ventas) : D.metrica === 'pedidos' ? b.pedidos + ' pedidos' : b.unidades + ' unidades') }));
   const sinDatos = !M.cur.length;
@@ -67,7 +115,7 @@ export function vistaResumen(urlTienda) {
   } else eq = `<div class="cc"><h3>⚖️ Punto de equilibrio</h3><p class="muted" style="font-size:.82rem">Cargá tus gastos fijos mensuales en <b>Ajustes</b> y te decimos cuánto necesitás vender.</p></div>`;
   const crit = P.prods.filter(p => p.activo && p.stock != null && p.stock <= 3).sort((a, b) => a.stock - b.stock).slice(0, 6);
   const cartV = P.carritos.reduce((s, c) => s + Number(c.total_ars), 0);
-  return enlace + ctl + kp + `<div class="cc"><h3>Evolución</h3>${sinDatos ? '<p class="muted">Todavía no hay pedidos en este período. Compartí tu enlace para empezar.</p>' : linea(pts, { fmt: f, label: 'Evolución de ' + D.metrica })}</div>
+  return enlace + ctl + kp + (st ? statsProHtml(st, urlTienda) : '') + `<div class="cc"><h3>Evolución</h3>${sinDatos ? '<p class="muted">Todavía no hay pedidos en este período. Compartí tu enlace para empezar.</p>' : linea(pts, { fmt: f, label: 'Evolución de ' + D.metrica })}</div>
   <div class="grid2"><div class="cc"><h3>Top productos${D.cat ? ' · ' + esc(D.cat) + ' <button class="tag" data-act="d-cat" data-c="">✕</button>' : ''}</h3>${barras(M.topP.map(x => ({ label: x.label, v: x.v, tip: x.label + ' · ' + x.u + ' u. · ' + fmt(x.v) })), fmt)}</div>
   <div class="cc"><h3>Ventas por categoría</h3>${dona(M.cats, fmt, D.cat)}<p class="hint" style="margin-top:6px">Tocá una categoría para filtrar el ranking.</p></div>
   <div class="cc"><h3>Minorista vs. mayorista</h3>${dona(M.mod, fmt, null, false)}</div>

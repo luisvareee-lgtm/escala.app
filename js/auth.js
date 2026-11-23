@@ -28,7 +28,7 @@ export function pantallaRegistro(app) {
     <div class="fg"><label class="flabel" for="p">Contraseña (mínimo 8 caracteres)</label><input class="fi" id="p" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Crear cuenta gratis</button></form>
     <p class="hint center" style="margin-top:10px">Al crear tu cuenta aceptás los <a href="#/terminos">Términos y condiciones</a> y la <a href="#/privacidad">Política de privacidad</a>.</p>
-    <p class="hint center" style="margin-top:8px"><span class="dias-prueba">14</span> días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
+    <p class="hint center" style="margin-top:8px">Gratis hasta 100 productos, para siempre, y <span class="dias-prueba">14</span> días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
   cargarCupos();
 }
 export function pantallaOlvide(app, aviso) {
