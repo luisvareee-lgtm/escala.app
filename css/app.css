@@ -1823,3 +1823,10 @@ input.fi.rev-pct{width:96px;flex:none}
 .aj-integ>summary small{display:block;margin-top:2px;font-weight:500}
 .aj-upg{margin-top:8px;font-size:.84rem}
 .imp-solo{margin:6px 0 2px}
+/* v2.33.2: precio en la edición masiva (un solo número con su unidad) y atajos de variantes según el rubro */
+.mz-pr-in{display:flex;align-items:center;gap:8px}.mz-pr-in .fi{flex:1;min-width:0}
+.mz-pr-u{font-weight:700;color:var(--t2);min-width:2.5em}
+.mz-pr-que{margin-top:2px}
+.mz-pr-campo{margin-top:12px}
+.mz-ej small{display:block;color:var(--t2);font-size:.75rem;margin-top:1px}
+.rub-que{margin-top:6px}
