@@ -1,5 +1,5 @@
 // Crea el link de pago de Mercado Pago de un pedido. El monto SALE DE LA BASE (no del navegador) y el dinero va a la cuenta del comercio.
-import { json, rpc, mismoOrigen, sitio, esUuid } from '../_lib.js';
+import { json, rpc, mismoOrigen, origenDeTienda, sitio, esUuid } from '../_lib.js';
 
 export async function onRequestPost({ request, env }) {
   if (!mismoOrigen(request, env)) return json({ error: 'Origen no permitido' }, 403);
@@ -11,11 +11,14 @@ export async function onRequestPost({ request, env }) {
   catch (e) { return json({ error: e.message }, 429); }
   if (!d) return json({ error: 'Este pedido no admite pago online.' }, 404);
   const base = sitio(request, env);
+  // si el cliente compró desde  tienda.dominio , vuelve ahí (ahí quedó su carrito); si no, a  dominio/t/tienda
+  const tienda = origenDeTienda(request, env);
+  const vuelta = tienda && tienda.startsWith('https://' + slug + '.') ? tienda + '/' : `${base}/t/${slug}`;
   const pref = {
     items: [{ id: 'pedido-' + d.numero, title: `Pedido #${d.numero} · ${d.tienda}`.slice(0, 120), quantity: 1, unit_price: Number(d.total), currency_id: 'ARS' }],
     external_reference: d.order_id,
     notification_url: `${base}/api/mp-webhook?t=${d.tenant_id}`,
-    back_urls: { success: `${base}/t/${slug}?pago=ok&n=${d.numero}`, pending: `${base}/t/${slug}?pago=pendiente&n=${d.numero}`, failure: `${base}/t/${slug}?pago=error&n=${d.numero}` },
+    back_urls: { success: `${vuelta}?pago=ok&n=${d.numero}`, pending: `${vuelta}?pago=pendiente&n=${d.numero}`, failure: `${vuelta}?pago=error&n=${d.numero}` },
     auto_return: 'approved',
   };
   let r;

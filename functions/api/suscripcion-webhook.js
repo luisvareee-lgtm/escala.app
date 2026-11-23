@@ -3,17 +3,18 @@
 // el estado real de esa suscripción. Una suscripción inventada no existe en tu cuenta y se ignora.
 // Variables (Cloudflare > Settings > Variables and Secrets):
 //   MP_PLATAFORMA_TOKEN  (SECRETA) Access Token de producción de la cuenta que cobra los planes.
-//   MP_PLAN_BASE, MP_PLAN_PRO, MP_PLAN_API  (opcionales) id del plan de suscripción de cada plan (preapproval_plan_id).
-//   Si no están, el plan se deduce por el monto: PRECIO_BASE / PRECIO_PRO / PRECIO_API (por defecto 9900 / 29900 / 49900).
+//   MP_PLAN_PRO, MP_PLAN_API  (opcionales) id del plan de suscripción de cada plan (preapproval_plan_id).
+//   Si no están, el plan se deduce por el monto: PRECIO_PRO / PRECIO_API (por defecto 29900 / 49900).
+//   v2.33: base es el plan Gratis ($0): un pago nunca activa base (MP_PLAN_BASE / PRECIO_BASE ya no se usan).
 import { json, rpc, esUuid } from '../_lib.js';
 
 export function planDe(env, pre) {
   const pid = String(pre.preapproval_plan_id || '');
-  for (const [k, plan] of [['MP_PLAN_API', 'api'], ['MP_PLAN_PRO', 'pro'], ['MP_PLAN_BASE', 'base']]) if (pid && env[k] && String(env[k]) === pid) return plan;
+  for (const [k, plan] of [['MP_PLAN_API', 'api'], ['MP_PLAN_PRO', 'pro']]) if (pid && env[k] && String(env[k]) === pid) return plan;
   const ar = pre.auto_recurring || {}, monto = Number(ar.transaction_amount);
   if (!(monto > 0) || (ar.currency_id && ar.currency_id !== 'ARS')) return null;
-  const pr = { api: Number(env.PRECIO_API) || 49900, pro: Number(env.PRECIO_PRO) || 29900, base: Number(env.PRECIO_BASE) || 9900 };
-  return monto >= pr.api ? 'api' : monto >= pr.pro ? 'pro' : monto >= pr.base ? 'base' : null;   // paga menos que el Base: no activa nada
+  const pr = { api: Number(env.PRECIO_API) || 49900, pro: Number(env.PRECIO_PRO) || 29900 };
+  return monto >= pr.api ? 'api' : monto >= pr.pro ? 'pro' : null;   // paga menos que Mayorista Pro: no activa nada
 }
 
 export async function onRequestPost({ request, env }) {
