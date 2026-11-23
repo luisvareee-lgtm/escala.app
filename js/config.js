@@ -11,9 +11,9 @@ window.CONFIG_MARCA = {
       PAGO_ALIAS: 'mp-urbano',
       PAGO_CBU: '0000003100023563240267',
       SOPORTE_WSP: '5491153162392',
-      EMAIL_CONTACTO: 'contacto@elite-urbano.com',
-      TITULAR: 'Luis Varela',
-      CUIT: '20-32960746-2',
+      EMAIL_CONTACTO: 'hola@eskalapp.com',
+      TITULAR: 'Eskalapp',
+      CUIT: '',
       DOMINIO: 'eskalapp.com',
       DEMO_URL: 'https://lua-beauty.eskalapp.com/',
       PLANES: { base: { link: '' }, pro: { link: '' }, api: { link: '' } }
