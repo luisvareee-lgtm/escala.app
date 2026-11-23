@@ -31,12 +31,35 @@ export async function usuarioDeToken(env, request) {
   return u && esUuid(u.id) ? u.id : null;
 }
 
-// Solo aceptamos llamadas del propio sitio (frena que otra web use tus funciones desde el navegador de un visitante).
+// Dominio propio (ej. eskalapp.com). Sale de SITE_URL; si no está, del dominio por el que entró el pedido
+// o del Worker de subdominios (Cloudflare marca sus pedidos con el encabezado cf-worker = dominio).
+export function dominioPropio(request, env) {
+  const limpio = h => String(h || '').toLowerCase().replace(/^www\./, '');
+  try { if (env.SITE_URL) { const h = new URL(env.SITE_URL).hostname; if (!/\.pages\.dev$/.test(h)) return limpio(h); } } catch (e) { }
+  const h = new URL(request.url).hostname;
+  if (!/\.pages\.dev$|^localhost$|^127\./.test(h)) return limpio(h);
+  const w = limpio(request.headers.get('cf-worker'));
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(w) ? w : '';
+}
+// Si el pedido viene de una tienda en  nombre.dominio , devuelve ese origen (https://nombre.dominio); si no, null.
+export function origenDeTienda(request, env) {
+  const o = request.headers.get('origin'); if (!o) return null;
+  let u; try { u = new URL(o); } catch (e) { return null; }
+  const d = dominioPropio(request, env);
+  if (!d || u.protocol !== 'https:' || u.port || !u.hostname.endsWith('.' + d)) return null;
+  const sub = u.hostname.slice(0, -d.length - 1);
+  return /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(sub) ? u.origin : null;
+}
+// Solo aceptamos llamadas del propio sitio y de sus tiendas en subdominio
+// (frena que otra web use tus funciones desde el navegador de un visitante).
 export function mismoOrigen(request, env) {
   const o = request.headers.get('origin');
   if (!o) return false;
   const propio = env.SITE_URL ? new URL(env.SITE_URL).origin : new URL(request.url).origin;
-  return o === propio;
+  if (o === propio || o === new URL(request.url).origin) return true;
+  const d = dominioPropio(request, env);
+  if (d && (o === 'https://' + d || o === 'https://www.' + d)) return true;
+  return !!origenDeTienda(request, env);
 }
 export const sitio = (request, env) => (env.SITE_URL ? new URL(env.SITE_URL).origin : new URL(request.url).origin);
 

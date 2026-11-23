@@ -1,11 +1,12 @@
 // Sirve la página de la app (index.html) con los datos de vista previa correctos para compartir por WhatsApp y redes:
 // título, descripción e imagen de la portada, o el nombre y el logo de cada tienda en /t/<tienda>.
+import { dominioPropio } from './_lib.js';
 export const SEGURIDAD = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "SAMEORIGIN",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://connect.facebook.net 'wasm-unsafe-eval'; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://www.facebook.com https://connect.facebook.net; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://connect.facebook.net https://www.googletagmanager.com 'wasm-unsafe-eval'; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://www.facebook.com https://connect.facebook.net https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'self'; base-uri 'self'; form-action 'self'"
 };
 
 const escAttr = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -44,7 +45,10 @@ export async function pagina(request, env, meta = {}) {
   h.delete('location');
   const resp = new Response(r.body, { status: 200, headers: h });
   if (typeof HTMLRewriter === 'undefined') return resp;
-  const m = { image: okUrl(meta.image) ? meta.image : u.origin + '/og.jpg', url: u.origin + u.pathname, title: meta.title, description: meta.description };
+  // dirección pública: con dominio propio, la tienda se comparte como  tienda.dominio  (aunque el Worker la pida a pages.dev)
+  const d = dominioPropio(request, env), base = d ? 'https://' + d : u.origin;
+  const url = meta.slug && d && request.headers.get('cf-worker') ? `https://${meta.slug}.${d}/` : base + u.pathname;
+  const m = { image: okUrl(meta.image) ? meta.image : base + '/og.jpg', url, title: meta.title, description: meta.description };
   const attr = v => ({ element(e) { if (v) e.setAttribute('content', v); } });
   return new HTMLRewriter()
     .on('title', { element(e) { if (m.title) e.setInnerContent(m.title); } })
