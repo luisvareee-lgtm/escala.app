@@ -120,9 +120,9 @@ const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mis
 
 const PORQUE = [
   ['dolar', 'Tu costo y tu ganancia mandan', 'Cargás el costo y tus márgenes: la app calcula cada precio por cantidad y nunca vendés por debajo de tu margen mínimo.'],
-  ['escala', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
+  ['escalones', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
   ['sync', 'Lista viva, en vez de un PDF', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
-  ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos porcentaje por lo que vendés, solo por herramientas inteligentes. Pagás un abono fijo, mensual o anual.']
+  ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: si querés más, pagás un abono fijo, mensual o anual.']
 ];
 const MAS = [
   ['Por menor y por mayor con el mismo enlace', 'El público ve el precio final. Tus revendedores entran con un código a la lista por cantidad y ven a cuánto revender cada producto y cuánto ganan.'],
@@ -134,10 +134,10 @@ const MAS = [
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
 const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu ganancia y tus clientes te mandan el pedido armado por WhatsApp.',
-  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes llevan mas, ahorran y sube tu ticket promedio! ', 'Plan Gratis hasta 100 productos · 0% comisión por venta']];
+  ['Precios por menor y por mayor (x1 · x3 · x6 · x12) con el mismo enlace', 'Tus clientes ven cuánto les falta para pagar menos y llevan más', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']];
 const PERFILES = {
   nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
-    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Plan Gratis hasta 100 productos · 0% comisión por venta']],
+    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']],
   tienda: ['Tengo una tienda', 'Tus clientes ven tu catálogo con fotos y precios al día, eligen talle o color, arman el carrito y te mandan el pedido por WhatsApp.',
     ['Talles, colores y stock de cada uno', 'Promos, cupones y envío gratis desde el monto que elijas', 'Caja del día: efectivo y transferencia por separado']],
   mayorista: ['Vendo por mayor', 'Dejá de mandar el PDF. Tus clientes entran a tu tienda, ven el precio según cuánto llevan y te mandan el pedido armado por WhatsApp.',
@@ -147,7 +147,7 @@ const perfilHtml = () => { const [, sub, pts] = PERFILES[LP.perfil] || GENERAL; 
 on('lp-perfil', d => { if (!PERFILES[d.k]) return; LP.perfil = d.k; const b = $('#lp-perfil-in'); if (b) b.innerHTML = perfilHtml(); document.querySelectorAll('[data-act=lp-perfil]').forEach(x => { const on_ = x.dataset.k === d.k; x.classList.toggle('on', on_); x.setAttribute('aria-pressed', on_); }); });
 on('lp-ir', d => { const e = document.getElementById(d.k); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 const FAQ = [
-  ['¿Necesito saber programar?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
+  ['¿Necesito saber de computación?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
   ['¿Me cobran comisión por cada venta?', 'No. Pagás solo el abono mensual. Si cobrás con Mercado Pago, la plata entra directo a tu cuenta y solo aplica la comisión de Mercado Pago.'],
   ['¿Cuántos productos y pedidos puedo tener?', 'En el plan Gratis publicás hasta 100 productos, para siempre; en los planes pagos, todos los que quieras. Los pedidos no tienen límite en ningún plan.'],
   ['¿Puedo vender por menor y por mayor con el mismo enlace?', 'Sí. El público ve el precio final y tus revendedores entran con un código a la lista por cantidad (plan Mayorista Pro).'],
@@ -207,10 +207,10 @@ function simCosto() {
 const VID = { io: null, usuario: false };
 const videoHtml = () => `<figure class="lp-vid" id="lp-vid-box">
     <video id="lp-vid" muted loop playsinline preload="metadata" poster="/img/lp/embudo.jpg" width="864" height="1080" aria-describedby="lp-vid-tx"><source src="/img/lp/embudo.mp4" type="video/mp4"><source src="/img/lp/embudo.webm" type="video/webm"></video>
-    <figcaption id="lp-vid-tx"><span class="lp-vid-acc"><button type="button" class="lp-vid-b" data-act="lp-son" aria-pressed="false"><span aria-hidden="true">🔇</span> Activar sonido</button><button type="button" class="lp-vid-b lp-vid-pp" data-act="lp-pp" aria-label="Pausar el video"><span aria-hidden="true">❚❚</span></button></span><span class="sr">En el video: las planillas y los PDF de tu proveedor (también fotos o el chat de WhatsApp) entran a Eskalapp y en minutos tenés tu tienda con precios x1, x3, x6 y x12; cuanto más cargan el carrito, más baja el precio, y el pedido te llega sumado por WhatsApp. </span><span class="lp-vid-real"><img src="/img/lua/lua-logo.png" alt="" width="22" height="22" loading="lazy">Ejemplo con la tienda real de Lua Beauty</span></figcaption></figure>`;
+    <figcaption id="lp-vid-tx"><span class="lp-vid-acc"><button type="button" class="lp-vid-b" data-act="lp-son" aria-pressed="false"><span aria-hidden="true">🔊</span> Ver con sonido · 20 seg</button><button type="button" class="lp-vid-b lp-vid-pp" data-act="lp-pp" aria-label="Pausar el video"><span aria-hidden="true">❚❚</span></button></span><span class="sr">En el video: las planillas y los PDF de tu proveedor (también fotos o el chat de WhatsApp) entran a Eskalapp y en minutos tenés tu tienda con precios x1, x3, x6 y x12; cuanto más cargan el carrito, más baja el precio, y el pedido te llega sumado por WhatsApp. </span><span class="lp-vid-real"><img src="/img/lua/lua-logo.png" alt="" width="22" height="22" loading="lazy">Ejemplo con la tienda real de Lua Beauty</span></figcaption></figure>`;
 function vidBotones(v) {
   const s = document.querySelector('[data-act=lp-son]'), p = document.querySelector('[data-act=lp-pp]'); if (!v) return;
-  if (s) { s.setAttribute('aria-pressed', String(!v.muted)); s.innerHTML = v.muted ? '<span aria-hidden="true">🔇</span> Activar sonido' : '<span aria-hidden="true">🔊</span> Sonido activado'; }
+  if (s) { s.setAttribute('aria-pressed', String(!v.muted)); s.innerHTML = v.muted ? '<span aria-hidden="true">🔊</span> Ver con sonido · 20 seg' : '<span aria-hidden="true">🔊</span> Sonido activado'; }
   if (p) { p.setAttribute('aria-label', v.paused ? 'Reproducir el video' : 'Pausar el video'); p.innerHTML = `<span aria-hidden="true">${v.paused ? '▶' : '❚❚'}</span>`; }
 }
 function iniciarVideo() {
@@ -270,8 +270,8 @@ export function inicio(app) {
     <nav class="lp-nav" aria-label="Secciones"><button type="button" data-act="lp-ir" data-k="probar">Cómo funciona</button><button type="button" data-act="lp-ir" data-k="comparar">Comparar</button><button type="button" data-act="lp-ir" data-k="planes">Planes</button><button type="button" data-act="lp-ir" data-k="faq">Preguntas</button></nav>
     <span class="lp-top-acc"><a class="lp-in" href="#/login">Ingresar</a><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></span></div></div>
   <div class="lp">
-  <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para el que recién empieza, tiendas y mayoristas</div>
-    <h1>Tu lista de precios, siempre al día. <span>Por menor o por mayor, sin PDF ni Excel y sin comisión por venta.</span></h1></div>
+  <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para mayoristas, tiendas y emprendedores</div>
+    <h1>De tu lista a una tienda online en minutos. <span>Recibí los pedidos armados por WhatsApp, sin comisión por venta. Gratis hasta 100 productos, sin tarjeta.</span></h1></div>
     <div class="lp-hero-demo">${videoHtml()}</div>
     <div class="lp-hero-mas"><div class="lp-perfil" role="group" aria-label="¿Cuál es tu caso?">${Object.entries(PERFILES).map(([k, v]) => `<button type="button" data-act="lp-perfil" data-k="${k}" class="${LP.perfil === k ? 'on' : ''}" aria-pressed="${LP.perfil === k}">${v[0]}</button>`).join('')}</div>
     <div id="lp-perfil-in">${perfilHtml()}</div>
@@ -279,7 +279,7 @@ export function inicio(app) {
     <p class="lp-micro">${MICRO}</p>
     ${cuposHtml()}</div></section>
 
-  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Soporte humano real</b>te ayudamos a armar tu tienda</li></ul>
+  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Hecho en Argentina</b>en pesos y con ayuda en español</li></ul>
 
   <section class="lp-sec lp-gbsec"><div class="lp-gbsec-tx"><h2>Así compra tu cliente: cada escalón baja el precio</h2><p class="lp-sub">Precios por cantidad x1 · x3 · x6 · x12, automáticos. Tocá <b>+</b> y mirá cómo baja: son los precios reales de un producto de <b>Lua Beauty</b>.</p>
     <p class="lp-real"><img src="/img/lua/lua-logo.png" alt="" width="28" height="28" loading="lazy">Tienda real de Lua Beauty · cosmética y skincare</p></div><div id="lp-gb">${gbHtml()}</div></section>
@@ -321,7 +321,7 @@ export function inicio(app) {
 
   <section class="lp-final"><h2>Armá tu tienda hoy</h2><p>En unos minutos tenés tu lista online con tus precios, por menor o por mayor, y los pedidos llegando a tu WhatsApp.</p>${cta('btn-inv')}<small>${MICRO}</small></section>
 
-  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu catálogo inteligente con precios por cantidad y pedidos por WhatsApp.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
+  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
     <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
   <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b>Gratis hasta 100 productos · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
   cargarCupos(); autoBarra(); cargarDemos(); iniciarVideo();
