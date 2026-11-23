@@ -147,7 +147,7 @@ const perfilHtml = () => { const [, sub, pts] = PERFILES[LP.perfil] || GENERAL; 
 on('lp-perfil', d => { if (!PERFILES[d.k]) return; LP.perfil = d.k; const b = $('#lp-perfil-in'); if (b) b.innerHTML = perfilHtml(); document.querySelectorAll('[data-act=lp-perfil]').forEach(x => { const on_ = x.dataset.k === d.k; x.classList.toggle('on', on_); x.setAttribute('aria-pressed', on_); }); });
 on('lp-ir', d => { const e = document.getElementById(d.k); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 const FAQ = [
-  ['¿Necesito saber de computación?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
+  ['¿Necesito saber programar?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
   ['¿Me cobran comisión por cada venta?', 'No. Pagás solo el abono mensual. Si cobrás con Mercado Pago, la plata entra directo a tu cuenta y solo aplica la comisión de Mercado Pago.'],
   ['¿Cuántos productos y pedidos puedo tener?', 'En el plan Gratis publicás hasta 100 productos, para siempre; en los planes pagos, todos los que quieras. Los pedidos no tienen límite en ningún plan.'],
   ['¿Puedo vender por menor y por mayor con el mismo enlace?', 'Sí. El público ve el precio final y tus revendedores entran con un código a la lista por cantidad (plan Mayorista Pro).'],
@@ -279,7 +279,7 @@ export function inicio(app) {
     <p class="lp-micro">${MICRO}</p>
     ${cuposHtml()}</div></section>
 
-  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Hecho en Argentina</b>en pesos y con ayuda en español</li></ul>
+  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Soporte humano real</b>te ayudamos a armar tu tienda</li></ul>
 
   <section class="lp-sec lp-gbsec"><div class="lp-gbsec-tx"><h2>Así compra tu cliente: cada escalón baja el precio</h2><p class="lp-sub">Precios por cantidad x1 · x3 · x6 · x12, automáticos. Tocá <b>+</b> y mirá cómo baja: son los precios reales de un producto de <b>Lua Beauty</b>.</p>
     <p class="lp-real"><img src="/img/lua/lua-logo.png" alt="" width="28" height="28" loading="lazy">Tienda real de Lua Beauty · cosmética y skincare</p></div><div id="lp-gb">${gbHtml()}</div></section>
@@ -321,7 +321,7 @@ export function inicio(app) {
 
   <section class="lp-final"><h2>Armá tu tienda hoy</h2><p>En unos minutos tenés tu lista online con tus precios, por menor o por mayor, y los pedidos llegando a tu WhatsApp.</p>${cta('btn-inv')}<small>${MICRO}</small></section>
 
-  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
+  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu catálogo inteligente con precios por cantidad y pedidos por WhatsApp.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
     <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
   <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b>Gratis hasta 100 productos · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
   cargarCupos(); autoBarra(); cargarDemos(); iniciarVideo();
