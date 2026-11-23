@@ -8,6 +8,7 @@ export async function onRequestGet({ request, env, params }) {
   return pagina(request, env, t ? {
     title: `${t.nombre} · Tienda online`,
     description: t.eslogan ? `${t.eslogan} · Mirá el catálogo y hacé tu pedido por WhatsApp.` : `Mirá el catálogo de ${t.nombre} y hacé tu pedido por WhatsApp.`,
-    image: t.logo_url
+    image: t.logo_url,
+    slug
   } : {});
 }
