@@ -120,9 +120,9 @@ const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mis
 
 const PORQUE = [
   ['dolar', 'Tu costo y tu ganancia mandan', 'Cargás el costo y tus márgenes: la app calcula cada precio por cantidad y nunca vendés por debajo de tu margen mínimo.'],
-  ['escalones', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
+  ['escala', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
   ['sync', 'Lista viva, en vez de un PDF', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
-  ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: si querés más, pagás un abono fijo, mensual o anual.']
+  ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos porcentaje por lo que vendés, solo por herramientas inteligentes. Pagás un abono fijo, mensual o anual.']
 ];
 const MAS = [
   ['Por menor y por mayor con el mismo enlace', 'El público ve el precio final. Tus revendedores entran con un código a la lista por cantidad y ven a cuánto revender cada producto y cuánto ganan.'],
@@ -134,7 +134,7 @@ const MAS = [
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
 const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu ganancia y tus clientes te mandan el pedido armado por WhatsApp.',
-  ['Precios por menor y por mayor (x1 · x3 · x6 · x12) con el mismo enlace', 'Tus clientes ven cuánto les falta para pagar menos y llevan más', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']];
+  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes llevan mas, ahorran y sube tu ticket promedio! ', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']];
 const PERFILES = {
   nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
     ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']],
