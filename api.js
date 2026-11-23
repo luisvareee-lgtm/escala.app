@@ -1,0 +1,231 @@
+// Toda la comunicación con Supabase pasa por acá.
+import { CONFIG } from './config.js';
+
+// v2.28.1 · Enlaces del email (recuperar contraseña, confirmar cuenta). Antes el enlace volvía a "…/#/login" y Supabase
+// le pegaba atrás "#access_token=…&type=recovery": quedaba "#/login#access_token=…", el navegador no lo reconocía y la
+// persona caía en la portada sin poder poner la clave nueva. Acá se deja el fragmento limpio ANTES de crear el cliente
+// (así también funcionan los emails que ya se mandaron) y se recuerda si era una recuperación o si el enlace venció.
+export function leerEnlace() {
+  const v = { recupero: false, error: '', desc: '' };
+  try {
+    let h = location.hash || '';
+    const i = h.indexOf('#', 1);
+    if (i > 0 && /(access_token|error|error_code)=/.test(h.slice(i))) { h = h.slice(i); history.replaceState(history.state, '', location.pathname + location.search + h); }
+    const q = new URLSearchParams(h.replace(/^#/, '')), s = new URLSearchParams(location.search);
+    v.recupero = q.get('type') === 'recovery' || s.get('clave') === 'nueva';
+    v.error = q.get('error_code') || q.get('error') || s.get('error_code') || '';
+    v.desc = q.get('error_description') || s.get('error_description') || '';
+  } catch (e) { }
+  return v;
+}
+export const ENLACE = leerEnlace();
+
+export const sb = (window.__SB_TEST__) ? window.__SB_TEST__
+  : window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+
+const amable = m => {
+  m = String(m || '');
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Sin conexión. Revisá tu internet e intentá de nuevo.';
+  if (/Invalid login credentials/i.test(m)) return 'Email o contraseña incorrectos.';
+  if (/User already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Iniciá sesión.';
+  if (/Email not confirmed/i.test(m)) return 'Falta confirmar tu email. Revisá tu casilla (y spam).';
+  if (/Password should be at least/i.test(m)) return 'La contraseña debe tener al menos 8 caracteres.';
+  if (/should be different from the old password|same_password/i.test(m)) return 'Elegí una contraseña distinta a la anterior.';
+  if (/Auth session missing|session_not_found|JWT expired/i.test(m)) return 'El enlace venció. Pedí uno nuevo en “Olvidé mi contraseña”.';
+  if (/For security purposes|rate limit|over_email_send_rate_limit/i.test(m)) return 'Ya te mandamos un enlace hace poco. Esperá un minuto y probá de nuevo.';
+  if (/rate limit|too many/i.test(m)) return 'Demasiados intentos. Esperá unos minutos.';
+  if (/margenes_ordenados/.test(m)) return 'Los márgenes deben ir de mayor a menor: x1 ≥ x3 ≥ x6 ≥ x12.';
+  if (/tenants_envios_chk/.test(m)) return 'Revisá los métodos de envío: cada uno necesita nombre (2 a 60 letras) y un costo válido.';
+  if (/tenants_diseno_chk/.test(m)) return 'Revisá el diseño: algún texto es muy largo o la imagen no es un enlace https://.';
+  if (/orders_nota_chk|orders_seg_chk/.test(m)) return 'La nota admite hasta 500 caracteres y el seguimiento hasta 120.';
+  if (/violates check constraint/.test(m)) return 'Algún dato no es válido. Revisá los valores e intentá de nuevo.';
+  return m;
+};
+const sinError = d => { if (d && d.error) throw new Error(d.error); return d; };
+const ok = ({ data, error }) => { if (error) throw new Error(amable(error.message)); return data; };
+
+// PostgREST devuelve como máximo 1000 filas por consulta: se pide por páginas para que "productos ilimitados" sea cierto.
+async function todo(armar) {
+  const PAG = 1000; let desde = 0; const out = [];
+  for (;;) {
+    const lote = ok(await armar().range(desde, desde + PAG - 1));
+    out.push(...lote);
+    if (lote.length < PAG) return out;
+    desde += PAG;
+  }
+}
+
+// Llama a una Pages Function del propio sitio (/api/...). Las que actúan por el comerciante llevan su sesión.
+async function llamarFn(ruta, cuerpo, conSesion) {
+  const h = { 'content-type': 'application/json' };
+  if (conSesion) { const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.'); h.authorization = 'Bearer ' + ses.access_token; }
+  let r; try { r = await fetch(ruta, { method: 'POST', headers: h, body: JSON.stringify(cuerpo) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || 'Error del servidor (' + r.status + ')');
+  return d;
+}
+
+export const api = {
+  // ---- público (comprador)
+  tienda: async slug => ok(await sb.from('v_tiendas_publicas').select('*').eq('slug', slug).maybeSingle()),
+  productos: slug => todo(() => sb.from('v_productos_publicos').select('*').eq('tienda', slug).order('categoria').order('nombre').order('id')),
+  // carruseles "nuevos" / "más vendidos" (solo el orden) y medición de visitas / al carrito
+  vitrinaIds: async (slug, modo) => (ok(await sb.rpc('vitrina_ids', { p_slug: slug, p_modo: modo })) || []).map(r => r.producto || r),
+  actividad: async (slug, vistas, carrito) => { const { error } = await sb.rpc('registrar_actividad', { p_slug: slug, p_vistas: vistas, p_carrito: carrito }); if (error) throw new Error(error.message); },
+  // v2.33: visita anónima por día y por origen (entró → miró → carrito → pedido)
+  visita: async (slug, origen, etapas) => { const { error } = await sb.rpc('registrar_visita', { p_slug: slug, p_origen: origen, p_etapas: etapas }); if (error) throw new Error(error.message); },
+  listaMayorista: async (slug, codigo) => {
+    const filas = ok(await sb.rpc('catalogo_mayorista', { p_slug: slug, p_codigo: codigo || null })) || [];
+    if (filas.length === 1 && !filas[0].producto_id) throw new Error('Código de revendedor incorrecto.');   // el servidor marca el error sin excepción
+    return filas;
+  },
+  crearPedido: async (slug, cliente, items, modo, codigo, medio, ref) =>
+    sinError(ok(await sb.rpc('crear_pedido', { p_slug: slug, p_cliente: cliente, p_items: items, p_modo: modo, p_codigo: codigo || null, p_medio: medio, p_ref: ref || null }))),
+  guardarCarrito: async (slug, nombre, whatsapp, items, total) =>
+    ok(await sb.rpc('guardar_carrito', { p_slug: slug, p_nombre: nombre, p_whatsapp: whatsapp, p_items: items, p_total: total })),
+
+  // ---- cuenta
+  onAuth: cb => sb.auth.onAuthStateChange((ev) => cb(ev)),
+  session: async () => (await sb.auth.getSession()).data.session,
+  registrar: async (email, password) => ok(await sb.auth.signUp({ email, password })),
+  entrar: async (email, password) => ok(await sb.auth.signInWithPassword({ email, password })),
+  salir: async () => { await sb.auth.signOut(); },
+  // sin "#" en la vuelta: Supabase agrega los datos de la sesión en el fragmento (y ?clave=nueva avisa que es para cambiar la clave)
+  olvide: async email => ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?clave=nueva' })),
+  nuevaClave: async password => ok(await sb.auth.updateUser({ password })),
+
+  // ---- comerciante (RLS: solo ve lo suyo)
+  miTienda: async () => ok(await sb.from('tenants').select('*').maybeSingle()),
+  // Programa Fundadores, sugerencias y administración (v2.17)
+  cupos: async () => ok(await sb.rpc('fundadores_cupos')),
+  esAdmin: async () => ok(await sb.rpc('es_admin')),
+  enviarSugerencia: async texto => { ok(await sb.rpc('enviar_sugerencia', { p_texto: texto })); },
+  adminTiendas: async () => ok(await sb.rpc('admin_tiendas')) || [],
+  adminSugerencias: async () => ok(await sb.rpc('admin_sugerencias')) || [],
+  adminPrueba: async (slug, accion, dias) => ok(await sb.rpc('admin_prueba', { p_slug: slug, p_accion: accion, p_dias: dias })),
+  adminFundador: async (slug, valor) => ok(await sb.rpc('admin_fundador', { p_slug: slug, p_valor: valor })),
+  adminConfig: async (cupos, dias, prueba) => ok(await sb.rpc('admin_config', { p_cupos: cupos, p_dias: dias, p_prueba: prueba })),
+  // cobros de planes (v2.23)
+  adminPlan: async (slug, plan, meses, monto, medio, nota) => ok(await sb.rpc('admin_plan', { p_slug: slug, p_plan: plan, p_meses: meses, p_monto: monto, p_medio: medio, p_nota: nota })),
+  adminEstado: async (slug, activa) => ok(await sb.rpc('admin_estado', { p_slug: slug, p_activa: activa })),
+  adminPagos: async () => ok(await sb.rpc('admin_pagos')) || [],
+  // v2.31 · Demos con tiendas reales (con permiso de la dueña; la portada la elige el admin)
+  tiendaDemo: async slug => { try { return !!ok(await sb.rpc('tienda_demo', { p_slug: slug })); } catch (e) { return false; } },
+  listaMayoristaDemo: async slug => ok(await sb.rpc('catalogo_mayorista_demo', { p_slug: slug })) || [],
+  demosPublicas: async () => { try { return ok(await sb.rpc('demos_publicas')) || []; } catch (e) { return []; } },
+  adminDemos: async () => { try { return ok(await sb.rpc('admin_demos')) || []; } catch (e) { return []; } },
+  adminDemoPortada: async (slug, valor, orden) => ok(await sb.rpc('admin_demo_portada', { p_slug: slug, p_valor: valor, p_orden: orden ?? null })),
+  adminSugEstado: async (id, estado) => { ok(await sb.rpc('admin_sugerencia_estado', { p_id: id, p_estado: estado })); },
+  crearTienda: async d => ok(await sb.rpc('crear_tienda', { p_slug: d.slug, p_nombre: d.nombre, p_rubro: d.rubro, p_whatsapp: d.whatsapp, p_modalidad: d.modalidad, p_plan: d.plan })),
+  guardarTienda: async (id, cambios) => ok(await sb.from('tenants').update(cambios).eq('id', id).select().maybeSingle()),
+  setCodigo: async c => ok(await sb.rpc('set_codigo_revendedor', { p_codigo: c || null })),
+  misProductos: () => todo(() => sb.from('products').select('*').order('created_at', { ascending: false }).order('id')),
+  guardarProducto: async (id, d) => id
+    ? ok(await sb.from('products').update(d).eq('id', id).select().maybeSingle())
+    : ok(await sb.from('products').insert(d).select().maybeSingle()),
+  insertarProductos: async filas => { for (let i = 0; i < filas.length; i += 500) ok(await sb.from('products').insert(filas.slice(i, i + 500))); },
+  borrarProducto: async id => ok(await sb.from('products').delete().eq('id', id)),
+  // edición y borrado masivo (todo junto en la base: o se aplica a todos o a ninguno)
+  editarMasivo: async (ids, cambios) => ok(await sb.rpc('editar_productos_masivo', { p_ids: ids, p_cambios: cambios })),
+  borrarMasivo: async ids => ok(await sb.rpc('borrar_productos', { p_ids: ids })),
+  promoMasivo: async (ids, promo) => ok(await sb.rpc('poner_promo', { p_ids: ids, p_promo: promo })),   // v2.25 (null = quitar)
+  // v2.26: Promociones (por cantidad y por monto), cupones y la promo propia de un producto
+  misPromos: async () => ok(await sb.from('promociones').select('*').order('created_at', { ascending: false })),
+  guardarPromo: async (id, datos) => ok(id ? await sb.from('promociones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('promociones').insert(datos).select().maybeSingle()),
+  borrarPromo: async id => ok(await sb.from('promociones').delete().eq('id', id)),
+  misCupones: async () => ok(await sb.from('cupones').select('*').order('created_at', { ascending: false })),
+  // v2.30 · Presupuestos (el total y el número los pone la base) y el enlace público para tu cliente
+  misPresupuestos: () => todo(() => sb.from('presupuestos').select('*').order('created_at', { ascending: false }).order('id')),
+  guardarPresupuesto: async (id, d) => id ? ok(await sb.from('presupuestos').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('presupuestos').insert(d).select().maybeSingle()),
+  borrarPresupuesto: async id => ok(await sb.from('presupuestos').delete().eq('id', id)),
+  presupuestoAPedido: async (id, medio) => ok(await sb.rpc('presupuesto_a_pedido', { p_id: id, p_medio: medio })),
+  verPresupuesto: async token => ok(await sb.rpc('ver_presupuesto', { p_token: token })),
+  aceptarPresupuesto: async token => ok(await sb.rpc('aceptar_presupuesto', { p_token: token })),
+  guardarCupon: async (id, datos) => ok(id ? await sb.from('cupones').update(datos).eq('id', id).select().maybeSingle() : await sb.from('cupones').insert(datos).select().maybeSingle()),
+  borrarCupon: async id => ok(await sb.from('cupones').delete().eq('id', id)),
+  promoProducto: async (pid, regla) => ok(await sb.rpc('promo_producto', { p_pid: pid, p_regla: regla })),
+  cuponVer: async (slug, codigo, wsp) => ok(await sb.rpc('cupon_ver', { p_slug: slug, p_codigo: codigo, p_wsp: wsp || null })),
+  statsVistas: async dias => ok(await sb.rpc('estadisticas_vistas', { p_dias: dias })) || [],
+  // v2.33: estadísticas del Resumen (en Gratis: visitas, más vistos; desde Pro: origen y embudo — el corte lo hace la base)
+  statsTienda: async dias => ok(await sb.rpc('estadisticas_tienda', { p_dias: dias })),
+  // v2.33: ¿la tienda ya usa estas herramientas? (para que la vista simple nunca esconda algo en uso)
+  usoHerramientas: async () => {
+    const hay = async (tabla, col) => { try { const { data, error } = await sb.from(tabla).select(col).limit(1); return !error && !!(data && data.length); } catch (e) { return false; } };
+    const [presupuestos, gastos, seguimiento] = await Promise.all([hay('presupuestos', 'id'), hay('gastos', 'id'), hay('clientes_seguimiento', 'wsp')]);
+    return { presupuestos, gastos, seguimiento };
+  },
+  misPedidos: async () => ok(await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(300)),
+  itemsPedido: async id => ok(await sb.from('order_items').select('*').eq('order_id', id)),
+  estadoPedido: async (id, estado) => ok(await sb.from('orders').update({ estado }).eq('id', id).select().maybeSingle()),
+  recibirMercaderia: async lineas => ok(await sb.rpc('recibir_mercaderia', { p_lineas: lineas })),
+  actualizarPedido: async (id, cambios) => ok(await sb.from('orders').update(cambios).eq('id', id).select().maybeSingle()),
+  misGastos: () => todo(() => sb.from('gastos').select('*').order('fecha', { ascending: false }).order('id')),
+  guardarGasto: async (id, d) => id ? ok(await sb.from('gastos').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('gastos').insert(d).select().maybeSingle()),
+  borrarGasto: async id => ok(await sb.from('gastos').delete().eq('id', id)),
+  misCarritos: async () => ok(await sb.from('carritos_pendientes').select('*').order('updated_at', { ascending: false })),
+  marcarCarrito: async id => ok(await sb.from('carritos_pendientes').update({ recontactado: true }).eq('id', id)),
+  borrarCarrito: async id => ok(await sb.from('carritos_pendientes').delete().eq('id', id)),
+  ajustarCostos: async (pct, cat) => ok(await sb.rpc('ajustar_costos', { p_pct: pct, p_categoria: cat || null })),
+  pedidosTodos: () => todo(() => sb.from('orders').select('*').order('created_at', { ascending: false }).order('id')),
+  itemsTodos: () => todo(() => sb.from('order_items').select('*').order('id', { ascending: false })),
+  misRevendedores: async () => ok(await sb.from('sub_revendedores').select('*').order('created_at', { ascending: false }).order('id')),
+  guardarRevendedor: async (id, d) => id ? ok(await sb.from('sub_revendedores').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('sub_revendedores').insert(d).select().maybeSingle()),
+  borrarRevendedor: async id => ok(await sb.from('sub_revendedores').delete().eq('id', id)),
+  liquidar: async (id, v) => ok(await sb.from('orders').update({ comision_liquidada: v }).eq('id', id).select().maybeSingle()),
+  misProveedores: () => todo(() => sb.from('product_suppliers').select('*').order('updated_at', { ascending: false }).order('id')),
+  cargarOferta: async (prov, items) => ok(await sb.rpc('cargar_oferta_proveedor', { p_proveedor: prov, p_items: items })),
+  aplicarProvMin: async ids => ok(await sb.rpc('aplicar_proveedor_minimo', { p_ids: ids })),
+  cargarRefs: async (comp, items) => ok(await sb.rpc('cargar_refs_competencia', { p_competidor: comp, p_items: items })),
+  analisis: async () => ok(await sb.rpc('analisis_precios')),
+  aplicarMargen: async ids => ok(await sb.rpc('aplicar_margen_sugerido', { p_ids: ids })),
+  async subirFoto(tenantId, blob, nombre) {
+    const ruta = tenantId + '/' + nombre + '.webp';
+    const r = await sb.storage.from('fotos').upload(ruta, blob, { contentType: blob.type || 'image/webp', upsert: true });
+    if (r.error) throw new Error(amable(r.error.message));
+    return sb.storage.from('fotos').getPublicUrl(ruta).data.publicUrl + '?v=' + Date.now();
+  },
+  eventos: async () => ok(await sb.from('tenant_events').select('*').order('created_at', { ascending: false }).limit(10)),
+
+  // integraciones (plan Full API): Mercado Pago, webhook
+  estadoIntegraciones: async () => ok(await sb.rpc('estado_integraciones')),
+  guardarIntegraciones: async (token, quitar, nuevoSecreto) => ok(await sb.rpc('guardar_integraciones', { p_mp_token: token || null, p_quitar_mp: !!quitar, p_nuevo_secreto: !!nuevoSecreto })),
+  probarWebhook: () => llamarFn('/api/webhook-test', {}, true),
+  // leer la web pública de un proveedor (v2.18): texto/JSON de una página, o una foto como Blob
+  leerWeb: (url, extra = {}) => llamarFn('/api/leer-web', { url, ...extra }, true),
+  // traducción automática al español (v2.19) y cotizaciones de referencia (unidades por dólar)
+  traducir: async (textos, de) => (await llamarFn('/api/traducir', { textos, de }, true)).textos || [],
+  async cambio() { try { const r = await fetch('/api/cambio'); return await r.json(); } catch (e) { return { ok: false, tasas: {} }; } },
+  async fotoWeb(url) {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/leer-web', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify({ url, tipo: 'imagen' }) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'No se pudo traer la foto (' + r.status + ')'); }
+    const b = await r.blob(); if (!/^image\//.test(b.type)) throw new Error('Ese enlace no es una foto.');
+    return b;
+  },
+  mpPreferencia: (slug, pedido) => llamarFn('/api/mp-preferencia', { slug, pedido }, false),
+  // avisos de pedidos al celular (v2.23)
+  async pushClave() {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/push-clave', { headers: { authorization: 'Bearer ' + ses.access_token } }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.pub) throw new Error(d.error || 'No se pudo preparar el aviso (' + r.status + ')');
+    return d.pub;
+  },
+  pushSuscribir: async (endpoint, p256dh, auth, disp) => ok(await sb.rpc('push_suscribir', { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth, p_dispositivo: disp || null })),
+  pushQuitar: async endpoint => ok(await sb.rpc('push_quitar', { p_endpoint: endpoint })),
+  pushCuantos: async () => ok(await sb.rpc('push_cuantos')) || 0,
+  pushPrueba: () => llamarFn('/api/push-prueba', {}, true),
+  // seguimiento de clientes (v2.23): a quién le escribiste y cuándo
+  segContactos: async () => ok(await sb.from('clientes_seguimiento').select('wsp,contactado_at,veces')) || [],
+  segContactado: async wsp => ok(await sb.rpc('seguimiento_contactado', { p_wsp: wsp })),
+
+  // pedidos en vivo (si Realtime está activo en el proyecto; si falla, el panel igual funciona)
+  escucharPedidos(tenantId, cb) {
+    try {
+      const ch = sb.channel('pedidos-' + tenantId)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders', filter: 'tenant_id=eq.' + tenantId }, cb)
+        .subscribe();
+      return () => { try { sb.removeChannel(ch); } catch (e) { } };
+    } catch (e) { return () => { }; }
+  }
+};
