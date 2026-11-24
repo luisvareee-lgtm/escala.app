@@ -21,7 +21,7 @@ export async function rpc(env, fn, args) {
     throw new Error(e.name === 'TimeoutError' ? 'La base de datos no respondió a tiempo' : 'No se pudo conectar con la base de datos');
   }
   const t = await r.text();
-  let d = null; try { d = JSON.parse(t) } catch (e) { d = t }
+  let d = null; try { d = t ? JSON.parse(t) : null; } catch (e) { d = t; }
   if (!r.ok) throw new Error((d && d.message) || `Error de base de datos (${r.status})`);
   return d;
 }
