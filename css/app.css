@@ -1830,3 +1830,26 @@ input.fi.rev-pct{width:96px;flex:none}
 .mz-pr-campo{margin-top:12px}
 .mz-ej small{display:block;color:var(--t2);font-size:.75rem;margin-top:1px}
 .rub-que{margin-top:6px}
+/* v2.34 · Tu negocio, en criollo */
+.criollo-l{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.criollo-l li{display:flex;gap:10px;align-items:flex-start;line-height:1.45}
+.criollo-i{flex:0 0 auto;font-size:1.15rem;line-height:1.3}
+/* v2.34 · seña y saldo en el pedido */
+.ped-sena .v{color:var(--ok,#15803d)}
+.ped-saldo{border-top:1px dashed var(--line,#ddd)}
+.ped-sena-f{margin-top:10px;border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:8px 12px}
+.ped-sena-f summary{cursor:pointer;font-weight:600}
+.ped-sena-f form{margin-top:8px}
+/* v2.34 · tienda en dólares: botón $ / US$, aviso de cotización y datos para pagar */
+.mon-tog{display:inline-flex;height:40px;border:1px solid var(--bd);border-radius:var(--rs);overflow:hidden;background:var(--bg2)}
+.mon-tog button{border:0;background:transparent;color:var(--t2);font:inherit;font-size:.8rem;font-weight:800;padding:0 10px;min-width:40px;cursor:pointer}
+.mon-tog button.on{background:var(--ac);color:#fff}
+.usd-nota{font-size:.8rem;text-align:center;padding:6px max(16px,env(safe-area-inset-left,0px));background:var(--bg2);color:var(--t2);border-bottom:1px solid var(--bd)}
+.usd-aviso{margin-top:6px}
+.usd-dato{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all;background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:.85rem;white-space:pre-wrap}
+/* v2.34 · Continuar con Google */
+.btn-g{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f2937;border:1px solid #d1d5db}
+.btn-g:hover{background:#f9fafb}
+.g-ico{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid #d1d5db;font-weight:800;font-size:.8rem;color:#4b5563}
+.o-sep{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--t3,#6b7280);font-size:.8rem}
+.o-sep::before,.o-sep::after{content:"";flex:1;border-top:1px solid var(--line,#e5e7eb)}
