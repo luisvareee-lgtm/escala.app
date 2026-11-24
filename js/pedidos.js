@@ -7,6 +7,7 @@ import { imprimir } from './catalogo.js';
 import { promoTxt, promosDelPedido } from './promo.js';
 import { esUsd, sena, saldo, enMoneda, totalTxt, totalPanel, datosPago, cuantoFalta, MEDIO_USD, MEDIO_COBRO } from './monto.js';
 import { fmtArs, fmtUsd } from './util.js';
+import { puedeCobrar } from './usuarios.js';
 // v2.25: cada renglón muestra su precio de lista y la promo va aparte (sumada por producto, aunque tenga varios talles)
 const bruto = i => Number(i.subtotal) + (Number(i.descuento) || 0);
 // v2.26: el descuento general del pedido (cupón o descuento por monto)
@@ -57,7 +58,7 @@ export function vistaPedidos() {
   const n = k => P.pedidos.filter(o => pasa(o, k)).length;
   const rv = new Map(P.revs.map(r => [r.id, r.nombre]));
   const esp = esperando().length, tab = F.vista === 'tablero';
-  const cab = `${esp ? `<div class="rec-aviso"><span>📦 Tenés <b>${esp} ${esp === 1 ? 'pedido esperando' : 'pedidos esperando'}</b> mercadería.</span><button class="btn btn-p btn-sm" data-act="rc-abrir">📦 Llegó mercadería</button></div>` : ''}
+  const cab = `${esp && !(P.miembro && P.miembro.rol === 'ventas') ? `<div class="rec-aviso"><span>📦 Tenés <b>${esp} ${esp === 1 ? 'pedido esperando' : 'pedidos esperando'}</b> mercadería.</span><button class="btn btn-p btn-sm" data-act="rc-abrir">📦 Llegó mercadería</button></div>` : ''}
   <div class="ped-vista" role="group" aria-label="Cómo ver los pedidos"><button class="chipf ${tab ? '' : 'on'}" data-act="pd-vista" data-v="lista" aria-pressed="${!tab}">☰ Lista</button><button class="chipf ${tab ? 'on' : ''}" data-act="pd-vista" data-v="tablero" aria-pressed="${tab}">▦ Tablero</button></div>`;
   if (tab) return cab + `<input class="fi" id="oq" placeholder="Buscar por cliente, N° de pedido o seguimiento…" data-input="pd-q" value="${esc(F.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">` + tablero(P.pedidos.filter(o => pasa(o, 'todos') && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', ''))));
   return cab + `<div class="ped-filtros" role="tablist" aria-label="Filtrar pedidos">${FILTROS.map(([k, t]) => { const c = n(k); return (k === 'todos' || c) ? `<button class="chipf ${F.filtro === k ? 'on' : ''}" data-act="pd-filtro" data-k="${k}">${t}${k !== 'todos' ? ` <b>${c}</b>` : ''}</button>` : ''; }).join('')}</div>
@@ -108,8 +109,8 @@ export function modalPedido(m) {
   ${o.estado === 'pendiente' ? `<div class="srow tot ped-saldo"><span>Falta cobrar</span><span class="v">${montoPanel(o, saldo(o))}</span></div>` : ''}` : ''}</div>
   ${sig.length ? `<div class="flabel" style="margin-top:6px">Pasar a</div><div class="ped-acc">${sig.map(k => `<button class="btn ${k === 'en_espera' ? 'btn-s' : 'btn-p'} btn-sm" data-act="pd-etapa" data-id="${o.id}" data-e="${k}">${ETAPA[k][0]} ${ETAPA[k][1]}</button>`).join('')}</div>` : ''}
   ${m.avisar ? `<div class="ok-box" style="margin:8px 0">${m.avisar === 'sena' ? 'Seña guardada.' : `Listo: ${ETAPA[m.avisar][1].toLowerCase()}.`} ${wa(o, m.avisar, m.avisar === 'sena' ? '💬 Avisarle que recibiste la seña' : '💬 Avisar al cliente por WhatsApp', 'btn-wa btn-sm')}</div>` : ''}
-  ${o.estado === 'pendiente' && !canc ? `<button class="btn btn-p" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cobrado">${sena(o) > 0 ? '💵 Cobrar el saldo (' + enMoneda(o, saldo(o)) + ')' : '💵 Marcar cobrado'}</button>
-  ${senaForm(o, m)}` : ''}${canc && sena(o) > 0 ? `<p class="hint" style="margin-top:8px">Este pedido cancelado tiene una seña de ${enMoneda(o, sena(o))}. Si se la devolviste: <button class="btn btn-s btn-sm" data-act="pd-sena-x" data-id="${o.id}">Devolví la seña</button></p>` : ''}
+  ${o.estado === 'pendiente' && !canc && puedeCobrar() ? `<button class="btn btn-p" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cobrado">${sena(o) > 0 ? '💵 Cobrar el saldo (' + enMoneda(o, saldo(o)) + ')' : '💵 Marcar cobrado'}</button>
+  ${senaForm(o, m)}` : ''}${canc && sena(o) > 0 && puedeCobrar() ? `<p class="hint" style="margin-top:8px">Este pedido cancelado tiene una seña de ${enMoneda(o, sena(o))}. Si se la devolviste: <button class="btn btn-s btn-sm" data-act="pd-sena-x" data-id="${o.id}">Devolví la seña</button></p>` : ''}
   <form data-submit="pd-datos" data-id="${o.id}" style="margin-top:10px">
     <div class="fg"><label class="flabel" for="pd-seg">N° de seguimiento / guía</label><input class="fi" id="pd-seg" name="seguimiento" maxlength="120" value="${esc(o.seguimiento || '')}" placeholder="Ej: Andreani 3600012345" ${canc ? 'disabled' : ''}></div>
     <div class="fg"><label class="flabel" for="pd-nota">Nota interna (no la ve el cliente)</label><textarea class="fi" id="pd-nota" name="nota" rows="2" maxlength="500" placeholder="Ej: entrega después de las 18 h" ${canc ? 'disabled' : ''}>${esc(o.nota || '')}</textarea></div>
@@ -118,7 +119,7 @@ export function modalPedido(m) {
   <details class="ped-wa"><summary>💬 Mensajes de WhatsApp listos</summary><div class="ped-acc">${wa(o, 'nuevo', 'Escribir', 'btn-s btn-sm')}${o.estado === 'pendiente' ? wa(o, 'cobro', sena(o) > 0 ? 'Pedir el saldo' : 'Pedir el pago', 'btn-s btn-sm') : ''}${o.estado === 'pendiente' && sena(o) > 0 ? wa(o, 'sena', 'Gracias por la seña', 'btn-s btn-sm') : ''}${['confirmado', 'en_espera', 'listo', 'despachado', 'entregado', 'cancelado'].filter(k => k === e || (!canc && k !== 'cancelado')).map(k => wa(o, k, ETAPA[k][0] + ' ' + ETAPA[k][1], 'btn-s btn-sm')).join('')}</div></details>
   ${hist ? `<details class="ped-wa"><summary>🕓 Historial</summary><ul class="ped-hist">${hist}</ul></details>` : ''}
   <button class="btn btn-s" style="margin-top:8px" data-act="pd-remito">🖨️ Imprimir remito</button>
-  ${canc ? '' : `<button class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="pd-etapa" data-id="${o.id}" data-e="cancelado">Cancelar pedido${o.estado === 'cobrado' ? ' (devuelve stock)' : ''}</button>`}
+  ${canc || !puedeCobrar() ? '' : `<button class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="pd-etapa" data-id="${o.id}" data-e="cancelado">Cancelar pedido${o.estado === 'cobrado' ? ' (devuelve stock)' : ''}</button>`}
   <button class="btn btn-s" style="margin-top:8px" data-act="p-cerrar">Cerrar</button></div></div>`;
 }
 

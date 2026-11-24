@@ -23,8 +23,13 @@ export const ENLACE = leerEnlace();
 export const sb = (window.__SB_TEST__) ? window.__SB_TEST__
   : window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
+// v2.35 · equipo: Ventas y Depósito leen productos y renglones de pedidos SIN costos (por funciones de la base)
+let ROL_EQUIPO = null;
+export const modoEquipo = r => { ROL_EQUIPO = r || null; };
+const sinCostos = () => ROL_EQUIPO === 'ventas' || ROL_EQUIPO === 'deposito';
 const amable = m => {
   m = String(m || '');
+  if (ROL_EQUIPO && /row-level security|permission denied/i.test(m)) return 'Tu rol no permite hacer esto. Pedíselo al dueño de la tienda.';
   if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Sin conexión. Revisá tu internet e intentá de nuevo.';
   if (/Invalid login credentials/i.test(m)) return 'Email o contraseña incorrectos.';
   if (/User already registered/i.test(m)) return 'Ese email ya tiene una cuenta. Iniciá sesión.';
@@ -97,6 +102,15 @@ export const api = {
     if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) return {};
     try { const r = await fetch(CONFIG.SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/settings', { headers: { apikey: CONFIG.SUPABASE_ANON_KEY } }); if (!r.ok) return {}; const j = await r.json(); return (j && j.external) || {}; } catch (e) { return {}; }
   },
+  // v2.35 · Ayuda con IA: la pregunta, los artículos de ayuda parecidos y la pantalla (nada de clientes)
+  ayudaIA: async (pregunta, arts, pantalla) => {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/ayuda', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify({ pregunta, arts, pantalla }) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 503 && d.sinIA) return { sinIA: true };
+    if (!r.ok) throw new Error(d.error || 'No se pudo consultar la ayuda. Probá de nuevo.');
+    return d;
+  },
   entrarGoogle: async () => ok(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/app#/panel', queryParams: { prompt: 'select_account' } } })),
   salir: async () => { await sb.auth.signOut(); },
   // sin "#" en la vuelta: Supabase agrega los datos de la sesión en el fragmento (y ?clave=nueva avisa que es para cambiar la clave)
@@ -128,7 +142,7 @@ export const api = {
   crearTienda: async d => ok(await sb.rpc('crear_tienda', { p_slug: d.slug, p_nombre: d.nombre, p_rubro: d.rubro, p_whatsapp: d.whatsapp, p_modalidad: d.modalidad, p_plan: d.plan })),
   guardarTienda: async (id, cambios) => ok(await sb.from('tenants').update(cambios).eq('id', id).select().maybeSingle()),
   setCodigo: async c => ok(await sb.rpc('set_codigo_revendedor', { p_codigo: c || null })),
-  misProductos: () => todo(() => sb.from('products').select('*').order('created_at', { ascending: false }).order('id')),
+  misProductos: async () => sinCostos() ? ok(await sb.rpc('equipo_productos')) || [] : todo(() => sb.from('products').select('*').order('created_at', { ascending: false }).order('id')),
   guardarProducto: async (id, d) => id
     ? ok(await sb.from('products').update(d).eq('id', id).select().maybeSingle())
     : ok(await sb.from('products').insert(d).select().maybeSingle()),
@@ -176,7 +190,14 @@ export const api = {
   borrarCarrito: async id => ok(await sb.from('carritos_pendientes').delete().eq('id', id)),
   ajustarCostos: async (pct, cat) => ok(await sb.rpc('ajustar_costos', { p_pct: pct, p_categoria: cat || null })),
   pedidosTodos: () => todo(() => sb.from('orders').select('*').order('created_at', { ascending: false }).order('id')),
-  itemsTodos: () => todo(() => sb.from('order_items').select('*').order('id', { ascending: false })),
+  itemsTodos: async () => sinCostos() ? ok(await sb.rpc('equipo_items')) || [] : todo(() => sb.from('order_items').select('*').order('id', { ascending: false })),
+  // v2.35 · Tu equipo (Mayorista IA): invitar, cambiar el rol, pausar y quitar · al entrar, la persona se une sola por su email
+  equipoPanel: async () => ok(await sb.rpc('equipo_panel')),
+  equipoStock: async (id, stock) => ok(await sb.rpc('equipo_stock', { p_id: id, p_stock: stock })),
+  misMiembros: async () => ok(await sb.from('tenant_miembros').select('*').order('created_at')),
+  invitarMiembro: async (tenantId, email, nombre, rol) => ok(await sb.from('tenant_miembros').insert({ tenant_id: tenantId, email, nombre: nombre || null, rol }).select().maybeSingle()),
+  editarMiembro: async (id, cambios) => ok(await sb.from('tenant_miembros').update(cambios).eq('id', id).select().maybeSingle()),
+  quitarMiembro: async id => ok(await sb.from('tenant_miembros').delete().eq('id', id)),
   misRevendedores: async () => ok(await sb.from('sub_revendedores').select('*').order('created_at', { ascending: false }).order('id')),
   guardarRevendedor: async (id, d) => id ? ok(await sb.from('sub_revendedores').update(d).eq('id', id).select().maybeSingle()) : ok(await sb.from('sub_revendedores').insert(d).select().maybeSingle()),
   borrarRevendedor: async id => ok(await sb.from('sub_revendedores').delete().eq('id', id)),

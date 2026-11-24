@@ -1,5 +1,6 @@
 // Panel del comerciante (shell + productos + pedidos + carritos). Los demás módulos viven en archivos propios.
-import { api } from './api.js';
+import { api, modoEquipo } from './api.js';
+import { usuariosHtml, resetUsuarios, catalogoEquipo, deRol, rolNombre, sinAccesoHtml, ROLES } from './usuarios.js';
 import { $, esc, fmt, on, toast, copiar, normWsp, waLink, store, confirmar } from './util.js';
 import { P, can, aviso, bloqueo, usarFlyer, flyersUsados, FLYERS_GRATIS, planEf, PLAN_NOMBRE, precioArs, limiteProductos, idsEnCupo, pausarFueraDeCupo, LIMITE_GRATIS } from './state.js';
 import { vistaResumen, refrescarStats } from './dash.js';
@@ -39,8 +40,9 @@ export const setSalir = f => { salirFn = f; };
 const urlTienda = () => urlTiendaDe(P.t.slug);
 const TABS_BASE = [['resumen', '📊 Resumen'], ['productos', '📦 Productos'], ['pedidos', '🧾 Pedidos'], ['presupuestos', '📝 Presupuestos'], ['caja', '💵 Caja'], ['asistente', '🧠 Asistente'], ['precios', '💹 Precios'], ['resultado', '💰 Resultado'], ['equipo', '🤝 Revendedores'], ['carritos', '🛒 Carritos'], ['tienda', '🎨 Tienda'], ['ajustes', '⚙️ Ajustes']];
 const TABS_ADMIN = [['admin', '🛡️ Admin']];
-const tabs = () => (P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE).filter(([k]) => seMuestra(k));
-const todasTabs = () => P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
+// v2.35 · alguien del equipo ve solo las secciones de su rol (sin vista simple ni "Más herramientas")
+const tabs = () => P.miembro ? TABS_BASE.filter(([k]) => deRol(k)) : (P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE).filter(([k]) => seMuestra(k));
+const todasTabs = () => P.miembro ? TABS_BASE.filter(([k]) => deRol(k)) : P.esAdmin ? TABS_BASE.concat(TABS_ADMIN) : TABS_BASE;
 const nuevos = () => P.pedidos.some(o => (o.etapa || 'nuevo') === 'nuevo' && o.estado !== 'cancelado');
 
 // v2.33: este navegador es del dueño de la tienda → sus visitas no suman en las estadísticas (cookie sin datos personales,
@@ -55,17 +57,26 @@ function marcarDueno(slug) {
 export async function mostrarPanel(app) {
   app.innerHTML = '<div class="page center" style="padding-top:80px"><span class="spin"></span></div>';
   try { P.t = await api.miTienda(); } catch (e) { app.innerHTML = `<div class="page"><div class="err-box">${esc(e.message)}</div></div>`; return; }
-  if (!P.t) return 'sin-tienda';
+  P.miembro = null; modoEquipo(null); resetUsuarios();
+  if (!P.t) {
+    // v2.35 · sin tienda propia: ¿es parte de un equipo? (si la invitaron con este email, se une sola)
+    let m = null; try { m = await api.equipoPanel(); } catch (e) { m = null; }
+    if (!m) return 'sin-tienda';
+    if (m.pausado || m.sin_plan) { app.innerHTML = sinAccesoHtml(m); return 'equipo'; }
+    P.miembro = { rol: m.rol, nombre: m.nombre || '', email: m.email || '' }; P.t = m.t; modoEquipo(m.rol);
+  }
   activarApp(); marcarDueno(P.t.slug);
   P.esAdmin = await esAdmin(); resetAdmin();
   // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
   const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
-  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetCaja(); resetPresu(); P.presus = []; resetDis(); resetInt(); resetAvisos(); P.gastos = [];
+  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : P.miembro ? todasTabs()[0][0] : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetCaja(); resetPresu(); P.presus = []; resetDis(); resetInt(); resetAvisos(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; P.irSeccion = irSeccion; Q.fly = null; resetTT();
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
   // v2.30: precios de lista de un producto (presupuestos): al público y x1 · x3 · x6 · x12, con combo y oferta
   P.preciosProd = p => { const pr = preciosDe(p.costo_usd, p.margen_override), o = {}; Object.keys(pr).forEach(k => { o[k] = precioFinal(p, pr[k]); }); return o; };
   usarPrecioPromo(p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, pr.min); });   // promos: precio al público
+  // v2.35 · Ventas y Depósito no tienen costos: usan los precios de venta que manda la base
+  if (P.miembro && P.miembro.rol !== 'admin') P.preciosProd = p => { const a = +p.precio_1 || 0; return { 1: a, 3: +(p.precio_3 ?? a), 6: +(p.precio_6 ?? a), 12: +(p.precio_12 ?? a), min: a }; };
   await cargar();
   if (P.tab === 'caja' || P.tab === 'resultado') await cargarGastos(); if (P.tab === 'presupuestos') await cargarPresupuestos();
   if (qp) { const o = P.pedidos.find(x => x.id === qp); if (o) { P.tab = 'pedidos'; P.modal = { tipo: 'ped', o, items: P.items.filter(i => i.order_id === o.id) }; } }
@@ -74,6 +85,13 @@ export async function mostrarPanel(app) {
   pintar();
 }
 async function cargar() {
+  if (P.miembro) {   // v2.35 · el equipo carga solo lo de su rol (productos y renglones sin costos para Ventas y Depósito)
+    const r = await Promise.allSettled([api.misProductos(), api.pedidosTodos(), api.itemsTodos()]);
+    [P.prods, P.pedidos, P.items] = r.map(x => x.value || []);
+    Object.assign(P, { carritos: [], revs: [], provs: [], uso: {}, promos: null, cupones: null });
+    const f = r.find(x => x.status === 'rejected'); if (f) toast(f.reason.message);
+    return;
+  }
   const r = await Promise.allSettled([api.misProductos(), api.pedidosTodos(), api.itemsTodos(), api.misCarritos(), api.misRevendedores(), api.misProveedores(), api.usoHerramientas()]);
   [P.prods, P.pedidos, P.items, P.carritos, P.revs, P.provs, P.uso] = r.map(x => x.value || []);
   if (Array.isArray(P.uso)) P.uso = {};
@@ -88,12 +106,13 @@ function pintar() {
   // v2.30: si se llegó a Caja, Resultado o Presupuestos desde la ayuda o la guía, se cargan sus datos y se vuelve a pintar
   if ((P.tab === 'caja' || P.tab === 'resultado') && !gastosCargados()) cargarGastos().then(pintar);
   if (P.tab === 'presupuestos' && !presusCargados()) cargarPresupuestos().then(pintar);
+  if (P.miembro && !deRol(P.tab)) { P.tab = todasTabs()[0][0]; P.modal = null; }
   const t = P.t, dias = t.trial_ends_at ? Math.ceil((new Date(t.trial_ends_at) - Date.now()) / 864e5) : 0;
-  const cuerpo = { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, caja: vistaCaja, presupuestos: vistaPresupuestos, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
+  const cuerpo = P.miembro && P.tab === 'resumen' ? vistaResumen(urlTienda()) : P.miembro && P.tab === 'productos' && P.miembro.rol !== 'admin' ? catalogoEquipo() : { resumen: () => tipVistaHtml() + demoPendienteHtml() + guiaHtml(urlTienda()) + avisosInteligentes() + vistaResumen(urlTienda()), asistente: vistaInteligente, productos, pedidos: () => avisosHtml('pedidos') + vistaPedidos(), resultado: vistaResultado, caja: vistaCaja, presupuestos: vistaPresupuestos, precios: vistaPrecios, equipo: vistaEquipo, carritos, tienda: vistaTiendaTab, ajustes: () => vistaCard() + vistaAjustes() + usuariosHtml() + guiaCardHtml() + avisosHtml('ajustes') + instalarHtml(), admin: () => P.esAdmin ? vistaAdmin() : vistaResumen(urlTienda()) }[P.tab]();
   const y = window.scrollY, foco = document.activeElement && document.activeElement.id;
-  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center"><button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button><button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
-    <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}${escondidas().length ? '<button class="ptab ptab-mas" data-act="p-herr" id="p-herr">＋ Más herramientas</button>' : ''}</div>
-    <div class="page wide" style="padding-top:16px">${avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
+  $('#root').innerHTML = `<div id="app"><div id="hdr"><div style="display:flex;gap:8px;align-items:center;min-width:0">${t.logo_url ? `<img src="${esc(t.logo_url)}" alt="" style="height:26px;border-radius:6px">` : ''}<b style="font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.nombre)}</b></div><div style="display:flex;gap:6px;align-items:center">${P.miembro ? `<span class="chip" title="Tu rol en el equipo">${ROLES[P.miembro.rol][0]} ${esc(rolNombre(P.miembro.rol))}${P.miembro.nombre ? ' · ' + esc(P.miembro.nombre) : ''}</span>` : `<button class="chip chip-btn" data-act="p-planes" title="Ver planes">${esc(chipPlan(t))}</button>`}<button class="btn btn-s btn-sm" data-act="p-salir">Salir</button></div></div>
+    <div class="tabs-panel" role="tablist">${tabs().map(([k, n]) => `<button class="ptab ${P.tab === k ? 'on' : ''}" role="tab" data-act="p-tab" data-k="${k}">${n}${k === 'pedidos' && nuevos() ? ' •' : ''}</button>`).join('')}${!P.miembro && escondidas().length ? '<button class="ptab ptab-mas" data-act="p-herr" id="p-herr">＋ Más herramientas</button>' : ''}</div>
+    <div class="page wide" style="padding-top:16px">${P.miembro ? '' : avisoPlan()}${cuerpo}</div>${navMovil()}<button id="ayuda-fab" data-act="p-ayuda" aria-label="Ayuda">💬 <span>Ayuda</span></button></div>${P.modal ? modal() : ''}`;
   if (foco) { const n = document.getElementById(foco); if (n && n.focus) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) { } } }
   trasPintarTienda();
 }
@@ -102,12 +121,12 @@ const NAV = [['resumen', '📊', 'Inicio'], ['productos', '📦', 'Productos'], 
 const MAS = [['presupuestos', '📝', 'Presupuestos', 'Armalo, mandalo por WhatsApp y pasalo a pedido'], ['caja', '💵', 'Caja', 'Lo que entró y salió: efectivo y transferencia'], ['asistente', '🧠', 'Asistente', 'Seguimiento de clientes, cobranzas y reposición'], ['resultado', '💰', 'Resultado y gastos', 'Ganancia neta, gastos, compras y stock'], ['precios', '💹', 'Precios inteligentes', 'Proveedores, mercado y ajuste masivo'], ['equipo', '🤝', 'Revendedores', 'Enlaces con comisión'], ['carritos', '🛒', 'Carritos sin cerrar', 'Recontactá por WhatsApp'], ['ajustes', '⚙️', 'Ajustes', 'Precios, cobro, accesos, integraciones y plan']];
 function navMovil() {
   const pend = nuevos(), enMas = MAS.some(m => m[0] === P.tab) || P.tab === 'admin';
-  return `<nav id="pnav" aria-label="Secciones">${NAV.map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
+  return `<nav id="pnav" aria-label="Secciones">${NAV.filter(([k]) => deRol(k)).map(([k, i, n]) => `<button class="${P.tab === k ? 'on' : ''}" data-act="p-tab" data-k="${k}"${P.tab === k ? ' aria-current="page"' : ''}><span class="i">${i}</span>${n}${k === 'pedidos' && pend ? '<span class="dot" aria-label="hay pedidos nuevos"></span>' : ''}</button>`).join('')}<button class="${enMas ? 'on' : ''}" data-act="p-menu"><span class="i">☰</span>Más</button></nav>`;
 }
 function menuMas() {
-  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.filter(([k]) => seMuestra(k)).map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
+  return `<div class="modal-bg" data-act="p-cerrar-bg"><div class="modal" role="dialog" aria-modal="true" aria-label="Más secciones"><div class="view-title">Más</div><div class="menu-list">${MAS.filter(([k]) => P.miembro ? deRol(k) : seMuestra(k)).map(([k, i, n, d]) => `<button data-act="p-tab" data-k="${k}"><span class="i">${i}</span><span>${n}<small>${d}</small></span></button>`).join('')}
     ${P.esAdmin ? '<button data-act="p-tab" data-k="admin"><span class="i">🛡️</span><span>Admin<small>Tiendas, pruebas, fundadores y sugerencias</small></span></button>' : ''}
-    ${vistaSimple() ? '<button data-act="p-herr" id="mas-vista"><span class="i">＋</span><span>Más herramientas<small>Caja, presupuestos, asistente, resultado, revendedores…</small></span></button>' : '<button data-act="vista-set" data-v="simple" id="mas-vista"><span class="i">👁️</span><span>Vista simple<small>Solo lo esencial para vender</small></span></button>'}
+    ${P.miembro ? '' : vistaSimple() ? '<button data-act="p-herr" id="mas-vista"><span class="i">＋</span><span>Más herramientas<small>Caja, presupuestos, asistente, resultado, revendedores…</small></span></button>' : '<button data-act="vista-set" data-v="simple" id="mas-vista"><span class="i">👁️</span><span>Vista simple<small>Solo lo esencial para vender</small></span></button>'}
     <button data-act="p-ayuda"><span class="i">💬</span><span>Ayuda<small>Buscá una solución o escribinos</small></span></button>
     <button data-act="p-sugerir"><span class="i">💡</span><span>Sugerir una mejora<small>Contanos qué te falta</small></span></button>
     <button data-act="p-ver-tienda"><span class="i">👀</span><span>Ver mi tienda<small>Como la ven tus clientes</small></span></button>

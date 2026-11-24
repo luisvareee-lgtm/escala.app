@@ -21,6 +21,8 @@ export function vistaInteligente() {
   if (!can('cobranzas')) return bloqueo('💸 Cobranzas, seguimiento y reposición', 'Quién te debe y recordatorios, clientes que dejaron de comprar, qué reponer y ventas en dólares.', 'cobranzas');
   // por encargo no tiene depósito: no se muestra Reposición
   const tabs = [['cobranzas', '💸 Cobranzas'], ['clientes', '👥 Seguimiento'], ['compras', '🛒 Pedido al proveedor'], ...((P.t.modo_stock || 'stock') === 'encargo' ? [] : [['reposicion', '📦 Reposición']]), ['dolares', '💵 En dólares']];
+  // v2.35 · el equipo: Ventas ve cobranzas y seguimiento; Administración, además, las ventas en dólares
+  if (P.miembro) { const ok = P.miembro.rol === 'admin' ? ['cobranzas', 'clientes', 'dolares'] : ['cobranzas', 'clientes']; for (let i = tabs.length - 1; i >= 0; i--) if (!ok.includes(tabs[i][0])) tabs.splice(i, 1); }
   if (!tabs.some(t => t[0] === I.vista)) I.vista = 'cobranzas';
   const cuerpo = I.vista === 'cobranzas' ? cobranzas() : I.vista === 'clientes' ? vistaSeguimiento() : I.vista === 'compras' ? vistaCompras() : I.vista === 'reposicion' ? reposicion() : dolares();
   return `<div class="seg seg-ia" role="tablist" aria-label="Herramientas" style="margin-bottom:12px">${tabs.map(([k, n]) => `<button role="tab" aria-selected="${I.vista === k}" class="${I.vista === k ? 'on' : ''}" data-act="ia-vista" data-k="${k}">${n}</button>`).join('')}</div>${cuerpo}`;

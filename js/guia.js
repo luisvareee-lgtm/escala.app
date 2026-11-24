@@ -3,6 +3,7 @@ import { esc, on, store, $, waLink } from './util.js';
 import { P, PLAN_NOMBRE, planEf } from './state.js';
 import { MARCA, urlTiendaDe } from './marca.js';
 import { resetImp } from './imp_ui.js';
+import { api } from './api.js';
 
 const k = () => 'guia:' + (P.t && P.t.id);
 const marcas = () => store.get(k(), {}) || {};
@@ -42,6 +43,7 @@ export const mostrarGuia = () => { marcar('oculta', false); };
 /* ---------------- AYUDA ---------------- */
 // Base de soluciones: problemas reales que ya resolvimos. "ir" lleva a la pantalla donde se arregla.
 const ARTS = [
+  { t: 'Sumar a alguien de mi equipo (vendedora, depósito, administración)', k: 'equipo usuario usuarios empleado empleada vendedora vendedor deposito administracion rol roles permisos invitar sumar', r: 'Ajustes → 👥 Tu equipo (plan Mayorista IA, hasta 5 personas): ponés su email, el nombre y el rol, y tocás “Sumar al equipo”. Copiá la invitación y mandásela por WhatsApp: la persona entra con ese email (o con Google) y ya queda en tu equipo. Ventas: pedidos, señas, cobros, presupuestos y clientes. Depósito: prepara, despacha y ajusta stock. Administración: cobros, caja, cobranzas y resultado. Los costos los ven solo vos y Administración. Podés pausar o quitar a alguien cuando quieras.', ir: 'ajustes' },
   { t: 'Me dejaron una seña: cómo la anoto', k: 'seña sena adelanto anticipo parte pago parcial saldo resto debe falta cobrar', r: 'Pedidos → abrís el pedido → 🤝 Registrar una seña: ponés cuánto te pagó y con qué. El pedido queda “Seña · falta $X”, la seña entra en la Caja ese día y, cuando te paga el resto, tocás “Cobrar el saldo”. Los mensajes de cobro ya descuentan la seña.', ir: 'pedidos' },
   { t: 'Vender en dólares o cobrar en USDT', k: 'dolares dólar usd usdt cripto crypto cotizacion moneda billetera wallet cuenta en dolares', r: 'Tienda → 🚚 Envíos y pagos → 💵 Vender en dólares o USDT (plan Pro): elegís “Pesos y dólares” (con un botón $ / US$) o “Solo dólares”, ponés tu cotización (la que uses: oficial, MEP, blue o cripto) y cómo cobrás: cuenta en dólares, billetera USDT con su red, o efectivo. Mercado Pago no cobra en dólares. Cada pedido guarda la cotización con la que se hizo.', ir: 'tienda' },
   { t: 'Entrar con Google', k: 'google gmail entrar ingresar cuenta registrarme contraseña', r: 'En la pantalla de ingreso o de registro tocás “Continuar con Google”. Si es tu primera vez se crea la cuenta y seguís con los datos de tu tienda. Si ya tenías cuenta con ese mismo email (confirmado), entrás a la misma.' },
@@ -112,12 +114,31 @@ const ARTS = [
 ];
 const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ');
 const STOP = new Set('a al como con cual de del el en es la las lo los me mi mis no para por que se sin su sus te tu un una y o hay hago puedo quiero'.split(' '));
-export function buscarAyuda(q) {
+export function buscarAyuda(q, max = 4) {
   const toks = norm(q).split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)); if (!toks.length) return [];
   return ARTS.map(a => { const hay = norm(a.t + ' ' + a.k + ' ' + a.k), tit = norm(a.t); let s = 0; toks.forEach(w => { const r = w.slice(0, Math.max(4, w.length - 2)); if (hay.includes(r)) s += 1; if (tit.includes(r)) s += 1; }); return { a, s }; })
-    .filter(x => x.s >= Math.min(2, toks.length)).sort((x, y) => y.s - x.s).slice(0, 4).map(x => x.a);
+    .filter(x => x.s >= Math.min(2, toks.length)).sort((x, y) => y.s - x.s).slice(0, max).map(x => x.a);
 }
-const A = { q: '', abierto: null };
+const A = { q: '', abierto: null, ia: null, sinIA: false };
+// v2.35 · Preguntarle a la IA: contesta con los artículos de ayuda y los datos básicos de la tienda; si no sabe, soporte.
+function iaHtml() {
+  const q = A.q.trim(); if (A.sinIA || q.length < 6) return '';
+  const x = A.ia && A.ia.q === q ? A.ia : null;
+  if (!x) return `<div class="ay-ia" id="ay-ia"><button class="btn btn-p btn-sm" data-act="ay-ia">🤖 Preguntarle a la IA</button><p class="hint">Mira tu tienda y te contesta al toque. Si no sabe, te pasa con una persona.</p></div>`;
+  if (x.cargando) return `<div class="ay-ia" id="ay-ia"><p class="hint"><span class="spin"></span> Pensando…</p></div>`;
+  if (x.err) return `<div class="ay-ia" id="ay-ia"><div class="err-box">${esc(x.err)}</div></div>`;
+  if (x.nose) return `<div class="ay-ia" id="ay-ia"><p><b>🤖 Eso no lo sé con seguridad.</b> Mejor que te responda una persona: tocá “Escribir a soporte”, acá abajo.</p></div>`;
+  return `<div class="ay-ia" id="ay-ia"><b>🤖 Respuesta de la IA</b><p class="ay-ia-r">${esc(x.r).replace(/\n/g, '<br>')}</p><p class="hint">Puede equivocarse. Si no te sirvió, escribile a soporte (acá abajo).</p></div>`;
+}
+const repintarRes = () => { const r = $('#ay-res'); if (!r) return; const R = A.q.trim().length > 2 ? buscarAyuda(A.q) : null; r.innerHTML = resultados(R, R || ARTS.slice(0, 4), soporteLink(A.q)); };
+on('ay-ia', async () => {
+  const q = A.q.trim(); if (q.length < 6 || (A.ia && A.ia.cargando)) return;
+  const L = buscarAyuda(q, 6), arts = (L.length ? L : ARTS.filter(a => a.ir === P.tab).slice(0, 4)).map(a => ({ t: a.t, r: a.r }));
+  A.ia = { q, cargando: true }; repintarRes();
+  try { const d = await api.ayudaIA(q, arts, P.tab); if (d.sinIA) { A.sinIA = true; A.ia = null; } else A.ia = { q, r: d.respuesta, nose: !!d.nose }; }
+  catch (e) { A.ia = { q, err: e.message }; }
+  repintarRes();
+});
 function soporteLink(q) {
   if (!MARCA.SOPORTE_WSP) return '';
   const t = P.t, txt = `Hola, necesito ayuda con ${MARCA.NOMBRE}.\nTienda: ${t.nombre} (${urlTiendaDe(t.slug)})\nPlan: ${PLAN_NOMBRE[planEf(t)] || t.plan}\nPantalla: ${P.tab}\nProblema: ${q || '(contame acá)'}\nDispositivo: ${navigator.userAgent.slice(0, 120)}`;
@@ -137,9 +158,10 @@ function resultados(R, base, sl) {
   const sin = R && !R.length;
   return `${sin ? '<p class="hint" style="margin:10px 0">No encontré una respuesta para eso.</p>' : `<p class="hint" style="margin:10px 0 6px">${R ? 'Esto puede ayudarte:' : 'Lo más consultado:'}</p>`}
     ${(sin ? [] : base).map((a, i) => `<details class="ay-art" ${R && i === 0 ? 'open' : ''}><summary>${esc(a.t)}</summary><p>${esc(a.r)}</p>${a.ir ? `<button class="btn btn-s btn-sm" data-act="ay-ir" data-k="${a.ir}" data-s="${a.sec || ''}" data-x="${a.imp ? 'importar' : ''}">Ir ahí →</button>` : ''}</details>`).join('')}
+    ${iaHtml()}
     <div class="ay-sop">${sl ? `<b>¿No se resolvió?</b><p class="hint">Mandanos tu problema por WhatsApp: ya va con los datos de tu tienda para que te respondamos más rápido.</p><a class="btn btn-wa" target="_blank" rel="noopener" href="${esc(sl)}">Escribir a soporte</a>` : `<p class="hint">¿No se resolvió? ${MARCA.EMAIL_CONTACTO ? 'Escribinos a ' + esc(MARCA.EMAIL_CONTACTO) + '.' : 'Pronto vas a poder escribirnos desde acá.'}</p>`}</div>`;
 }
-on('ay-q', (d, el) => { A.q = el.value; const r = $('#ay-res'); if (!r) return; const R = A.q.trim().length > 2 ? buscarAyuda(A.q) : null; r.innerHTML = resultados(R, R || ARTS.slice(0, 4), soporteLink(A.q)); });
+on('ay-q', (d, el) => { A.q = el.value; repintarRes(); });
 on('ay-ir', d => { if (d.s && P.irSeccion) return P.irSeccion(d.s); P.tab = d.k; if (d.x === 'importar') resetImp(); P.modal = d.x === 'importar' ? { tipo: 'imp' } : null; P.repintar(); window.scrollTo(0, 0); });
 on('p-ayuda', () => { A.q = ''; P.modal = { tipo: 'ayuda' }; P.repintar(); setTimeout(() => { const i = $('#ay-q'); if (i) i.focus(); }, 50); });
 on('g-mostrar', () => { mostrarGuia(); P.modal = null; P.repintar(); });
