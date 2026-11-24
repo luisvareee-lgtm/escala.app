@@ -1890,3 +1890,13 @@ input.fi.rev-pct{width:96px;flex:none}
 .aud-row>span:first-child{min-width:0;color:var(--t1);font-weight:600}
 .aud-row small{display:block;margin-top:2px;font-size:.8rem;font-weight:400;color:var(--t2)}
 .aud-row>span:last-child{flex:0 0 auto}
+/* v2.37 · estudio: pestañas imagen/video, foto con IA y Shorts */
+.fl-tabs{display:flex;gap:6px;margin:10px 0 2px;flex-wrap:wrap}
+.fl-tabs button{flex:1 1 140px;padding:9px 12px;border-radius:999px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--t2);font-weight:800;cursor:pointer}
+.fl-tabs button.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.fl-iabox{border:1px dashed var(--bd2);border-radius:var(--rs);padding:10px 12px;background:var(--bg3)}
+.fl-iabts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.fl-iaok{color:var(--ok,#16a34a);font-weight:700}
+.fl-barra{height:8px;border-radius:8px;background:var(--bg3);overflow:hidden;max-width:300px;margin:6px auto 0}
+.fl-barra i{display:block;height:100%;background:var(--ac);transition:width .3s}
+.fl-vok{margin-top:4px}
