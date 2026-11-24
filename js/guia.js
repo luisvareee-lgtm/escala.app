@@ -137,7 +137,7 @@ on('ay-ia', async () => {
   const q = A.q.trim(); if (q.length < 6 || (A.ia && A.ia.cargando)) return;
   const L = buscarAyuda(q, 6), arts = (L.length ? L : ARTS.filter(a => a.ir === P.tab).slice(0, 4)).map(a => ({ t: a.t, r: a.r }));
   A.ia = { q, cargando: true }; repintarRes();
-  try { const d = await api.ayudaIA(q, arts, P.tab); if (d.sinIA) { A.sinIA = true; A.ia = null; } else A.ia = { q, r: d.respuesta, nose: !!d.nose }; }
+  try { const d = await api.ayudaIA(q, arts, P.tab); if (d.sinIA) { A.sinIA = true; A.ia = null; } else A.ia = { q, r: d.respuesta, nose: !!d.nose || !String(d.respuesta || '').trim() }; }   // v2.36.2: nunca un recuadro vacío
   catch (e) { A.ia = { q, err: e.message }; }
   repintarRes();
 });
