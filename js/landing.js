@@ -97,7 +97,7 @@ on('lp-gb', d => { const corria = !!AUTO.t; AUTO.hecho = true; autoParar(); if (
 const lista = L => { const li = x => `<li>${itemPlan(x, esc)}</li>`; return L.length <= 8 ? `<ul>${L.map(li).join('')}</ul>` : `<ul>${L.slice(0, 6).map(li).join('')}</ul><details class="lp-plan-mas"><summary>Ver ${L.length - 6} más</summary><ul>${L.slice(6).map(li).join('')}</ul></details>`; };
 // v2.33: tres planes (ids base / pro / api). Cada uno con su botón y su aclaración.
 const BOTON = {
-  base: ['Empezar gratis', 'Sin tarjeta · Gratis para siempre'],
+  base: ['Empezar gratis', 'Sin tarjeta · Gratis siempre'],
   pro: ['Probar Pro <span class="dias-prueba">14</span> días gratis', 'Sin tarjeta · Después elegís seguir o quedar en Gratis'],
   api: ['Probar Mayorista IA <span class="dias-prueba">14</span> días', 'Sin tarjeta · Cancelás cuando quieras']
 };
@@ -120,7 +120,7 @@ const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mis
 
 const PORQUE = [
   ['dolar', 'Tu costo y tu ganancia mandan', 'Cargás el costo y tus márgenes: la app calcula cada precio por cantidad y nunca vendés por debajo de tu margen mínimo.'],
-  ['escalones', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
+  ['escala', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
   ['sync', 'Lista viva, en vez de un PDF', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
   ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: si querés más, pagás un abono fijo, mensual o anual.']
 ];
@@ -133,11 +133,11 @@ const MAS = [
   ['Promociones y cupones', '3x2, 2da unidad al 50 %, “2 x $”, descuento por monto con barra de progreso y cupones para tu público. Las herramientas se adaptan a lo que vendés: talles en ropa, tonos en cosmética.']
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
-const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu ganancia y tus clientes te mandan el pedido armado por WhatsApp.',
+const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu margen y tus clientes te mandan el pedido armado por WhatsApp.',
   ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes ahorran, llevan más y sube tu ticket promedio!' , 'Empezas Gratis · Sin comisión por venta']];
 const PERFILES = {
-  nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
-    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']],
+  nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu margen y hoy mismo tenés tu tienda lista para compartir.',
+    ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis y probás todo 14 días, sin comisión por venta']],
   tienda: ['Tengo una tienda', 'Tus clientes ven tu catálogo con fotos y precios al día, eligen talle o color, arman el carrito y te mandan el pedido por WhatsApp.',
     ['Talles, colores y stock de cada uno', 'Promos, cupones y envío gratis desde el monto que elijas', 'Caja del día: efectivo y transferencia por separado']],
   mayorista: ['Vendo por mayor', 'Dejá de mandar el PDF. Tus clientes entran a tu tienda, ven el precio según cuánto llevan y te mandan el pedido armado por WhatsApp.',
