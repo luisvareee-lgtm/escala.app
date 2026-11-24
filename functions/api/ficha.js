@@ -3,7 +3,7 @@
 // Reglas: no inventa medidas, materiales ni ingredientes; no promete efectos de salud; no habla de precios, stock ni envíos.
 // Motor: el de functions/_ia.js (Gemini con GEMINI_API_KEY; si no, Workers AI). Hasta 100 fichas por día por tienda.
 import { json, rpc, usuarioDeToken, mismoOrigen } from '../_lib.js';
-import { corta, hayIA, generar } from '../_ia.js';
+import { corta, hayIA, generar, detalle } from '../_ia.js';
 
 const MODALIDAD = { minorista: 'por menor', mayorista: 'por mayor', hibrido: 'por menor y por mayor' };
 
@@ -53,8 +53,8 @@ export async function onRequestPost({ request, env }) {
   const p = armarFicha(b, ctx, b.anterior);
   let txt, motor;
   try { ({ txt, motor } = await generar(env, p, { temperatura: b.anterior ? 0.9 : 0.6, tokens: 700 })); }
-  catch (e) { return json({ error: 'La IA no respondió ahora. Probá de nuevo en un rato.' }, 502); }
+  catch (e) { return json({ ok: false, error: 'La IA no respondió ahora. Probá de nuevo en un rato.', detalle: detalle(e.diag), diag: e.diag }); }   // 200: un 502 lo tapa Cloudflare
   const ficha = limpiarFicha(txt);
-  if (ficha.length < 20) return json({ error: 'No salió una ficha útil. Agregá la marca o más detalle en el nombre y probá de nuevo.' }, 502);
+  if (ficha.length < 20) return json({ ok: false, error: 'No salió una ficha útil. Agregá la marca o más detalle en el nombre y probá de nuevo.' });
   return json({ ok: true, ficha, motor });
 }
