@@ -1,13 +1,13 @@
-// v2.36.2 · La IA de Eskalapp, en un solo lugar (la usan la ayuda del panel y las fichas de productos).
+// v2.36.3 · La IA de Eskalapp, en un solo lugar (la usan la ayuda del panel y las fichas de productos).
 // Motor: Gemini si está el secreto GEMINI_API_KEY en Cloudflare (Pages → Settings → Variables and Secrets);
 // si no, o si Gemini falla, Workers AI (la conexión "AI" que ya usa la traducción).
-// Ninguna llamada queda sin techo: Gemini 12 s, Workers AI 8 s. Si fallan las dos, el error dice qué pasó en cada una.
+// Ninguna llamada queda sin techo: Gemini 12 s, Workers AI 15 s. Si fallan las dos, el error dice qué pasó en cada una.
 // v2.36.2 · Google retiró gemini-2.5-flash para cuentas nuevas y Cloudflare retiró llama-3.1-8b (5028).
 // Se prueba en orden y, si un modelo ya no existe (404/410/5028), se pasa al siguiente.
 // GEMINI_MODEL / CF_MODEL en Cloudflare, si los cargás, van primero.
 const MODELOS_GEMINI = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 const MODELOS_CF = ['@cf/google/gemma-4-26b-a4b-it', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'];
-const T_GEMINI = 12000, T_CF = 8000;
+const T_GEMINI = 12000, T_CF = 15000;
 
 export const corta = (s, n) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, n);
 export const limpio = s => String(s || '').replace(/AIza[0-9A-Za-z_-]+/g, '[CLAVE]').replace(/\s+/g, ' ').slice(0, 220);
@@ -15,6 +15,8 @@ const clave = env => String(env.GEMINI_API_KEY || '').trim();
 const lista = (v, def) => [...new Set([String(v || '').trim(), ...def].filter(Boolean))];
 export const modeloGemini = env => lista(env.GEMINI_MODEL, MODELOS_GEMINI)[0];
 const noExiste = m => /\b(404|410|5028)\b|not found|no longer available|deprecated|is not supported for generateContent/i.test(m);
+// saturado o caído un rato (503 "high demand", 500, 429 por modelo): se prueba el modelo siguiente, que suele estar libre
+const saturado = m => /Gemini (500|502|503|504|429)\b|high demand|overloaded|unavailable|try again later|RESOURCE_EXHAUSTED/i.test(m);
 export const hayGemini = env => !!clave(env);
 export const hayWorkersAI = env => !!(env.AI && typeof env.AI.run === 'function');
 export const hayIA = env => hayGemini(env) || hayWorkersAI(env);
@@ -49,7 +51,7 @@ export async function conGemini(env, p, o = {}) {
     catch (e) {
       ult = e;
       if (e.status === 400 && /thinking|temperature|generation_?config|Unknown name/i.test(e.message)) { try { return await unGemini(env, m, p, o, true); } catch (e2) { ult = e2; } }
-      if (!noExiste(ult.message)) throw ult;   // clave mala, cuota, etc.: no tiene sentido probar otro modelo
+      if (!noExiste(ult.message) && !saturado(ult.message)) throw ult;   // clave mala, etc.: no tiene sentido probar otro modelo
     }
   }
   throw ult;
