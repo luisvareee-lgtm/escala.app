@@ -111,6 +111,18 @@ export const api = {
     if (!r.ok) throw new Error(d.error || 'No se pudo consultar la ayuda. Probá de nuevo.');
     return d;
   },
+  // v2.36 · Fichas comerciales con IA: los datos del producto que están en el formulario (nada de costos ni de clientes)
+  fichaIA: async datos => {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/ficha', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify(datos) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    const d = await r.json().catch(() => ({}));
+    if (r.status === 503 && d.sinIA) throw new Error('Las fichas con IA todavía no están activadas. Escribinos a soporte.');
+    if (!r.ok) throw new Error(d.error || 'No se pudo escribir la ficha. Probá de nuevo.');
+    return d;
+  },
+  // v2.36 · Auditor comercial (lo calcula la base: el dueño y Administración, en Mayorista IA)
+  auditor: async () => ok(await sb.rpc('auditor_comercial')),
+  auditorSemanal: async (tid, v) => { ok(await sb.from('tenants').update({ auditor_semanal: !!v }).eq('id', tid)); },
   entrarGoogle: async () => ok(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/app#/panel', queryParams: { prompt: 'select_account' } } })),
   salir: async () => { await sb.auth.signOut(); },
   // sin "#" en la vuelta: Supabase agrega los datos de la sesión en el fragmento (y ?clave=nueva avisa que es para cambiar la clave)

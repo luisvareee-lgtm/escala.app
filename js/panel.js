@@ -16,7 +16,8 @@ import { vistaResultado, cargarGastos, resetRes, gastosCargados } from './result
 import { vistaCaja, resetCaja } from './caja.js';
 import { vistaPresupuestos, resetPresu, cargarPresupuestos, presusCargados } from './presupuestos.js';
 import { resetDis } from './diseno.js';
-import { vistaInteligente, avisosInteligentes, resetInt } from './inteligencia.js';
+import { vistaInteligente, avisosInteligentes, resetInt, irIA } from './inteligencia.js';
+import { auditorViejo } from './auditor.js';
 import { guiaHtml, ayudaHtml } from './guia.js';
 import { urlTiendaDe, MARCA } from './marca.js';
 import { planesHtml, avisoPlan } from './planes.js';
@@ -69,7 +70,7 @@ export async function mostrarPanel(app) {
   P.esAdmin = await esAdmin(); resetAdmin();
   // #/panel?tab=pedidos abre directo esa sección (lo usa el aviso de pedido nuevo)
   const qs = new URLSearchParams(location.hash.split('?')[1] || ''), qt = qs.get('tab'), qp = qs.get('pedido');
-  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : P.miembro ? todasTabs()[0][0] : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetCaja(); resetPresu(); P.presus = []; resetDis(); resetInt(); resetAvisos(); P.gastos = [];
+  Object.assign(P, { tab: todasTabs().some(t => t[0] === qt) ? qt : P.miembro ? todasTabs()[0][0] : 'resumen', modal: null }); Object.assign(Q, { q: '', lim: 60, filtro: 'todos', pq: '' }); resetProd(); resetAj(); resetImp(); resetPed(); resetRes(); resetCaja(); resetPresu(); P.presus = []; resetDis(); resetInt(); irIA(qs.get('ia')); resetAvisos(); P.gastos = [];
   P.repintar = pintar; P.recargarPedidos = recargarPedidos; P.flyerDe = flyerDe; P.irSeccion = irSeccion; Q.fly = null; resetTT();
   setAyudas({ precioDe: p => { const pr = preciosDe(p.costo_usd, p.margen_override); return precioFinal(p, P.t.modalidad === 'mayorista' ? pr[1] : pr.min); }, flyerDe, fila: filaProd, abrirCombo });
   // v2.30: precios de lista de un producto (presupuestos): al público y x1 · x3 · x6 · x12, con combo y oferta
@@ -259,7 +260,7 @@ function modal() {
       <label class="flabel" for="p-dem" style="margin-top:6px">Demora propia en días (vacío = ${Number(P.t.demora_encargo || 7)})</label><input class="fi" id="p-dem" name="demora_dias" type="number" min="1" max="120" value="${p.demora_dias || ''}"></div>` : ''}
     ${P.t.modalidad !== 'minorista' ? `<div class="fg"><label class="flabel" for="p-pvp">Precio sugerido de venta al público $ (opcional)</label><input class="fi" id="p-pvp" name="pvp_sugerido" type="number" min="0" step="any" value="${p.pvp_sugerido != null ? Number(p.pvp_sugerido) : ''}" placeholder="Vacío = lo calcula la app"><div class="hint">Es a cuánto puede venderlo tu cliente revendedor. Se usa en “Tu ganancia” (Tienda → 🚚 Envíos y pagos).</div></div>` : ''}
     <div class="flabel">Así lo ve tu cliente</div><div class="pprev" id="pprev">${prevHtml(p.costo_usd, p.margen_override)}</div>
-    <div class="fg"><label class="flabel">Descripción</label><textarea class="fi" name="descripcion" rows="2" maxlength="2000">${esc(p.descripcion || '')}</textarea></div>
+    <div class="fg"><label class="flabel">Descripción</label><textarea class="fi" name="descripcion" rows="2" maxlength="2000">${esc(p.descripcion || '')}</textarea>${fichaBtn()}<div id="p-ficha" aria-live="polite"></div></div>
     ${hayV216() ? `<details class="pm-sec"${Number(p.oferta_pct) > 0 ? ' open' : ''}><summary>🏷️ Oferta con fechas</summary>
       <div class="row2"><div class="fg"><label class="flabel" for="p-ofp">Descuento %</label><input class="fi" id="p-ofp" name="oferta_pct" type="number" min="1" max="90" step="any" value="${Number(p.oferta_pct) > 0 ? Number(p.oferta_pct) : ''}" placeholder="Ej: 15" data-input="p-cb-prev"></div>
       <div class="fg"><label class="flabel" for="p-ofh">Hasta el (incluido)</label><input class="fi" id="p-ofh" name="oferta_hasta" type="date" value="${diaLocal(p.oferta_hasta)}"></div></div>
@@ -380,6 +381,24 @@ on('p-wtraer', async (d, b) => {
   } catch (e) { mm(e.message); }
   if (b.isConnected) { b.disabled = false; b.textContent = t0; }
 });
+// v2.36 · Fichas comerciales con IA (Mayorista IA): escribe la descripción con lo que ya está en el formulario.
+const fichaBtn = () => `<div class="ficha-ia"><button type="button" class="btn btn-s btn-sm" data-act="p-ficha">✨ Escribir la ficha con IA${can('fichas') ? '' : ' <span class="tag warn">🔒 Mayorista IA</span>'}</button>${can('fichas') ? '<span class="hint">Usa el nombre, la marca, las opciones y lo que ya escribiste. La revisás antes de guardar.</span>' : ''}</div>`;
+const fichaPrev = t => `<div class="ficha-prev"><div class="ficha-tx">${esc(t)}</div><div class="ficha-bts"><button type="button" class="btn btn-p btn-sm" data-act="p-ficha-usar">Usar esta</button><button type="button" class="btn btn-s btn-sm" data-act="p-ficha" data-otra="1">🔄 Otra versión</button><button type="button" class="btn btn-s btn-sm" data-act="p-ficha-no">Descartar</button></div><p class="hint">Revisala antes de guardar: la IA usa solo los datos que cargaste, pero el producto lo conocés vos.</p></div>`;
+on('p-ficha', async (d, b) => {
+  const f = formProd(), box = $('#p-ficha'); if (!f || !box) return;
+  if (!can('fichas')) { box.innerHTML = `<div class="locked" style="margin-top:8px"><b>✨ Fichas comerciales con IA</b><p style="margin:6px 0">Escribe la descripción de cada producto en un toque, en criollo y sin inventar datos.</p><span class="tag warn">🔒 Plan Mayorista IA</span><br><button type="button" class="btn btn-p btn-sm lock-cta" data-act="p-planes" data-p="api">Ver planes y activar</button></div>`; return; }
+  const nombre = f.nombre.value.trim(); if (nombre.length < 3) { mm('Escribí primero el nombre del producto.'); return; }
+  const u = f.unidad, cont = $('#p-cont');
+  const datos = { nombre, marca: f.marca.value.trim(), categoria: f.categoria.value.trim(), variantes: parseVars(f.variantes.value), unidad: u ? u.options[u.selectedIndex].text : '',
+    contenido: cont && !cont.hidden && f.contenido ? f.contenido.value : '', actual: f.descripcion.value.trim(), anterior: d.otra ? (P.modal.fichaIA || '') : '' };
+  const bs = [...document.querySelectorAll('[data-act=p-ficha]')]; bs.forEach(x => { x.disabled = true; });
+  box.innerHTML = `<p class="hint ficha-esp"><span class="spin"></span> ${d.otra ? 'Escribiendo otra versión…' : 'Escribiendo la ficha…'}</p>`;
+  try { const r = await api.fichaIA(datos); P.modal.fichaIA = r.ficha; const bx = $('#p-ficha'); if (bx) bx.innerHTML = fichaPrev(r.ficha); }
+  catch (e) { const bx = $('#p-ficha'); if (bx) bx.innerHTML = `<div class="err-box" style="margin-top:8px">${esc(e.message)}</div>`; }
+  bs.forEach(x => { if (x.isConnected) x.disabled = false; });
+});
+on('p-ficha-usar', () => { const f = formProd(), bx = $('#p-ficha'); if (!f || !P.modal.fichaIA) return; f.descripcion.value = P.modal.fichaIA; f.descripcion.rows = 7; if (bx) bx.innerHTML = ''; mm('Listo: la ficha quedó en la descripción. Revisala y tocá Guardar.', true); f.descripcion.focus(); });
+on('p-ficha-no', () => { const bx = $('#p-ficha'); if (bx) bx.innerHTML = ''; });
 on('p-nofoto', () => { P.modal.foto = null; const bx = $('#foto-box'); if (bx) bx.innerHTML = fotoHtml(null); });
 on('p-prev', () => { const f = document.querySelector('form[data-submit=p-prod]'), bx = $('#pprev'); if (!f || !bx) return; const mp = f.margen_propio.value; bx.innerHTML = prevHtml(f.costo_usd.value, mp === '' ? null : Number(mp) / 100); const t = $('#pr-t'); if (t) t.dispatchEvent(new Event('change', { bubbles: true })); });
 on('p-uni', (d, el) => { const c = $('#p-cont'); if (c) c.hidden = !['pack', 'bulto', 'caja', 'display'].includes(el.value); });
@@ -417,10 +436,10 @@ on('p-prod', async (d, f) => {
     const id = p0.id; if (!id) datos.tenant_id = P.t.id;
     const g = await api.guardarProducto(id, datos), pid = id || (g && g.id), antes = id ? propiaDe(p0) : null;
     if (conPromo && pid && JSON.stringify(antes ? antes.regla : null) !== JSON.stringify(promoNueva)) { await api.promoProducto(pid, promoNueva); P.promos = await api.misPromos(); }
-    P.prods = await api.misProductos(); P.modal = null; pintar(); toast(g && datos.activo && g.activo === false ? `Se guardó pausado: el plan Gratis publica hasta ${LIMITE_GRATIS} productos` : 'Producto guardado');
+    P.prods = await api.misProductos(); auditorViejo(); P.modal = null; pintar(); toast(g && datos.activo && g.activo === false ? `Se guardó pausado: el plan Gratis publica hasta ${LIMITE_GRATIS} productos` : 'Producto guardado');
   } catch (e) { mm(/stock_talles/.test(e.message) ? 'Para guardar el stock por talle falta correr la migración v2.24 en Supabase.' : /promo/.test(e.message) ? 'Revisá la promo por cantidad (o corré la migración v2.25 en Supabase).' : e.message); }
 });
-on('p-borrar', async (d, b) => { if (!confirmar(b, '¿Eliminar? Tocá de nuevo para confirmar')) return; try { await api.borrarProducto(d.id); P.prods = await api.misProductos(); P.modal = null; pintar(); toast('Eliminado'); } catch (e) { mm(e.message); } });
+on('p-borrar', async (d, b) => { if (!confirmar(b, '¿Eliminar? Tocá de nuevo para confirmar')) return; try { await api.borrarProducto(d.id); P.prods = await api.misProductos(); auditorViejo(); P.modal = null; pintar(); toast('Eliminado'); } catch (e) { mm(e.message); } });
 on('p-guardar', async (d, f) => {
   const fd = new FormData(f), b = $('#aj-go'); b.disabled = true;
   const m = n => Number(fd.get('m' + n)) / 100;

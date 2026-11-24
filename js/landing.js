@@ -24,7 +24,7 @@ const ICO = {
   margen: svg('<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>'),
   tienda: svg('<path d="M3 9l1.5-5h15L21 9"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/><path d="M5 12v8h14v-8"/><path d="M10 20v-5h4v5"/>'),
   dolar: svg('<path d="M12 2v20"/><path d="M17 6.5c-1-1.5-2.8-2.3-5-2.3-2.8 0-5 1.5-5 3.8 0 5.200 10 2.500 10 7.800 0 2.300-2.200 3.900-5 3.900-2.400 0-4.300-.900-5.300-2.600"/>'),
-  escalones: svg('<path d="M4 20V14h4v6"/><path d="M10 20V9h4v11"/><path d="M16 20V4h4v16"/><path d="M2 20h20"/>'),
+  escalas: svg('<path d="M4 20V14h4v6"/><path d="M10 20V9h4v11"/><path d="M16 20V4h4v16"/><path d="M2 20h20"/>'),
   sync: svg('<path d="M20 11a8 8 0 0 0-14.500-4.500L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.500 4.500L21 15"/><path d="M21 20v-5h-5"/>'),
   cero: svg('<circle cx="12" cy="12" r="9"/><path d="M5.600 18.400 18.400 5.600"/>'),
   infinito: svg('<path d="M7 8a4 4 0 1 0 0 8c2.500 0 3.500-2 5-4s2.500-4 5-4a4 4 0 1 1 0 8c-2.500 0-3.500-2-5-4S9.500 8 7 8z"/>'),
@@ -120,7 +120,7 @@ const precio = (c, d, m) => Math.ceil(c * d * (1 + m / 100) / 10) * 10;   // mis
 
 const PORQUE = [
   ['dolar', 'Tu costo y tu ganancia mandan', 'Cargás el costo y tus márgenes: la app calcula cada precio por cantidad y nunca vendés por debajo de tu margen mínimo.'],
-  ['escala', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
+  ['escalas', 'Precios x1 · x3 · x6 · x12 automáticos', 'Por producto, por categoría o por todo el carrito, desde Mayorista Pro (y en la prueba gratis). Tu cliente ve cuánto le falta para el próximo precio y la barra del pedido lo empuja a llevar más.'],
   ['sync', 'Lista viva, en vez de un PDF', 'Subís la lista nueva del proveedor y la app te muestra qué subió, qué bajó y qué hay de nuevo. Un toque actualiza todo con tu ganancia y te deja listo el aviso para tus clientes.'],
   ['cero', '0% de comisión por venta', 'Gratis hasta 100 productos, con pedidos y visitas ilimitados. No te cobramos un porcentaje de lo que vendés: si querés más, pagás un abono fijo, mensual o anual.']
 ];
@@ -134,7 +134,7 @@ const MAS = [
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
 const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu margen y tus clientes te mandan el pedido armado por WhatsApp.',
-  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes ahorran, llevan más y sube tu ticket promedio!' , 'Empezas Gratis · Sin comisión por venta']];
+  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes ahorran, llevan más y sube tu ticket promedio!' , 'Empezás Gratis · Sin comisión por venta']];
 const PERFILES = {
   nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu margen y hoy mismo tenés tu tienda lista para compartir.',
     ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis y probás todo 14 días, sin comisión por venta']],
@@ -147,7 +147,7 @@ const perfilHtml = () => { const [, sub, pts] = PERFILES[LP.perfil] || GENERAL; 
 on('lp-perfil', d => { if (!PERFILES[d.k]) return; LP.perfil = d.k; const b = $('#lp-perfil-in'); if (b) b.innerHTML = perfilHtml(); document.querySelectorAll('[data-act=lp-perfil]').forEach(x => { const on_ = x.dataset.k === d.k; x.classList.toggle('on', on_); x.setAttribute('aria-pressed', on_); }); });
 on('lp-ir', d => { const e = document.getElementById(d.k); if (e) e.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
 const FAQ = [
-  ['¿Necesito saber programacion?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
+  ['¿Necesito saber programación?', 'No. Creás la cuenta, ponés el nombre de tu negocio y tu WhatsApp, y una guía te acompaña paso a paso. Si te trabás, tocás “Ayuda” y escribís tu problema.'],
   ['¿Me cobran comisión por cada venta?', 'No. Pagás solo el abono mensual. Si cobrás con Mercado Pago, la plata entra directo a tu cuenta y solo aplica la comisión de Mercado Pago.'],
   ['¿Cuántos productos y pedidos puedo tener?', 'En el plan Gratis publicás hasta 100 productos, para siempre; en los planes pagos, todos los que quieras. Los pedidos no tienen límite en ningún plan.'],
   ['¿Puedo vender por menor y por mayor con el mismo enlace?', 'Sí. El público ve el precio final y tus revendedores entran con un código a la lista por cantidad (plan Mayorista Pro).'],

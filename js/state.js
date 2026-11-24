@@ -23,7 +23,7 @@ export function idsEnCupo(t, prods) {
   return new Set(prods.filter(p => p.activo).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))).slice(0, lim).map(p => p.id));
 }
 // v2.33: Gratis (base) = catálogo de hasta 100 productos con 1 precio, carga Excel/CSV y pedidos por WhatsApp. Todo lo demás, desde Mayorista Pro.
-const MIN = { importar: 0, escalas: 1, pdf: 1, ocr: 1, presupuestos: 1, caja: 1, cobranzas: 1, resultado: 1, push: 1, flyers: 1, sinmarca: 1, dominio: 2, hibrido: 1, pixel: 1, usd: 1, dashboard: 1, usuarios: 2, carritos: 1, seguimiento: 1, stock: 1, multinivel: 1, proveedores: 1, mercado: 1, webhook: 2 };
+const MIN = { importar: 0, escalas: 1, pdf: 1, ocr: 1, presupuestos: 1, caja: 1, cobranzas: 1, resultado: 1, push: 1, flyers: 1, sinmarca: 1, dominio: 2, hibrido: 1, pixel: 1, usd: 1, dashboard: 1, usuarios: 2, fichas: 2, auditor: 2, carritos: 1, seguimiento: 1, stock: 1, multinivel: 1, proveedores: 1, mercado: 1, webhook: 2 };
 export const can = f => RANK[planEf(P.t)] >= (MIN[f] ?? 9);
 export const PLAN_NOMBRE = { base: 'Gratis', pro: 'Mayorista Pro', api: 'Mayorista IA' };
 // Herramienta bloqueada en el plan actual: tarjeta con el botón para ver planes (mismo formato en todo el panel).
