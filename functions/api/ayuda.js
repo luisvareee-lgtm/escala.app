@@ -60,7 +60,11 @@ export async function onRequestPost({ request, env }) {
   let txt = '', motor = gemini ? 'gemini' : 'workers-ai';
   try { txt = gemini ? await conGemini(env, p) : await conWorkersAI(env, p); }
   catch (e) {
-    if (gemini && cf) { try { txt = await conWorkersAI(env, p); motor = 'workers-ai'; } catch (e2) { txt = ''; } }
+    console.error('ayuda-ia primario:', motor, e && e.message);
+    if (gemini && cf) {
+      try { txt = await conWorkersAI(env, p); motor = 'workers-ai'; }
+      catch (e2) { console.error('ayuda-ia respaldo:', e2 && e2.message); txt = ''; }
+    }
     if (!txt) return json({ error: 'La IA no respondió ahora. Probá de nuevo en un rato o escribile a soporte.' }, 502);
   }
   const nose = !txt || /\bNO_SE\b/.test(txt);
