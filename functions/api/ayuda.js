@@ -31,7 +31,7 @@ async function conGemini(env, p) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${env.GEMINI_MODEL || MODELO_GEMINI}:generateContent`, {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
     body: JSON.stringify({ systemInstruction: { parts: [{ text: p.sistema }] }, contents: [{ role: 'user', parts: [{ text: p.usuario }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 500 } }),
+      generationConfig: { temperature: 0.2, maxOutputTokens: 500, thinkingConfig: { thinkingBudget: 0 } } }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((d.error && d.error.message) || `Gemini ${r.status}`);
