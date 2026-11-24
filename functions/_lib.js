@@ -55,12 +55,16 @@ export function origenDeTienda(request, env) {
 export function mismoOrigen(request, env) {
   const o = request.headers.get('origin');
   if (!o) return false;
-  const propio = env.SITE_URL ? new URL(env.SITE_URL).origin : new URL(request.url).origin;
-  if (o === propio || o === new URL(request.url).origin) return true;
+  const actual = new URL(request.url).origin;
+  let propio;
+  try { propio = env.SITE_URL ? new URL(env.SITE_URL).origin : actual; }
+  catch (e) { propio = actual; }
+  if (o === propio || o === actual) return true;
   const d = dominioPropio(request, env);
   if (d && (o === 'https://' + d || o === 'https://www.' + d)) return true;
   return !!origenDeTienda(request, env);
 }
+
 export const sitio = (request, env) => (env.SITE_URL ? new URL(env.SITE_URL).origin : new URL(request.url).origin);
 
 export function igualesSeguro(a, b) {
