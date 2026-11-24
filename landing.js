@@ -134,7 +134,7 @@ const MAS = [
 ];
 // ¿Cuál es tu caso? Cambia la bajada y los tres puntos del encabezado. Sin elegir, se ve la bajada general (sirve para todos).
 const GENERAL = [null, 'Subís la lista de tu proveedor (foto, PDF o Excel), ponés tu ganancia y tus clientes te mandan el pedido armado por WhatsApp.',
-  ['Precios por menor y por mayor (x1 · x3 · x6 · x12) con el mismo enlace', 'Tus clientes ven cuánto les falta para pagar menos y llevan más', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']];
+  ['Precios por menor y por mayor con el mismo enlace', 'Barra de progreso, x1 · x3 · x6 · x12, tus clientes ahorran, llevan más y sube tu ticket promedio!' , 'Empezas Gratis · Sin comisión por venta']];
 const PERFILES = {
   nuevo: ['Recién empiezo', 'Subís la foto de la lista de tu proveedor, ponés tu ganancia y hoy mismo tenés tu tienda para compartir.',
     ['Lee fotos, capturas, PDF, Excel o el chat de WhatsApp', 'Los pedidos te llegan armados a tu WhatsApp', 'Empezás gratis (hasta 100 productos) y probás todo 14 días, sin comisión por venta']],
@@ -270,8 +270,8 @@ export function inicio(app) {
     <nav class="lp-nav" aria-label="Secciones"><button type="button" data-act="lp-ir" data-k="probar">Cómo funciona</button><button type="button" data-act="lp-ir" data-k="comparar">Comparar</button><button type="button" data-act="lp-ir" data-k="planes">Planes</button><button type="button" data-act="lp-ir" data-k="faq">Preguntas</button></nav>
     <span class="lp-top-acc"><a class="lp-in" href="#/login">Ingresar</a><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></span></div></div>
   <div class="lp">
-  <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para el que recién empieza, tiendas y mayoristas</div>
-    <h1>Tu lista de precios, siempre al día. <span>Por menor o por mayor, sin PDF ni Excel y sin comisión por venta.</span></h1></div>
+  <section class="lp-hero"><div class="lp-hero-tx"><div class="tag">Para mayoristas, tiendas y emprendedores</div>
+    <h1>De tu lista a una tienda online en minutos. <span>Compartís tu link y recibí el pedido en tu WhatsApp</span></h1></div>
     <div class="lp-hero-demo">${videoHtml()}</div>
     <div class="lp-hero-mas"><div class="lp-perfil" role="group" aria-label="¿Cuál es tu caso?">${Object.entries(PERFILES).map(([k, v]) => `<button type="button" data-act="lp-perfil" data-k="${k}" class="${LP.perfil === k ? 'on' : ''}" aria-pressed="${LP.perfil === k}">${v[0]}</button>`).join('')}</div>
     <div id="lp-perfil-in">${perfilHtml()}</div>
@@ -279,7 +279,7 @@ export function inicio(app) {
     <p class="lp-micro">${MICRO}</p>
     ${cuposHtml()}</div></section>
 
-  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Hecho en Argentina</b>en pesos y con ayuda en español</li></ul>
+  <ul class="lp-conf"><li><i>${ICO.cero}</i><b>0% de comisión</b>por cada venta</li><li><i>${ICO.infinito}</i><b>Gratis</b>hasta 100 productos, sin límite de pedidos</li><li><i>${ICO.candado}</i><b>Sin permanencia</b>te vas cuando quieras</li><li><i>${ICO.chat}</i><b>Soporte humano real</b>te ayudamos a armar tu tienda</li></ul>
 
   <section class="lp-sec lp-gbsec"><div class="lp-gbsec-tx"><h2>Así compra tu cliente: cada escalón baja el precio</h2><p class="lp-sub">Precios por cantidad x1 · x3 · x6 · x12, automáticos. Tocá <b>+</b> y mirá cómo baja: son los precios reales de un producto de <b>Lua Beauty</b>.</p>
     <p class="lp-real"><img src="/img/lua/lua-logo.png" alt="" width="28" height="28" loading="lazy">Tienda real de Lua Beauty · cosmética y skincare</p></div><div id="lp-gb">${gbHtml()}</div></section>
@@ -321,7 +321,7 @@ export function inicio(app) {
 
   <section class="lp-final"><h2>Armá tu tienda hoy</h2><p>En unos minutos tenés tu lista online con tus precios, por menor o por mayor, y los pedidos llegando a tu WhatsApp.</p>${cta('btn-inv')}<small>${MICRO}</small></section>
 
-  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp. Hecho en Argentina.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
+  <footer class="lp-foot"><div><b class="lp-logo"><img src="/logo.svg" alt="" width="24" height="24">${N}</b><p>Tu tienda mayorista y minorista con precios por cantidad y pedidos por WhatsApp.</p>${tit ? `<p class="lp-tit">${esc(tit)}${MARCA.CUIT && !/^\[/.test(MARCA.CUIT) ? ' · CUIT ' + esc(MARCA.CUIT) : ''}</p>` : ''}</div>
     <nav aria-label="Enlaces"><a href="#/registro">${CTA}</a><a href="#/login">Ingresar</a>${wsp ? `<a href="${wsp}" target="_blank" rel="noopener">Soporte por WhatsApp</a>` : ''}${MARCA.EMAIL_CONTACTO ? `<a href="mailto:${esc(MARCA.EMAIL_CONTACTO)}">${esc(MARCA.EMAIL_CONTACTO)}</a>` : ''}<a href="#/terminos">Términos y condiciones</a><a href="#/privacidad">Privacidad</a></nav></footer></div>
   <div class="lp-fijo" id="lp-fijo" hidden><span><b>${N}</b>Gratis hasta 100 productos · sin tarjeta</span><a class="btn btn-p btn-sm" href="#/registro">${CTA}</a></div>`;
   cargarCupos(); autoBarra(); cargarDemos(); iniciarVideo();
