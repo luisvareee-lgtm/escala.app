@@ -9,27 +9,34 @@ export const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => 
 
 // Llama a una función SQL "svc_*" con la clave de servicio. Esta clave NUNCA sale de este servidor.
 export async function rpc(env, fn, args) {
-  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify(args || {}),
-  });
+  let r;
+  try {
+    r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify(args || {}),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (e) {
+    throw new Error(e.name === 'TimeoutError' ? 'La base de datos no respondió a tiempo' : 'No se pudo conectar con la base de datos');
+  }
   const t = await r.text();
-  let d = null; try { d = t ? JSON.parse(t) : null; } catch (e) { d = t; }
+  let d = null; try { d = JSON.parse(t) } catch (e) { d = t }
   if (!r.ok) throw new Error((d && d.message) || `Error de base de datos (${r.status})`);
   return d;
 }
+
 
 // Identifica a quién llama (JWT de Supabase Auth). Devuelve el id de usuario o null.
 export async function usuarioDeToken(env, request) {
   const h = request.headers.get('authorization') || '';
   const m = h.match(/^Bearer\s+([\w-]+\.[\w-]+\.[\w-]+)$/);
   if (!m) return null;
-  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, { headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${m[1]}` } });
-  if (!r.ok) return null;
-  const u = await r.json().catch(() => null);
-  return u && esUuid(u.id) ? u.id : null;
-}
+  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+  headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${m[1]}` },
+  signal: AbortSignal.timeout(8000),
+});
+
 
 // Dominio propio (ej. eskalapp.com). Sale de SITE_URL; si no está, del dominio por el que entró el pedido
 // o del Worker de subdominios (Cloudflare marca sus pedidos con el encabezado cf-worker = dominio).
