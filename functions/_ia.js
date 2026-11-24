@@ -97,3 +97,40 @@ export async function generar(env, p, o = {}) {
 // Para mostrar en el panel qué falló, en una línea.
 export const detalle = d => !d ? '' : [d.err1 && (d.gemini ? 'Gemini: ' : 'Workers AI: ') + d.err1, d.err2 && 'Workers AI: ' + d.err2,
   !d.cf && d.gemini && d.err1 ? 'Workers AI: sin conexión "AI" en Cloudflare' : ''].filter(Boolean).join(' · ');
+
+// v2.37 · Imágenes con Nano Banana (Gemini): foto publicitaria a partir de la foto del producto.
+// Nano Banana 2 → si no está o está saturado, Nano Banana 2 Lite → Nano Banana (el original). GEMINI_IMAGE_MODEL va primero.
+const MODELOS_IMG = ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image'];
+const T_IMG = 60000;
+async function unaImagen(env, modelo, texto, foto, viejo) {
+  const cfg = viejo ? { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: '9:16' } }
+    : { responseModalities: ['TEXT', 'IMAGE'], responseFormat: { image: { aspectRatio: '9:16', imageSize: '1K' } } };
+  let r;
+  try {
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelo)}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': clave(env) },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: texto }, { inlineData: { mimeType: foto.tipo, data: foto.datos } }] }], generationConfig: cfg }),
+      signal: AbortSignal.timeout(T_IMG),
+    });
+  } catch (e) { throw new Error(e && e.name === 'TimeoutError' ? `${modelo} no respondió en ${T_IMG / 1000} s` : `No se pudo conectar con Gemini (${limpio(e && e.message)})`); }
+  const raw = await r.text();
+  let d; try { d = JSON.parse(raw); } catch (e) { throw new Error(`Gemini ${r.status}: ${limpio(raw)}`); }
+  if (!r.ok) throw Object.assign(new Error(`Gemini ${r.status} (${modelo}): ${limpio((d.error && d.error.message) || raw)}`), { status: r.status });
+  const c = (d.candidates || [])[0] || {};
+  const img = ((c.content || {}).parts || []).filter(x => !x.thought).map(x => x.inlineData || x.inline_data).filter(x => x && x.data).pop();
+  if (!img) throw new Error(`Gemini no devolvió imagen (${c.finishReason || (d.promptFeedback && d.promptFeedback.blockReason) || 'sin motivo'})`);
+  return { tipo: img.mimeType || img.mime_type || 'image/png', datos: img.data, modelo };
+}
+export async function imagenGemini(env, texto, foto) {
+  if (!hayGemini(env)) throw Object.assign(new Error('La IA de imágenes todavía no está activada.'), { sinIA: true });
+  let ult;
+  for (const m of lista(env.GEMINI_IMAGE_MODEL, MODELOS_IMG)) {
+    try { return await unaImagen(env, m, texto, foto, false); }
+    catch (e) {
+      ult = e;
+      if (e.status === 400 && /responseFormat|response_format|Unknown name|imageSize|image_size/i.test(e.message)) { try { return await unaImagen(env, m, texto, foto, true); } catch (e2) { ult = e2; } }
+      if (!noExiste(ult.message) && !saturado(ult.message) && !/no devolvió imagen/.test(ult.message)) throw ult;
+    }
+  }
+  throw ult;
+}
