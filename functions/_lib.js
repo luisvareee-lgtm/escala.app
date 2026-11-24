@@ -27,6 +27,7 @@ export async function rpc(env, fn, args) {
 }
 
 
+
 // Identifica a quién llama (JWT de Supabase Auth). Devuelve el id de usuario o null.
 export async function usuarioDeToken(env, request) {
   const h = request.headers.get('authorization') || '';
