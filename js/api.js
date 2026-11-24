@@ -70,6 +70,18 @@ async function llamarFn(ruta, cuerpo, conSesion) {
   return d;
 }
 
+// v2.36.1 · Lee la respuesta de /api/ayuda y /api/ficha aunque no sea JSON (una página de error de Cloudflare)
+// y arma un mensaje con lo que pasó, para saber qué arreglar sin abrir la consola.
+async function leerIA(r, que) {
+  const t = await r.text().catch(() => ''); let d = null;
+  try { d = JSON.parse(t); } catch (e) { }
+  if (!d) { console.warn(`/api (${que}) respondió ${r.status} sin JSON:`, t.slice(0, 300)); throw new Error(`No se pudo consultar ${que} (el servidor respondió ${r.status}${/cloudflare/i.test(t) ? ', página de error de Cloudflare' : ''}). Probá de nuevo.`); }
+  if (d.ok === false || (!r.ok && !(r.status === 503 && d.sinIA))) {
+    if (d.diag || d.detalle) console.warn(`/api (${que}) falló:`, d.detalle || '', d.diag || '');
+    throw new Error((d.error || `No se pudo consultar ${que}. Probá de nuevo.`) + (d.detalle ? ` (detalle: ${d.detalle})` : ''));
+  }
+  return d;
+}
 export const api = {
   // ---- público (comprador)
   tienda: async slug => ok(await sb.from('v_tiendas_publicas').select('*').eq('slug', slug).maybeSingle()),
@@ -106,18 +118,16 @@ export const api = {
   ayudaIA: async (pregunta, arts, pantalla) => {
     const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
     let r; try { r = await fetch('/api/ayuda', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify({ pregunta, arts, pantalla }) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
-    const d = await r.json().catch(() => ({}));
+    const d = await leerIA(r, 'la ayuda');
     if (r.status === 503 && d.sinIA) return { sinIA: true };
-    if (!r.ok) throw new Error(d.error || 'No se pudo consultar la ayuda. Probá de nuevo.');
     return d;
   },
   // v2.36 · Fichas comerciales con IA: los datos del producto que están en el formulario (nada de costos ni de clientes)
   fichaIA: async datos => {
     const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
     let r; try { r = await fetch('/api/ficha', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify(datos) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
-    const d = await r.json().catch(() => ({}));
+    const d = await leerIA(r, 'la ficha');
     if (r.status === 503 && d.sinIA) throw new Error('Las fichas con IA todavía no están activadas. Escribinos a soporte.');
-    if (!r.ok) throw new Error(d.error || 'No se pudo escribir la ficha. Probá de nuevo.');
     return d;
   },
   // v2.36 · Auditor comercial (lo calcula la base: el dueño y Administración, en Mayorista IA)
