@@ -97,6 +97,21 @@ function grilla(ctx, K, S, P, y0, y1, o = {}) {
   });
 }
 
+// v2.37 · oscurece arriba y abajo una foto a pantalla completa para que el texto blanco se lea
+function velo(ctx, W, H) {
+  ctx.fillStyle = grad(ctx, 0, 0, 0, H * 0.28, [[0, 'rgba(0,0,0,.55)'], [1, 'rgba(0,0,0,0)']]); ctx.fillRect(0, 0, W, H * 0.28);
+  ctx.fillStyle = grad(ctx, 0, H * 0.5, 0, H, [[0, 'rgba(0,0,0,0)'], [0.45, 'rgba(0,0,0,.6)'], [1, 'rgba(0,0,0,.86)']]); ctx.fillRect(0, H * 0.5, W, H * 0.5);
+}
+// Con foto IA y un estilo que no la usa a su manera: la escena a pantalla completa y el texto encima.
+export function escenaIA(ctx, K, S) {
+  const { W, H } = S, it = S.its[0], P = { fg: '#fff', sub: 'rgba(255,255,255,.84)', precio: '#fff', badgeBg: S.color || '#ffffff', badgeFg: S.color && K.lum(S.color) < 0.6 ? '#fff' : '#111', tile: '#fff', fam: S.fam };
+  cubrir(ctx, S.ia, 0, 0, W, H); velo(ctx, W, H);
+  etiqueta(ctx, K, 90, 100, P, { px: 36 }); K.sticker(ctx, it.pct, W - 170, 180, 84);
+  K.parrafo(ctx, it.nombre, 90, H - 640, { px: 66, peso: 800, color: P.fg, max: W - 180, n: 2, fam: S.fam });
+  precio(ctx, K, it, 90, H - 380, P, 140, 'left');
+  K.pie(ctx, { fg: P.fg, sub: P.sub, tileB: 'rgba(255,255,255,.3)' }, S.logo, H - 230);
+}
+
 /* ---------- los estilos ---------- */
 export const ESTILOS_PRO = {
   productworld: {
@@ -369,12 +384,76 @@ export const ESTILOS_PRO = {
       K.pie(ctx, { fg: P.fg, sub: P.sub, tileB: '#e5e7eb' }, S.logo, H - 120, { compacto: true });
     },
     prompt: (n, x) => `Creá una imagen para un anuncio de Facebook e Instagram en formato 4:5 (1080x1350) con el producto de la foto adjunta${n}: fondo limpio de un solo color que combine con el producto, el producto grande y centrado${x}, buena luz, alto contraste y espacio libre abajo para el precio. Casi sin texto en la imagen (Meta muestra más los anuncios con poco texto).`
+  },
+  // v2.37 · tres estilos minimalistas (códigos que pidió Luis). Con foto IA, la escena va de fondo o en la tarjeta.
+  minimalposter: {
+    cod: 'minimalposter-pt', nombre: 'Póster minimalista', ico: '🖼️', desc: 'Mucho aire, el producto grande y tipografía de póster.', conIA: true,
+    dibujar(ctx, K, S) {
+      const { W, H } = S, it = S.its[0], ac = S.color || '#475569', ia = S.its.length === 1 && S.ia;
+      const P = ia ? { fg: '#fff', sub: 'rgba(255,255,255,.82)', precio: '#fff', badgeBg: 'rgba(255,255,255,.92)', badgeFg: '#111', tile: '#fff', fam: S.fam }
+        : { fg: '#111', sub: 'rgba(17,17,17,.6)', precio: '#111', badgeBg: '#111', badgeFg: '#fff', tile: '#fff', fam: S.fam };
+      if (ia) { cubrir(ctx, ia, 0, 0, W, H); velo(ctx, W, H); }
+      else { ctx.fillStyle = K.mezcla(ac, 0.9); ctx.fillRect(0, 0, W, H); ctx.strokeStyle = rgba(K.mezcla(ac, -0.3), 0.35); ctx.lineWidth = 3; ctx.strokeRect(40, 40, W - 80, H - 80); }
+      etiqueta(ctx, K, 90, 100, P, { px: 30 });
+      if (S.its.length > 1) { grilla(ctx, K, S, P, 260, H - 300, { suelto: true }); }
+      else {
+        if (!ia) { producto(ctx, K, S.ims[0], it, 150, 230, W - 300, 960, { multiply: true }); K.sticker(ctx, it.pct, W - 170, 300, 80); }
+        K.parrafo(ctx, String(it.nombre || '').toUpperCase(), 90, 1330, { px: 74, peso: 900, color: P.fg, max: W - 180, n: 2, fam: S.fam });
+        ctx.fillStyle = P.sub; ctx.fillRect(90, 1470, 120, 6);
+        precio(ctx, K, it, 90, 1630, P, 116, 'left');
+      }
+      K.pie(ctx, { fg: P.fg, sub: P.sub, tileB: ia ? 'rgba(255,255,255,.3)' : 'rgba(0,0,0,.12)' }, S.logo, H - 210, { compacto: true });
+    },
+    prompt: (n, x) => `Creá un póster publicitario minimalista y vertical (9:16) del producto de la foto adjunta${n}: mucho espacio vacío, composición equilibrada, el producto centrado y protagonista${x}. Estética de afiche de diseño, colores sobrios.`
+  },
+  herooffer: {
+    cod: 'herooffer-minimal', nombre: 'Oferta héroe', ico: '🏷️', desc: 'El producto arriba y la oferta en grande, con botón para pedir.', conIA: true,
+    dibujar(ctx, K, S) {
+      const { W, H } = S, it = S.its[0], ac = S.color || '#e11d48', onAc = K.lum(ac) > 0.6 ? '#111' : '#fff', ia = S.its.length === 1 && S.ia, panel = 1150;
+      const P = { fg: onAc, sub: onAc === '#fff' ? 'rgba(255,255,255,.82)' : 'rgba(0,0,0,.62)', precio: onAc, badgeBg: '#111', badgeFg: '#fff', tile: '#fff', fam: S.fam };
+      ctx.fillStyle = '#f7f7f5'; ctx.fillRect(0, 0, W, H);
+      if (S.its.length > 1) {
+        etiqueta(ctx, K, W / 2, 90, P, { al: 'center', px: 34 });
+        grilla(ctx, K, S, { ...P, fg: '#111', sub: '#555', precio: '#111' }, 240, H - 300, { suelto: true });
+        K.pie(ctx, { fg: '#111', sub: '#555', tileB: 'rgba(0,0,0,.12)' }, S.logo, H - 220, { compacto: true }); return;
+      }
+      if (ia) cubrir(ctx, ia, 0, 0, W, panel); else producto(ctx, K, S.ims[0], it, 120, 160, W - 240, panel - 220, { multiply: true });
+      etiqueta(ctx, K, 90, 90, P, { px: 32 });
+      ctx.fillStyle = ac; ctx.fillRect(0, panel, W, H - panel);
+      const pr = K.precioDe(it), titulo = it.pct > 0 ? '-' + it.pct + '%' : (pr.pre ? pr.pre + ' ' : '') + pr.p;
+      K.txt(ctx, titulo, 90, panel + 200, { px: 180, peso: 900, color: onAc, max: W - 180, fam: S.fam });
+      K.parrafo(ctx, it.nombre, 90, panel + 290, { px: 50, peso: 700, color: P.sub, max: W - 180, n: 1, fam: S.fam });
+      if (it.pct > 0) K.txt(ctx, (pr.pre ? pr.pre + ' ' : '') + pr.p + (K.antesDe(it) ? '  (antes ' + K.antesDe(it) + ')' : ''), 90, panel + 380, { px: 60, peso: 800, color: onAc, max: W - 180, fam: S.fam });
+      const by = panel + 420, bw = 560, bh = 96; ctx.save(); K.rr(ctx, 90, by, bw, bh, 48); ctx.fillStyle = onAc; ctx.fill(); ctx.restore();
+      K.txt(ctx, 'Pedilo por WhatsApp →', 90 + bw / 2, by + 62, { px: 38, peso: 800, color: ac, al: 'center', max: bw - 40, fam: S.fam });
+      K.pie(ctx, { fg: onAc, sub: P.sub, tileB: 'rgba(255,255,255,.3)' }, S.logo, H - 200, { compacto: true });
+    },
+    prompt: (n, x) => `Creá una imagen publicitaria vertical (9:16) estilo "hero" del producto de la foto adjunta${n}: el producto enorme y protagonista en la mitad de arriba, fondo simple y luminoso${x}. La mitad de abajo, lisa y despejada para poner la oferta.`
+  },
+  cleanflyer: {
+    cod: 'cleanflyer', nombre: 'Flyer limpio', ico: '🤍', desc: 'Blanco y prolijo: el producto en tarjeta, el nombre y el precio claros.', conIA: true,
+    dibujar(ctx, K, S) {
+      const { W, H } = S, it = S.its[0], ac = S.color || '#2563eb', ia = S.its.length === 1 && S.ia;
+      const P = { fg: '#111827', sub: '#6b7280', precio: '#111827', badgeBg: ac, badgeFg: K.lum(ac) > 0.6 ? '#111' : '#fff', tile: '#f5f5f4', fam: S.fam };
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = ac; ctx.fillRect(0, 0, W, 14);
+      if (S.its.length > 1) { etiqueta(ctx, K, 90, 70, P, { px: 32 }); grilla(ctx, K, S, P, 220, H - 300); }
+      else {
+        enMarco(ctx, K, ia || S.ims[0], it, 90, 90, W - 180, 960, 40, '#f5f5f4');
+        etiqueta(ctx, K, 120, 120, P, { px: 32 }); K.sticker(ctx, it.pct, W - 170, 190, 78);
+        K.parrafo(ctx, it.nombre, 90, 1150, { px: 60, peso: 800, color: P.fg, max: W - 180, n: 2, fam: S.fam });
+        precio(ctx, K, it, 90, 1390, P, 124, 'left');
+        const e = it.escalas; if (K.F.precios === 'escalas' && e && e[12] < e[1]) K.txt(ctx, [1, 3, 6, 12].map(q => 'x' + q + ' ' + K.fmt(e[q])).join('  ·  '), 90, 1490, { px: 36, peso: 700, color: P.sub, max: W - 180, fam: S.fam });
+      }
+      K.pie(ctx, { fg: P.fg, sub: P.sub, tileB: '#e5e7eb' }, S.logo, H - 240);
+    },
+    prompt: (n, x) => `Creá una foto de producto limpia y vertical (9:16) del producto de la foto adjunta${n}: fondo claro y prolijo, luz pareja, el producto centrado y nítido${x}. Estética de catálogo moderno.`
   }
 };
 export const CODIGOS = Object.keys(ESTILOS_PRO);
 // "/luxury", "luxury", "/LUXURY " → 'luxury'; acepta también "/realist" y "/realista"
 export function estiloDeCodigo(s) {
-  const k = String(s || '').trim().toLowerCase().replace(/^\//, '').replace(/^realista$/, 'realist').replace(/^ugc-?creator$/, 'ugccreator').replace(/^product-?world$/, 'productworld').replace(/^meta-?ads$/, 'metaads');
+  const k = String(s || '').trim().toLowerCase().replace(/^\//, '').replace(/^realista$/, 'realist').replace(/^ugc-?creator$/, 'ugccreator').replace(/^product-?world$/, 'productworld').replace(/^meta-?ads$/, 'metaads')
+    .replace(/^minimal-?poster(-?pt)?$/, 'minimalposter').replace(/^hero-?offer(-?minimal)?$/, 'herooffer').replace(/^clean-?flyer$/, 'cleanflyer');
   return ESTILOS_PRO[k] ? k : null;
 }
 // prompt listo para pegar en una IA de imágenes, junto con la foto del producto

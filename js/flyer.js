@@ -3,14 +3,19 @@
 // Tres usos:  'reventa'  (tienda pública, marca blanca: NUNCA dibuja datos del comercio),
 //             'comercio' (panel: con logo, nombre, enlace y WhatsApp de la tienda)  y  'demo' (portada).
 import { esc, fmt, on, toast, store, debounce, copiar } from './util.js';
-import { ESTILOS_PRO, CODIGOS, estiloDeCodigo, promptDe } from './flyer_pro.js';
+import { ESTILOS_PRO, CODIGOS, estiloDeCodigo, escenaIA } from './flyer_pro.js';
+import { LOOKS, lookAuto, VIDEOS, COD_VIDEO, videoDeCodigo, DURACIONES, promptImagen, promptVideo } from './estudio_ia.js';
+import { previa, parar, grabar, formatoVideo, W as VW, H as VH } from './shorts.js';
 
 export const ESTILOS = { oscuro: 'Oscuro elegante', claro: 'Claro minimalista', vibrante: 'Vibrante oferta' };
 export const BADGES = ['🔥 En Stock', '✨ Nuevo Ingreso', '📦 Por Encargo', '⚡ Oferta'];
 const W = 1080, H = 1920, FUENTE = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-const F = { abierto: false, modo: 'reventa', items: [], marca: null, estilo: 'oscuro', badge: BADGES[0], precios: 'unico', pie: { nombre: '', wsp: '' }, fallos: 0, textos: [], puedeEscalas: false };
+const F = { abierto: false, modo: 'reventa', items: [], marca: null, estilo: 'oscuro', badge: BADGES[0], precios: 'unico', pie: { nombre: '', wsp: '' }, fallos: 0, textos: [], puedeEscalas: false,
+  // v2.37: pestaña Imagen/Video, estética, foto con IA y Shorts (solo en el panel)
+  tab: 'img', rubro: 'otro', look: 'auto', iaCfg: null, ia: null, iaEstado: '', iaErr: '', vid: { estilo: 'retail-commercial', seg: 10, cod: '', prog: 0, res: null, err: '' } };
+const lookDe = () => F.look === 'auto' ? lookAuto(F.rubro, F.items) : F.look;
 const cache = new Map();   // url -> Promise<HTMLImageElement|null>
 
 /* ---------- imágenes: se piden con permiso CORS; si el sitio de la foto no lo da, se usa un ícono (el canvas nunca queda bloqueado) ---------- */
@@ -148,13 +153,15 @@ export async function dibujar(canvas) {
   const logo = F.modo === 'comercio' && F.marca ? await cargar(F.marca.logo) : null;
   F.textos = []; F.fallos = its.filter((it, i) => it.img && !ims[i]).length;
   // estilos publicitarios (/productworld, /luxury, /metaads…): cada uno arma su propia composición
-  const pro = ESTILOS_PRO[F.estilo], alto = (pro && pro.alto) || H;
+  const pro = ESTILOS_PRO[F.estilo], ia = its.length === 1 ? F.ia : null, alto = pro && pro.alto && !ia ? pro.alto : H;
   if (canvas.height !== alto) canvas.height = alto;
   canvas.style.aspectRatio = W + ' / ' + alto;
-  if (pro) {
+  if (pro || ia) {
     const color = F.modo === 'comercio' && F.marca && HEX.test(F.marca.color || '') ? F.marca.color : null;
     const quien = F.modo === 'comercio' && F.marca ? F.marca.nombre : F.modo === 'demo' ? 'Tu marca' : (F.pie.nombre.trim() || 'Mis recomendados');
-    ctx.save(); pro.dibujar(ctx, K, { W, H: alto, its, ims, logo, color, quien }); ctx.restore();
+    const S = { W, H: alto, its, ims, logo, color, quien, ia };
+    // con foto IA: los estilos que la usan a su manera (póster, oferta héroe, flyer limpio) y el resto, texto sobre la escena
+    ctx.save(); if (ia && !(pro && pro.conIA)) escenaIA(ctx, K, S); else pro.dibujar(ctx, K, S); ctx.restore();
     return terminar(canvas);
   }
   const g = ctx.createLinearGradient(0, 0, W * 0.35, H); g.addColorStop(0, T.bg[0]); g.addColorStop(1, T.bg[1]); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -207,27 +214,117 @@ const redibujar = debounce(() => { const c = document.getElementById('fl-canvas'
 /* ---------- ventana ---------- */
 function raiz() { let r = document.getElementById('flyer-root'); if (!r) { r = document.createElement('div'); r.id = 'flyer-root'; document.body.appendChild(r); } return r; }
 function pintar() {
-  const r = raiz(); if (!F.abierto) { r.innerHTML = ''; return; }
-  const rev = F.modo === 'reventa', com = F.modo === 'comercio', varios = F.items.length > 1;
+  const r = raiz(); if (!F.abierto) { parar(); r.innerHTML = ''; return; }
+  const rev = F.modo === 'reventa', com = F.modo === 'comercio', varios = F.items.length > 1, ia = com && F.iaCfg, video = ia && F.tab === 'video';
   const chips = (act, lista, sel) => lista.map(([v, t]) => `<button type="button" class="pill ${sel === v ? 'on' : ''}" data-act="${act}" data-v="${esc(v)}" aria-pressed="${sel === v}">${esc(t)}</button>`).join('');
+  const lk = lookDe(), looks = `<div class="fg"><span class="flabel">Estética <small class="muted">· según tu rubro, o elegí otra</small></span><div class="fl-chips">${chips('fl-look', [['auto', '✨ Auto: ' + LOOKS[lookAuto(F.rubro, F.items)].n], ...Object.entries(LOOKS).map(([k, L]) => [k, L.ico + ' ' + L.n])], F.look)}</div></div>`;
+  const tabs = ia ? `<div class="fl-tabs" role="tablist">${[['img', '🖼️ Imagen'], ['video', '🎬 Video (Short)']].map(([k, t]) => `<button type="button" role="tab" class="${F.tab === k ? 'on' : ''}" aria-selected="${F.tab === k}" data-act="fl-tab" data-v="${k}">${t}</button>`).join('')}</div>` : '';
   r.innerHTML = `<div class="modal-bg" data-act="fl-bg"><div class="modal modal-ancho fl" role="dialog" aria-modal="true" aria-label="Crear flyer">
-    <div class="view-title">📸 ${varios ? `Flyer con ${F.items.length} productos` : 'Flyer del producto'}</div>
-    <p class="hint">${rev ? 'Imagen vertical lista para tus Estados de WhatsApp o historias. <b>Sale sin datos de la tienda</b>: solo tu precio y tu contacto.' : com ? 'Imagen vertical con tu marca, tu enlace y tu WhatsApp, lista para Estados e historias.' : 'Así se ve un flyer armado con lo que leímos de tu lista.'}</p>
-    <div class="fl-grid"><div class="fl-prev"><canvas id="fl-canvas" width="${W}" height="${H}" role="img" aria-label="Flyer"></canvas><p class="hint" id="fl-nota" role="status"></p></div>
+    <div class="view-title">${video ? '🎬 Video para Estados, Reels y TikTok' : `📸 ${varios ? `Flyer con ${F.items.length} productos` : 'Flyer del producto'}`}</div>
+    <p class="hint">${video ? 'Short vertical 9:16 con tu producto, tu precio y tu marca al final. Se arma en tu celular o compu, sin costo por video.' : rev ? 'Imagen vertical lista para tus Estados de WhatsApp o historias. <b>Sale sin datos de la tienda</b>: solo tu precio y tu contacto.' : com ? 'Imagen vertical con tu marca, tu enlace y tu WhatsApp, lista para Estados e historias.' : 'Así se ve un flyer armado con lo que leímos de tu lista.'}</p>
+    ${tabs}${video ? videoHtml(chips, looks) : `<div class="fl-grid"><div class="fl-prev"><canvas id="fl-canvas" width="${W}" height="${H}" role="img" aria-label="Flyer"></canvas><p class="hint" id="fl-nota" role="status"></p></div>
     <div class="fl-ctrl">
       <div class="fg"><span class="flabel">Estilo</span><div class="fl-chips">${chips('fl-estilo', Object.entries(ESTILOS), F.estilo)}</div></div>
-      <div class="fg"><span class="flabel">Estilos publicitarios <small class="muted">· tocá uno o escribí su código</small></span><div class="fl-chips">${chips('fl-estilo', CODIGOS.map(k => [k, ESTILOS_PRO[k].ico + ' /' + k]), F.estilo)}</div>
-        <input class="fi fl-cod" id="fl-cod" placeholder="Escribí un código: /luxury, /ugc, /metaads…" data-input="fl-cod" aria-label="Código de estilo" autocomplete="off" autocapitalize="none" value="${esc(F.cod || '')}">
-        ${ESTILOS_PRO[F.estilo] ? `<p class="hint fl-desc"><b>${esc(ESTILOS_PRO[F.estilo].nombre)}:</b> ${esc(ESTILOS_PRO[F.estilo].desc)}${ESTILOS_PRO[F.estilo].alto ? ' Sale en formato 4:5, el de las publicaciones y anuncios del feed.' : ''}${F.precios === 'escalas' ? ' Muestra el precio por unidad (la tabla x1 · x3 · x6 · x12 va en los estilos clásicos).' : ''}</p>
-        <details class="fl-ia"><summary>🤖 Prompt para IA <small class="muted">(opcional)</small></summary><p class="hint">Copialo y pegalo en ChatGPT o Gemini junto con la foto del producto: te arma una foto realista en este estilo. Después podés usarla como foto del producto.</p><textarea class="fi" id="fl-prompt" rows="6" readonly aria-label="Prompt para IA">${esc(promptDe(F.estilo, F.items))}</textarea><button type="button" class="btn btn-s btn-sm" data-act="fl-prompt">📋 Copiar prompt</button></details>` : ''}</div>
+      <div class="fg"><span class="flabel">Estilos publicitarios <small class="muted">· tocá uno o escribí su código</small></span><div class="fl-chips">${chips('fl-estilo', CODIGOS.map(k => [k, ESTILOS_PRO[k].ico + ' /' + (ESTILOS_PRO[k].cod || k)]), F.estilo)}</div>
+        <input class="fi fl-cod" id="fl-cod" placeholder="Escribí un código: /luxury, /cleanflyer, /herooffer-minimal…" data-input="fl-cod" aria-label="Código de estilo" autocomplete="off" autocapitalize="none" value="${esc(F.cod || '')}">
+        ${ESTILOS_PRO[F.estilo] ? `<p class="hint fl-desc"><b>${esc(ESTILOS_PRO[F.estilo].nombre)}:</b> ${esc(ESTILOS_PRO[F.estilo].desc)}${ESTILOS_PRO[F.estilo].alto && !F.ia ? ' Sale en formato 4:5, el de las publicaciones y anuncios del feed.' : ''}${F.precios === 'escalas' && !['cleanflyer'].includes(F.estilo) ? ' Muestra el precio por unidad (la tabla x1 · x3 · x6 · x12 va en los estilos clásicos y en /cleanflyer).' : ''}</p>` : ''}</div>
+      ${ia ? looks + iaHtml() : ''}
+      ${ESTILOS_PRO[F.estilo] || ia ? `<details class="fl-ia"><summary>🤖 Prompt para otra IA <small class="muted">(opcional)</small></summary><p class="hint">${ia ? 'Si preferís usar ChatGPT u otra IA: copialo y pegalo junto con la foto del producto.' : 'Copialo y pegalo en ChatGPT o Gemini junto con la foto del producto: te arma una foto realista en este estilo. Después podés usarla como foto del producto.'}</p><textarea class="fi" id="fl-prompt" rows="6" readonly aria-label="Prompt para IA">${esc(promptImagen(ESTILOS_PRO[F.estilo], lk, F.items))}</textarea><button type="button" class="btn btn-s btn-sm" data-act="fl-prompt">📋 Copiar prompt</button></details>` : ''}
       <div class="fg"><span class="flabel">Etiqueta</span><div class="fl-chips">${chips('fl-badge', [...BADGES.map(b => [b, b]), ['', 'Sin etiqueta']], F.badge)}</div></div>
       ${com && F.puedeEscalas ? `<div class="fg"><span class="flabel">Qué precio mostrar</span><div class="fl-chips">${chips('fl-precios', [['escalas', 'Tabla x1 · x3 · x6 · x12'], ['desde', 'Desde $… llevando 12'], ...(F.items.some(i => i.min > 0) ? [['minorista', 'Precio minorista']] : [['unico', 'Solo precio x1']])], F.precios)}</div></div>` : ''}
       ${rev || F.modo === 'demo' ? `<div class="fg"><span class="flabel">${rev ? 'Tu precio de venta al público' : 'Precio que muestra'}</span>${F.items.map((it, i) => `<label class="fl-precio"><span>${esc(it.nombre)}</span><span class="fl-pin"><i>$</i><input class="fi" inputmode="numeric" data-input="fl-precio" data-i="${i}" value="${num(it.precio)}" aria-label="Precio de ${esc(it.nombre)}"></span></label>`).join('')}${rev ? '<p class="hint">Es el precio que ven tus clientes. Lo que te cuesta a vos no aparece.</p>' : ''}</div>` : ''}
       ${rev ? `<div class="fg"><span class="flabel">Tu contacto al pie <small class="muted">(opcional)</small></span><input class="fi" data-input="fl-pie" data-k="nombre" maxlength="40" placeholder="Tu nombre o el de tu emprendimiento" value="${esc(F.pie.nombre)}" aria-label="Tu nombre o marca"><input class="fi" style="margin-top:6px" data-input="fl-pie" data-k="wsp" maxlength="24" inputmode="tel" placeholder="Tu WhatsApp" value="${esc(F.pie.wsp)}" aria-label="Tu WhatsApp"></div>` : ''}
       <div class="stack"><button class="btn btn-wa" data-act="fl-compartir">📲 Compartir en WhatsApp / Instagram</button><button class="btn btn-s" data-act="fl-bajar">⬇️ Descargar imagen PNG</button><button class="btn btn-s" data-act="fl-cerrar">Cerrar</button></div>
-    </div></div></div></div>`;
-  dibujar(document.getElementById('fl-canvas'));
+    </div></div>`}</div></div>`;
+  if (video) arrancarPrevia(); else { parar(); dibujar(document.getElementById('fl-canvas')); }
 }
+
+/* ---------- v2.37 · foto con IA ---------- */
+function iaHtml() {
+  const c = F.iaCfg;
+  if (!c.foto) return `<div class="fg fl-iabox"><span class="flabel">✨ Foto con IA</span><p class="hint">La IA arma una foto publicitaria con tu producto real, en el estilo y la estética que elijas. <span class="tag warn">🔒 Mayorista IA</span></p></div>`;
+  if (F.items.length > 1) return `<div class="fg fl-iabox"><span class="flabel">✨ Foto con IA</span><p class="hint">La foto con IA se hace de a un producto: armá el flyer con uno solo.</p></div>`;
+  const ocupado = F.iaEstado === 'creando';
+  return `<div class="fg fl-iabox"><span class="flabel">✨ Foto con IA <small class="muted">· con tu foto real, en este estilo y estética</small></span>
+    ${F.ia ? `<p class="hint fl-iaok">✓ Usando la foto creada con IA. El precio, tu logo y tu enlace van encima.</p>` : ''}
+    <div class="fl-iabts"><button type="button" class="btn btn-p btn-sm" data-act="fl-ia" ${ocupado ? 'disabled' : ''}>${ocupado ? '<span class="spin"></span> Creando la foto… (unos 20 s)' : F.ia ? '🔄 Crear otra' : '✨ Crear foto con IA'}</button>${F.ia && !ocupado ? '<button type="button" class="btn btn-s btn-sm" data-act="fl-ia-quitar">✕ Usar la foto original</button>' : ''}</div>
+    ${F.iaErr ? `<div class="err-box" style="margin-top:6px">${esc(F.iaErr)}</div>` : ''}
+    <p class="hint">Hasta 15 por día. Revisá que el producto haya quedado igual antes de publicarla.</p></div>`;
+}
+function fotoParaIA(im) {
+  const k = Math.min(1, 1024 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+  c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.9);   // tira error si el sitio de la foto no da permiso
+}
+on('fl-ia', async () => {
+  if (!F.iaCfg || !F.iaCfg.foto || F.iaEstado === 'creando') return;
+  const it = F.items[0], im = await cargar(it.img); let foto = '';
+  try { if (!im) throw 0; foto = fotoParaIA(im); } catch (e) { F.iaErr = it.img ? 'Esta foto no se puede usar con la IA (el sitio donde está guardada no lo permite). Subí la foto al producto desde tu celular o compu y probá de nuevo.' : 'Primero cargale una foto al producto: la IA trabaja sobre tu foto real.'; pintar(); return; }
+  F.iaEstado = 'creando'; F.iaErr = ''; pintar();
+  try {
+    const d = await F.iaCfg.crear({ foto, prompt: promptImagen(ESTILOS_PRO[F.estilo], lookDe(), F.items) });
+    const nueva = await new Promise((ok, mal) => { const x = new Image(); x.onload = () => ok(x); x.onerror = () => mal(new Error('La imagen llegó dañada. Probá de nuevo.')); x.src = d.imagen; });
+    F.ia = nueva; toast('✨ Foto creada');
+  } catch (e) { F.iaErr = e.message || 'No se pudo crear la foto.'; }
+  F.iaEstado = ''; if (F.abierto) pintar();
+});
+on('fl-ia-quitar', () => { F.ia = null; pintar(); });
+on('fl-look', d => { F.look = d.v; store.set('fly:look', d.v); pintar(); });
+on('fl-tab', d => { F.tab = d.v === 'video' ? 'video' : 'img'; pintar(); });
+
+/* ---------- v2.37 · Shorts 9:16 ---------- */
+function videoHtml(chips, looks) {
+  const V = F.vid, c = F.iaCfg, fmtOk = !!formatoVideo(), ocupado = V.prog > 0 && V.prog < 1;
+  const est = VIDEOS[V.estilo];
+  return `<div class="fl-grid"><div class="fl-prev"><canvas id="fl-video" width="${VW}" height="${VH}" role="img" aria-label="Vista previa del video"></canvas>
+      <p class="hint">${ocupado ? `<b>Grabando… ${Math.round(V.prog * V.seg)} de ${V.seg} s.</b> No cambies de pestaña.` : 'Vista previa en movimiento.'}</p>${ocupado ? `<div class="fl-barra"><i style="width:${Math.round(V.prog * 100)}%"></i></div>` : ''}</div>
+    <div class="fl-ctrl">
+      <div class="fg"><span class="flabel">Estilo de video <small class="muted">· tocá uno o escribí su código</small></span><div class="fl-chips">${chips('fl-vest', COD_VIDEO.map(k => [k, VIDEOS[k].ico + ' /' + k]), V.estilo)}</div>
+        <input class="fi fl-cod" id="fl-vcod" placeholder="Escribí un código: /unboxing, /tabletop-ad…" data-input="fl-vcod" aria-label="Código de estilo de video" autocomplete="off" autocapitalize="none" value="${esc(V.cod)}">
+        <p class="hint fl-desc"><b>${esc(est.n)}:</b> ${esc(est.desc)}</p></div>
+      <div class="fg"><span class="flabel">Duración</span><div class="fl-chips">${chips('fl-vseg', DURACIONES.map(n => [String(n), n + ' segundos']), String(V.seg))}</div></div>
+      ${looks}
+      ${F.ia && F.items.length === 1 ? '<p class="hint">✨ Usa la foto que creaste con IA.</p>' : ''}
+      <div class="fg"><span class="flabel">Etiqueta</span><div class="fl-chips">${chips('fl-badge', [...BADGES.map(b => [b, b]), ['', 'Sin etiqueta']], F.badge)}</div></div>
+      ${V.err ? `<div class="err-box">${esc(V.err)}</div>` : ''}
+      ${V.res ? `<div class="ok-box fl-vok">🎬 Video listo (${V.seg} s, .${V.res.ext}).</div>` : ''}
+      <div class="stack">${!c.video ? `<p class="hint">Crear el video es del plan <b>Mayorista IA</b>. <span class="tag warn">🔒</span></p>`
+        : !fmtOk ? '<p class="hint">Este navegador no puede crear videos. Probá con Chrome actualizado.</p>'
+        : V.res ? `<button class="btn btn-wa" data-act="fl-vcomp">📲 Compartir el video</button><button class="btn btn-s" data-act="fl-vbajar">⬇️ Descargar video</button><button class="btn btn-s" data-act="fl-vgrabar">🎬 Crear de nuevo</button>`
+        : `<button class="btn btn-p" data-act="fl-vgrabar" ${ocupado ? 'disabled' : ''}>${ocupado ? '<span class="spin"></span> Grabando…' : `🎬 Crear video (tarda ${V.seg} s)`}</button>`}
+        <button class="btn btn-s" data-act="fl-cerrar">Cerrar</button></div>
+      <details class="fl-ia"><summary>🤖 Prompt para una IA de video <small class="muted">(Veo, Sora, Kling… opcional)</small></summary><p class="hint">Si querés un video filmado con IA: pegalo junto con la foto del producto.</p><textarea class="fi" id="fl-vprompt" rows="5" readonly aria-label="Prompt para IA de video">${esc(promptVideo(V.estilo, lookDe(), F.items, V.seg))}</textarea><button type="button" class="btn btn-s btn-sm" data-act="fl-vprompt">📋 Copiar prompt</button></details>
+    </div></div>`;
+}
+async function datosVideo() {
+  const its = F.items.slice(0, 4), ims = await Promise.all(its.map(it => cargar(it.img)));
+  const logo = F.marca ? await cargar(F.marca.logo) : null, col = F.marca && HEX.test(F.marca.color || '') ? F.marca.color : LOOKS[lookDe()].color;
+  return { its: its.map(it => { const pr = precioDe(it); return { nombre: it.nombre, emoji: it.emoji, precio: pr.p, pre: pr.pre, antes: antesDe(it), pct: it.pct }; }), ims,
+    ia: its.length === 1 ? F.ia : null, logo, marca: F.marca, color: col, estilo: F.vid.estilo, seg: F.vid.seg, badge: F.badge };
+}
+async function arrancarPrevia() { const V = await datosVideo(), c = document.getElementById('fl-video'); if (c && F.tab === 'video' && !(F.vid.prog > 0 && F.vid.prog < 1)) previa(c, V); }
+const nuevoVideo = () => { F.vid.res = null; F.vid.err = ''; };
+on('fl-vest', d => { F.vid.estilo = d.v; F.vid.cod = ''; nuevoVideo(); store.set('fly:vest', d.v); pintar(); });
+on('fl-vcod', (d, el) => { F.vid.cod = el.value; const k = videoDeCodigo(el.value); if (!k || k === F.vid.estilo) return; F.vid.estilo = k; nuevoVideo(); pintar(); const i = document.getElementById('fl-vcod'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
+on('fl-vseg', d => { F.vid.seg = DURACIONES.includes(+d.v) ? +d.v : 10; nuevoVideo(); pintar(); });
+on('fl-vprompt', () => { const t = document.getElementById('fl-vprompt'); if (t) { copiar(t.value); try { t.select(); } catch (e) { } } });
+on('fl-vgrabar', async () => {
+  if (!F.iaCfg || !F.iaCfg.video || (F.vid.prog > 0 && F.vid.prog < 1)) return;
+  const V = await datosVideo(); F.vid.res = null; F.vid.err = ''; F.vid.prog = 0.001; pintar(); parar();
+  const c = document.getElementById('fl-video'); let ult = 0;
+  try { F.vid.res = await grabar(c, V, p => { F.vid.prog = p; if (p - ult > 0.1) { ult = p; const h = c.parentElement.querySelector('.hint'); if (h) h.innerHTML = `<b>Grabando… ${Math.round(p * V.seg)} de ${V.seg} s.</b> No cambies de pestaña.`; const b = c.parentElement.querySelector('.fl-barra i'); if (b) b.style.width = Math.round(p * 100) + '%'; } }); toast('🎬 Video listo'); }
+  catch (e) { F.vid.err = e.message || 'No se pudo crear el video.'; }
+  F.vid.prog = 0; if (F.abierto) pintar();
+});
+const nombreVideo = () => 'video-' + (F.items[0].nombre || 'producto').normalize('NFD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').toLowerCase().slice(0, 30) + '.' + F.vid.res.ext;
+function bajarVideo() { const a = document.createElement('a'); a.href = URL.createObjectURL(F.vid.res.blob); a.download = nombreVideo(); document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 8000); }
+on('fl-vbajar', () => { if (F.vid.res) { bajarVideo(); toast('Video descargado ✓'); } });
+on('fl-vcomp', async () => {
+  if (!F.vid.res) return; const f = new File([F.vid.res.blob], nombreVideo(), { type: F.vid.res.tipo });
+  try { if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  bajarVideo(); toast('Tu navegador no comparte videos directo: lo descargamos. Subilo a tu Estado o historia.');
+});
 
 // cfg: { modo, items:[{nombre, img, emoji, precio, escalas:{1,3,6,12}|null, min}], marca:{nombre, logo, color, url, wsp}, badge }
 export function abrirFlyer(cfg) {
@@ -238,11 +335,15 @@ export function abrirFlyer(cfg) {
   F.precios = F.puedeEscalas ? 'escalas' : 'unico';
   F.badge = cfg.badge !== undefined && (cfg.badge === '' || BADGES.includes(cfg.badge)) ? cfg.badge : BADGES[0];
   F.estilo = store.get('fly:estilo', F.modo === 'comercio' ? 'claro' : 'oscuro'); if (!ESTILOS[F.estilo] && !ESTILOS_PRO[F.estilo]) F.estilo = 'oscuro'; F.cod = '';
+  // v2.37: rubro para la estética, y en el panel la foto con IA y los videos (cfg.ia = { foto, video, crear })
+  F.rubro = cfg.rubro || 'otro'; F.iaCfg = F.modo === 'comercio' && cfg.ia ? cfg.ia : null; F.tab = 'img'; F.ia = null; F.iaEstado = ''; F.iaErr = '';
+  F.look = store.get('fly:look', 'auto'); if (F.look !== 'auto' && !LOOKS[F.look]) F.look = 'auto';
+  F.vid = { estilo: VIDEOS[store.get('fly:vest', '')] ? store.get('fly:vest', '') : 'retail-commercial', seg: 10, cod: '', prog: 0, res: null, err: '' };
   const g = store.get('fly:pie', null); F.pie = { nombre: g && typeof g.nombre === 'string' ? g.nombre.slice(0, 40) : '', wsp: g && typeof g.wsp === 'string' ? g.wsp.slice(0, 24) : '' };
   pintar();
 }
 export const flyerAbierto = () => F.abierto;
-const cerrar = () => { F.abierto = false; pintar(); };
+const cerrar = () => { if (F.vid.prog > 0 && F.vid.prog < 1) return; F.abierto = false; pintar(); };
 on('fl-cerrar', cerrar);
 on('fl-bg', (d, b, e) => { if (e.target === b) cerrar(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && F.abierto) cerrar(); });
@@ -253,7 +354,7 @@ on('fl-cod', (d, el) => {
   const i = document.getElementById('fl-cod'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 });
 on('fl-prompt', () => { const t = document.getElementById('fl-prompt'); if (!t) return; copiar(t.value); try { t.select(); } catch (e) { } });
-on('fl-badge', d => { F.badge = d.v; pintar(); });
+on('fl-badge', d => { F.badge = d.v; F.vid.res = null; pintar(); });
 on('fl-precios', d => { F.precios = d.v; pintar(); });
 on('fl-precio', (d, el) => { const it = F.items[+d.i]; if (it) { it.precio = num(String(el.value).replace(/\D/g, '')); redibujar(); } });
 on('fl-pie', (d, el) => { F.pie[d.k] = el.value; store.set('fly:pie', F.pie); redibujar(); });

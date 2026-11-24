@@ -33,7 +33,7 @@ import { vistaAdmin, resetAdmin, esAdmin, chipPlan, sugerirHtml } from './fundad
 import { avisosHtml, resetAvisos } from './avisos.js';
 import { seMuestra, vistaSimple, vistaCard, tipVistaHtml, escondidas } from './vista.js';
 import { initTalles, tallesHtml, tallesDatos, presetsHtml, parseVars, resumenTalles, guiaCardHtml, campoVar } from './talles.js';
-import { RUBROS } from './rubro.js';
+import { RUBROS, rubroDe } from './rubro.js';
 
 const Q = { q: '', lim: 60, filtro: 'todos', pq: '', stop: null, fly: null };
 let salirFn = () => { };
@@ -211,7 +211,9 @@ function flyerDe(ids, badge) {
   const L = ids.map(id => P.prods.find(p => p.id === id)).filter(Boolean).slice(0, 4); if (!L.length) { toast('Elegí al menos un producto'); return; }
   const t = P.t;
   abrirFlyer({ modo: 'comercio', items: L.map(itemFlyer), badge: badge || (L.every(p => ofertaVig(p)) ? '⚡ Oferta' : L.every(encargoP) ? '📦 Por Encargo' : '🔥 En Stock'),
-    marca: { nombre: t.nombre, logo: t.logo_url || '', color: t.color, url: urlTienda().replace(/^https?:\/\//, '').replace(/\/$/, ''), wsp: '+' + t.whatsapp } });
+    marca: { nombre: t.nombre, logo: t.logo_url || '', color: t.color, url: urlTienda().replace(/^https?:\/\//, '').replace(/\/$/, ''), wsp: '+' + t.whatsapp },
+    // v2.37: estética según el rubro; foto con IA y Shorts en Mayorista IA (el dueño)
+    rubro: rubroDe(t, P.prods), ia: P.miembro ? null : { foto: can('flyerIA'), video: can('shorts'), crear: d => api.flyerIA(d) } });
 }
 on('pf-modo', () => { Q.fly = Q.fly ? null : []; pintar(); });
 on('pf-sel', d => { if (!Q.fly) return; const i = Q.fly.indexOf(d.id); if (i >= 0) Q.fly.splice(i, 1); else if (Q.fly.length >= 4) { toast('Un flyer lleva hasta 4 productos'); return; } else Q.fly.push(d.id); pintar(); });

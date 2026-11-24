@@ -130,6 +130,15 @@ export const api = {
     if (r.status === 503 && d.sinIA) throw new Error('Las fichas con IA todavía no están activadas. Escribinos a soporte.');
     return d;
   },
+  // v2.37 · Foto con IA para el flyer: la foto del producto (achicada) y el pedido de estilo; vuelve la imagen
+  flyerIA: async datos => {
+    const ses = (await sb.auth.getSession()).data.session; if (!ses || !ses.access_token) throw new Error('Iniciá sesión de nuevo.');
+    let r; try { r = await fetch('/api/flyer-ia', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ses.access_token }, body: JSON.stringify(datos) }); } catch (e) { throw new Error(amable('Failed to fetch')); }
+    const d = await leerIA(r, 'la foto con IA');
+    if (r.status === 503 && d.sinIA) throw new Error('La foto con IA todavía no está activada. Escribinos a soporte.');
+    if (!d.imagen) throw new Error('La IA no devolvió la foto. Probá de nuevo.');
+    return d;
+  },
   // v2.36 · Auditor comercial (lo calcula la base: el dueño y Administración, en Mayorista IA)
   auditor: async () => ok(await sb.rpc('auditor_comercial')),
   auditorSemanal: async (tid, v) => { ok(await sb.from('tenants').update({ auditor_semanal: !!v }).eq('id', tid)); },
