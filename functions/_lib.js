@@ -26,17 +26,22 @@ export async function rpc(env, fn, args) {
   return d;
 }
 
-
-
-// Identifica a quién llama (JWT de Supabase Auth). Devuelve el id de usuario o null.
 export async function usuarioDeToken(env, request) {
   const h = request.headers.get('authorization') || '';
   const m = h.match(/^Bearer\s+([\w-]+\.[\w-]+\.[\w-]+)$/);
   if (!m) return null;
-  const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-  headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${m[1]}` },
-  signal: AbortSignal.timeout(8000),
-});
+  let r;
+  try {
+    r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${m[1]}` },
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (e) { return null; }
+  if (!r.ok) return null;
+  const u = await r.json().catch(() => null);
+  return u && esUuid(u.id) ? u.id : null;
+}
+
 
 
 // Dominio propio (ej. eskalapp.com). Sale de SITE_URL; si no está, del dominio por el que entró el pedido
