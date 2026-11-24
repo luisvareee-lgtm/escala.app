@@ -5,6 +5,8 @@ import { $, esc, fmt, on, toast, normWsp, waLink, confirmar, store } from './uti
 import { P } from './state.js';
 import { imprimir } from './catalogo.js';
 import { promoTxt, promosDelPedido } from './promo.js';
+import { esUsd, sena, saldo, enMoneda, totalTxt, totalPanel, datosPago, cuantoFalta, MEDIO_USD, MEDIO_COBRO } from './monto.js';
+import { fmtArs, fmtUsd } from './util.js';
 // v2.25: cada renglón muestra su precio de lista y la promo va aparte (sumada por producto, aunque tenga varios talles)
 const bruto = i => Number(i.subtotal) + (Number(i.descuento) || 0);
 // v2.26: el descuento general del pedido (cupón o descuento por monto)
@@ -24,7 +26,8 @@ const etapaDe = o => o.etapa || (o.estado === 'cancelado' ? 'cancelado' : 'nuevo
 const porCobrar = o => o.estado === 'pendiente' && etapaDe(o) !== 'cancelado';
 const pasa = (o, k) => k === 'todos' || (k === 'por_cobrar' ? porCobrar(o) : etapaDe(o) === k);
 export const badgeEtapa = o => { const [i, n, c] = ETAPA[etapaDe(o)]; return `<span class="tag ${c}">${i} ${n}</span>`; };
-const badgeCobro = o => o.estado === 'cobrado' ? '<span class="tag ok">💵 Cobrado</span>' : o.estado === 'pendiente' ? '<span class="tag warn">Por cobrar</span>' : '';
+// v2.34: con seña dice cuánto falta
+const badgeCobro = o => o.estado === 'cobrado' ? '<span class="tag ok">💵 Cobrado</span>' : o.estado === 'pendiente' ? (sena(o) > 0 ? `<span class="tag warn">Seña · falta ${enMoneda(o, saldo(o))}</span>` : '<span class="tag warn">Por cobrar</span>') : '';
 const fecha = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 const hora = d => new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -44,7 +47,7 @@ const semHtml = o => { const u = urgencia(o); return u ? `<span class="sem sem-$
 const esperando = () => P.pedidos.filter(o => o.estado !== 'cancelado' && ['nuevo', 'confirmado', 'en_espera'].includes(etapaDe(o)) && (etapaDe(o) === 'en_espera' || o.comprado_at));
 function tablero(L) {
   const cols = ['nuevo', 'confirmado', 'en_espera', 'listo', 'despachado'].filter(k => k !== 'en_espera' || L.some(o => etapaDe(o) === k) || (P.t.modo_stock || 'stock') !== 'stock');
-  return `<div class="kb" role="list">${cols.map(k => { const os = L.filter(o => etapaDe(o) === k); return `<section class="kb-col" role="listitem" aria-label="${ETAPA[k][1]}"><h4>${ETAPA[k][0]} ${ETAPA[k][1]} <b>${os.length}</b></h4>${os.slice(0, 40).map(o => `<button class="kb-card" data-act="p-pedido" data-id="${o.id}"><span class="kb-n">#${o.numero} · ${esc(o.cliente_nombre)}</span><span class="kb-m">${fmt(o.total_ars)} ${badgeCobro(o)}</span>${semHtml(o)}</button>`).join('') || '<p class="muted">—</p>'}${os.length > 40 ? `<p class="muted">y ${os.length - 40} más (usá la lista)</p>` : ''}</section>`; }).join('')}</div>`;
+  return `<div class="kb" role="list">${cols.map(k => { const os = L.filter(o => etapaDe(o) === k); return `<section class="kb-col" role="listitem" aria-label="${ETAPA[k][1]}"><h4>${ETAPA[k][0]} ${ETAPA[k][1]} <b>${os.length}</b></h4>${os.slice(0, 40).map(o => `<button class="kb-card" data-act="p-pedido" data-id="${o.id}"><span class="kb-n">#${o.numero} · ${esc(o.cliente_nombre)}</span><span class="kb-m">${totalTxt(o)} ${badgeCobro(o)}</span>${semHtml(o)}</button>`).join('') || '<p class="muted">—</p>'}${os.length > 40 ? `<p class="muted">y ${os.length - 40} más (usá la lista)</p>` : ''}</section>`; }).join('')}</div>`;
 }
 on('pd-vista', d => { F.vista = d.v === 'tablero' ? 'tablero' : 'lista'; store.set('ped:vista', F.vista); P.repintar(); });
 
@@ -59,21 +62,23 @@ export function vistaPedidos() {
   if (tab) return cab + `<input class="fi" id="oq" placeholder="Buscar por cliente, N° de pedido o seguimiento…" data-input="pd-q" value="${esc(F.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">` + tablero(P.pedidos.filter(o => pasa(o, 'todos') && (!q || o.cliente_nombre.toLowerCase().includes(q) || String(o.numero) === q.replace('#', ''))));
   return cab + `<div class="ped-filtros" role="tablist" aria-label="Filtrar pedidos">${FILTROS.map(([k, t]) => { const c = n(k); return (k === 'todos' || c) ? `<button class="chipf ${F.filtro === k ? 'on' : ''}" data-act="pd-filtro" data-k="${k}">${t}${k !== 'todos' ? ` <b>${c}</b>` : ''}</button>` : ''; }).join('')}</div>
   <input class="fi" id="oq" placeholder="Buscar por cliente, N° de pedido o seguimiento…" data-input="pd-q" value="${esc(F.q)}" aria-label="Buscar pedido" style="margin-bottom:10px">
-  <div class="card">${L.slice(0, F.lim).map(o => `<div class="srow" style="cursor:pointer" data-act="p-pedido" data-id="${o.id}" role="button" tabindex="0"><span>#${o.numero} · ${esc(o.cliente_nombre)}${o.sub_revendedor_id ? ` <span class="tag">${esc(rv.get(o.sub_revendedor_id) || 'revendedor')}</span>` : ''}<br><span class="ped-tags">${badgeEtapa(o)} ${badgeCobro(o)}${o.proxima_tanda && ABIERTAS.includes(etapaDe(o)) ? ' <span class="tag warn">Próxima tanda</span>' : ''} ${semHtml(o)}${o.envio_nombre ? ` <small class="muted">· ${esc(o.envio_nombre)}</small>` : ''}</span><small class="muted"> · ${fecha(o.created_at)}${o.nota ? ' · 📝' : ''}</small></span><span class="v">${fmt(o.total_ars)}</span></div>`).join('') || '<p class="muted">Sin pedidos para mostrar.</p>'}${L.length > F.lim ? `<button class="btn btn-s btn-sm" data-act="pd-mas">Ver más (${L.length - F.lim})</button>` : ''}</div>`;
+  <div class="card">${L.slice(0, F.lim).map(o => `<div class="srow" style="cursor:pointer" data-act="p-pedido" data-id="${o.id}" role="button" tabindex="0"><span>#${o.numero} · ${esc(o.cliente_nombre)}${o.sub_revendedor_id ? ` <span class="tag">${esc(rv.get(o.sub_revendedor_id) || 'revendedor')}</span>` : ''}<br><span class="ped-tags">${badgeEtapa(o)} ${badgeCobro(o)}${o.proxima_tanda && ABIERTAS.includes(etapaDe(o)) ? ' <span class="tag warn">Próxima tanda</span>' : ''} ${semHtml(o)}${o.envio_nombre ? ` <small class="muted">· ${esc(o.envio_nombre)}</small>` : ''}</span><small class="muted"> · ${fecha(o.created_at)}${o.nota ? ' · 📝' : ''}</small></span><span class="v">${totalTxt(o)}</span></div>`).join('') || '<p class="muted">Sin pedidos para mostrar.</p>'}${L.length > F.lim ? `<button class="btn btn-s btn-sm" data-act="pd-mas">Ver más (${L.length - F.lim})</button>` : ''}</div>`;
 }
 
 // ---- mensajes de WhatsApp por etapa ----
 function mensaje(o, k) {
   const t = P.t, n = o.cliente_nombre.split(' ')[0], num = '#' + o.numero;
-  const cobro = o.estado === 'pendiente' && o.medio_pago === 'transferencia' && t.alias_cobro ? ` Podés transferir a: ${t.alias_cobro}.` : '';
+  const cobro = o.estado === 'pendiente' ? datosPago(o, t) : '', s = sena(o);
+  const alias = esUsd(o) ? datosPago(o, t) : t.alias_cobro ? ' Alias: ' + t.alias_cobro + '.' : '';
   return ({
-    confirmado: `¡Hola ${n}! Confirmamos tu pedido ${num} por ${fmt(o.total_ars)}.${cobro} Te avisamos cuando salga.`,
+    confirmado: `¡Hola ${n}! Confirmamos tu pedido ${num} por ${totalTxt(o)}.${s > 0 && o.estado === 'pendiente' ? ` Ya recibimos tu seña de ${enMoneda(o, s)}: te faltan ${enMoneda(o, saldo(o))}.` : ''}${cobro} Te avisamos cuando salga.`,
     en_espera: `Hola ${n}, tu pedido ${num} quedó en espera${o.nota ? '' : ' unos días'}. Te avisamos apenas esté listo. ¡Gracias por la paciencia!`,
-    listo: `¡Hola ${n}! 📦 Llegó tu pedido ${num}: ya lo tenemos listo.${o.estado === 'pendiente' ? ` El total es ${fmt(o.total_ars)}.${t.alias_cobro && o.medio_pago === 'transferencia' ? ' Podés transferir a: ' + t.alias_cobro + '.' : ''}` : ''}${o.envio_nombre ? ` Entrega: ${o.envio_nombre}.` : ''} ¿Coordinamos?`,
+    listo: `¡Hola ${n}! 📦 Llegó tu pedido ${num}: ya lo tenemos listo.${o.estado === 'pendiente' ? ' ' + cuantoFalta(o) + cobro : ''}${o.envio_nombre ? ` Entrega: ${o.envio_nombre}.` : ''} ¿Coordinamos?`,
     parcial: `¡Hola ${n}! Te cuento que ya llegó una parte de tu pedido ${num}. Apenas esté completo te aviso para coordinar la entrega.`,
     despachado: `¡Hola ${n}! Tu pedido ${num} ya salió${o.envio_nombre ? ' por ' + o.envio_nombre : ''}.${o.seguimiento ? ' Seguimiento: ' + o.seguimiento + '.' : ''}`,
     entregado: `¡Hola ${n}! ¿Te llegó bien el pedido ${num}? Gracias por tu compra en ${t.nombre} 🙌`,
-    cobro: `Hola ${n}, para cerrar tu pedido ${num} el total es ${fmt(o.total_ars)}.${t.alias_cobro ? ' Alias: ' + t.alias_cobro + '.' : ''} Avisanos cuando lo envíes.`,
+    cobro: `Hola ${n}, para cerrar tu pedido ${num}: ${cuantoFalta(o)}${alias} Avisanos cuando lo envíes.`,
+    sena: `¡Gracias ${n}! Recibimos tu seña de ${enMoneda(o, s)} para el pedido ${num}. Te faltan ${enMoneda(o, saldo(o))}; te avisamos cuando esté listo.`,
     cancelado: `Hola ${n}, tu pedido ${num} quedó cancelado. Cualquier consulta, escribinos.`,
     nuevo: `Hola ${n}, te escribimos por tu pedido ${num}.`
   })[k];
@@ -97,16 +102,20 @@ export function modalPedido(m) {
   <div class="card" style="margin-top:8px">${it.map(i => `<div class="srow"><span>${i.cantidad} × ${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}${i.recibido_at ? ' <span class="tag ok">llegó</span>' : ''}</span><span class="v">${fmt(bruto(i))}</span></div>`).join('')}
   ${promoFilas(it, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}${descFilas(o, (a, b) => `<div class="srow ped-promo"><span>${a}</span><span class="v save">${b}</span></div>`)}
   ${env || o.envio_nombre ? `<div class="srow"><span class="muted">Productos</span><span class="v">${fmt(sub)}</span></div><div class="srow"><span class="muted">Envío${o.envio_nombre ? ' · ' + esc(o.envio_nombre) : ''}</span><span class="v">${env ? fmt(env) : 'Gratis'}</span></div>` : ''}
-  <div class="srow tot"><span>Total</span><span class="v">${fmt(o.total_ars)}</span></div></div>
+  <div class="srow tot"><span>Total</span><span class="v">${totalPanel(o)}</span></div>
+  ${esUsd(o) ? `<div class="srow ped-usd"><span class="muted">En dólares · ${MEDIO_USD[o.medio_usd] || ''}</span><span class="v muted">US$ 1 = ${fmtArs(o.cotizacion_cobro)}</span></div>` : ''}
+  ${sena(o) > 0 ? `<div class="srow ped-sena"><span>🤝 Seña${o.sena_at ? ' · ' + fecha(o.sena_at) : ''}${o.sena_medio ? ' · ' + (MEDIO_COBRO[o.sena_medio] || '') : ''}</span><span class="v">−${montoPanel(o, sena(o))}</span></div>
+  ${o.estado === 'pendiente' ? `<div class="srow tot ped-saldo"><span>Falta cobrar</span><span class="v">${montoPanel(o, saldo(o))}</span></div>` : ''}` : ''}</div>
   ${sig.length ? `<div class="flabel" style="margin-top:6px">Pasar a</div><div class="ped-acc">${sig.map(k => `<button class="btn ${k === 'en_espera' ? 'btn-s' : 'btn-p'} btn-sm" data-act="pd-etapa" data-id="${o.id}" data-e="${k}">${ETAPA[k][0]} ${ETAPA[k][1]}</button>`).join('')}</div>` : ''}
-  ${m.avisar ? `<div class="ok-box" style="margin:8px 0">Listo: ${ETAPA[m.avisar][1].toLowerCase()}. ${wa(o, m.avisar, '💬 Avisar al cliente por WhatsApp', 'btn-wa btn-sm')}</div>` : ''}
-  ${o.estado === 'pendiente' ? `<button class="btn btn-p" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cobrado">💵 Marcar cobrado</button>` : ''}
+  ${m.avisar ? `<div class="ok-box" style="margin:8px 0">${m.avisar === 'sena' ? 'Seña guardada.' : `Listo: ${ETAPA[m.avisar][1].toLowerCase()}.`} ${wa(o, m.avisar, m.avisar === 'sena' ? '💬 Avisarle que recibiste la seña' : '💬 Avisar al cliente por WhatsApp', 'btn-wa btn-sm')}</div>` : ''}
+  ${o.estado === 'pendiente' && !canc ? `<button class="btn btn-p" style="margin-top:8px" data-act="p-estado" data-id="${o.id}" data-e="cobrado">${sena(o) > 0 ? '💵 Cobrar el saldo (' + enMoneda(o, saldo(o)) + ')' : '💵 Marcar cobrado'}</button>
+  ${senaForm(o, m)}` : ''}${canc && sena(o) > 0 ? `<p class="hint" style="margin-top:8px">Este pedido cancelado tiene una seña de ${enMoneda(o, sena(o))}. Si se la devolviste: <button class="btn btn-s btn-sm" data-act="pd-sena-x" data-id="${o.id}">Devolví la seña</button></p>` : ''}
   <form data-submit="pd-datos" data-id="${o.id}" style="margin-top:10px">
     <div class="fg"><label class="flabel" for="pd-seg">N° de seguimiento / guía</label><input class="fi" id="pd-seg" name="seguimiento" maxlength="120" value="${esc(o.seguimiento || '')}" placeholder="Ej: Andreani 3600012345" ${canc ? 'disabled' : ''}></div>
     <div class="fg"><label class="flabel" for="pd-nota">Nota interna (no la ve el cliente)</label><textarea class="fi" id="pd-nota" name="nota" rows="2" maxlength="500" placeholder="Ej: entrega después de las 18 h" ${canc ? 'disabled' : ''}>${esc(o.nota || '')}</textarea></div>
     ${canc ? '' : '<button class="btn btn-s btn-sm" type="submit">Guardar seguimiento y nota</button>'}
   </form>
-  <details class="ped-wa"><summary>💬 Mensajes de WhatsApp listos</summary><div class="ped-acc">${wa(o, 'nuevo', 'Escribir', 'btn-s btn-sm')}${o.estado === 'pendiente' ? wa(o, 'cobro', 'Pedir el pago', 'btn-s btn-sm') : ''}${['confirmado', 'en_espera', 'listo', 'despachado', 'entregado', 'cancelado'].filter(k => k === e || (!canc && k !== 'cancelado')).map(k => wa(o, k, ETAPA[k][0] + ' ' + ETAPA[k][1], 'btn-s btn-sm')).join('')}</div></details>
+  <details class="ped-wa"><summary>💬 Mensajes de WhatsApp listos</summary><div class="ped-acc">${wa(o, 'nuevo', 'Escribir', 'btn-s btn-sm')}${o.estado === 'pendiente' ? wa(o, 'cobro', sena(o) > 0 ? 'Pedir el saldo' : 'Pedir el pago', 'btn-s btn-sm') : ''}${o.estado === 'pendiente' && sena(o) > 0 ? wa(o, 'sena', 'Gracias por la seña', 'btn-s btn-sm') : ''}${['confirmado', 'en_espera', 'listo', 'despachado', 'entregado', 'cancelado'].filter(k => k === e || (!canc && k !== 'cancelado')).map(k => wa(o, k, ETAPA[k][0] + ' ' + ETAPA[k][1], 'btn-s btn-sm')).join('')}</div></details>
   ${hist ? `<details class="ped-wa"><summary>🕓 Historial</summary><ul class="ped-hist">${hist}</ul></details>` : ''}
   <button class="btn btn-s" style="margin-top:8px" data-act="pd-remito">🖨️ Imprimir remito</button>
   ${canc ? '' : `<button class="btn btn-s" style="margin-top:8px;color:var(--red)" data-act="pd-etapa" data-id="${o.id}" data-e="cancelado">Cancelar pedido${o.estado === 'cobrado' ? ' (devuelve stock)' : ''}</button>`}
@@ -124,8 +133,8 @@ function remito(o, it) {
   ${it.map(i => `<tr><td>${i.cantidad}</td><td>${esc(i.nombre_snapshot)}${i.variante ? ' (' + esc(i.variante) + ')' : ''}</td><td class="r">${fmt(i.precio_unitario)}</td><td class="r">${fmt(bruto(i))}</td></tr>`).join('')}
   ${promoFilas(it, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}${descFilas(o, (a, b) => `<tr><td></td><td>${a}</td><td></td><td class="r">${b}</td></tr>`)}
   ${o.envio_nombre ? `<tr><td></td><td>Productos</td><td></td><td class="r">${fmt(sub)}</td></tr><tr><td></td><td>Envío · ${esc(o.envio_nombre)}</td><td></td><td class="r">${env ? fmt(env) : 'Gratis'}</td></tr>` : ''}
-  <tr><td></td><td><b>TOTAL</b></td><td></td><td class="r"><b>${fmt(o.total_ars)}</b></td></tr></tbody></table>
-  <p style="margin-top:8px">Pago: ${esc(o.medio_pago)}${t.alias_cobro && o.estado === 'pendiente' ? ' · Alias: ' + esc(t.alias_cobro) : ''}</p>
+  <tr><td></td><td><b>TOTAL</b></td><td></td><td class="r"><b>${fmt(o.total_ars)}</b></td></tr>${esUsd(o) ? `<tr><td></td><td><b>TOTAL EN DÓLARES</b> (US$ 1 = ${fmtArs(o.cotizacion_cobro)})</td><td></td><td class="r"><b>${fmtUsd(o.total_usd)}</b></td></tr>` : ''}${sena(o) > 0 ? `<tr><td></td><td>Seña recibida</td><td></td><td class="r">−${enMoneda(o, sena(o))}</td></tr>${o.estado === 'pendiente' ? `<tr><td></td><td><b>SALDO</b></td><td></td><td class="r"><b>${enMoneda(o, saldo(o))}</b></td></tr>` : ''}` : ''}</tbody></table>
+  <p style="margin-top:8px">Pago: ${esUsd(o) ? esc((MEDIO_USD[o.medio_usd] || '').replace(/^\S+ /, '')) : esc(o.medio_pago)}${o.estado === 'pendiente' ? esc(datosPago(o, t).replace(/^ /, ' · ')) : ''}</p>
   <div style="display:flex;justify-content:space-between;margin-top:40px;gap:20px"><div style="border-top:1px solid #999;flex:1;padding-top:4px">Recibí conforme · Firma</div><div style="border-top:1px solid #999;flex:1;padding-top:4px">Aclaración y DNI</div></div></div>`;
 }
 
@@ -150,5 +159,29 @@ on('pd-datos', async (d, f) => {
   const fd = new FormData(f);
   try { await api.actualizarPedido(d.id, { seguimiento: String(fd.get('seguimiento') || '').trim() || null, nota: String(fd.get('nota') || '').trim() || null }); await refrescar(d.id); toast('Guardado'); }
   catch (e) { mm(e.message); }
+});
+// ---- v2.34 · seña: el cliente pagó una parte; queda el saldo ----
+const montoPanel = (o, ars) => esUsd(o) ? `${enMoneda(o, ars)} <small class="muted">≈ ${fmtArs(ars)}</small>` : fmtArs(ars);
+function senaForm(o, m) {
+  const s = sena(o), usd = esUsd(o), val = s ? (usd ? (s / Number(o.cotizacion_cobro)).toFixed(2) : Math.round(s)) : '';
+  const medios = usd ? ['usd', 'usdt', 'efectivo', 'transferencia'] : ['transferencia', 'efectivo'];
+  const def = o.sena_medio || (usd ? (o.medio_usd === 'usdt' ? 'usdt' : 'usd') : o.medio_pago === 'efectivo' ? 'efectivo' : 'transferencia');
+  return `<details class="ped-sena-f"${m && m.sena ? ' open' : ''}><summary>${s ? '✏️ Cambiar o quitar la seña' : '🤝 Registrar una seña (te pagó una parte)'}</summary>
+    <form data-submit="pd-sena" data-id="${o.id}"><div class="row2"><div class="fg"><label class="flabel" for="pd-sm">Cuánto te pagó ${usd ? '(US$)' : '($)'}</label><input class="fi" id="pd-sm" name="monto" type="number" min="0" step="${usd ? '0.01' : '1'}" inputmode="decimal" value="${val}" required></div>
+    <div class="fg"><label class="flabel" for="pd-smed">Con qué pagó</label><select class="fi" id="pd-smed" name="medio">${medios.map(k => `<option value="${k}" ${def === k ? 'selected' : ''}>${MEDIO_COBRO[k]}</option>`).join('')}</select></div></div>
+    <p class="hint">Queda en la Caja el día que la cargás. Cuando te pague el resto, tocá “Cobrar el saldo”.</p>
+    <div class="ped-acc"><button class="btn btn-p btn-sm" type="submit">Guardar seña</button>${s ? `<button type="button" class="btn btn-s btn-sm" data-act="pd-sena-x" data-id="${o.id}">Quitar la seña</button>` : ''}</div></form></details>`;
+}
+on('pd-sena', async (d, f) => {
+  const o = P.pedidos.find(x => x.id === d.id); if (!o) return;
+  const v = Number(String(new FormData(f).get('monto') || '').replace(',', '.'));
+  if (!(v >= 0)) return mm('Poné cuánto te pagó.');
+  const ars = esUsd(o) ? Math.round(v * Number(o.cotizacion_cobro) * 100) / 100 : Math.round(v);
+  try { await api.actualizarPedido(d.id, { sena_ars: ars, sena_medio: ars > 0 ? String(new FormData(f).get('medio') || '') || null : null }); await refrescar(d.id, ars > 0 ? { avisar: 'sena' } : null); toast(ars > 0 ? 'Seña guardada' : 'Seña quitada'); }
+  catch (e) { mm(e.message); }
+});
+on('pd-sena-x', async (d, b) => {
+  if (!confirmar(b, '¿Quitar la seña? Tocá de nuevo')) return;
+  try { await api.actualizarPedido(d.id, { sena_ars: 0, sena_medio: null }); await refrescar(d.id); toast('Seña quitada'); } catch (e) { mm(e.message); }
 });
 on('pd-remito', () => { const m = P.modal; if (m && m.tipo === 'ped') imprimir(remito(m.o, m.items || [])); });

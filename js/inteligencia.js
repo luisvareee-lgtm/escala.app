@@ -4,6 +4,8 @@ import { api } from './api.js';
 import { esc, fmt, on, toast, copiar, normWsp, waLink, store } from './util.js';
 import { P, can, aviso, bloqueo } from './state.js';
 import { linea } from './charts.js';
+import { esUsd, sena, saldo, enMoneda, datosPago } from './monto.js';
+import { fmtUsd } from './util.js';
 import { vistaCompras, calcCompra } from './compras.js';
 import { vistaSeguimiento, calcClientes, paraRecuperar, resetSeg } from './seguimiento.js';
 
@@ -31,17 +33,21 @@ export function deudas() {
   const cli = new Map();
   for (const o of L) {
     const k = o.cliente_whatsapp, c = cli.get(k) || { nombre: o.cliente_nombre, wsp: k, pedidos: [], total: 0, max: 0, rec: null };
-    c.pedidos.push(o); c.total += Number(o.total_ars); c.max = Math.max(c.max, dias(o.created_at));
+    c.pedidos.push(o); c.total += saldo(o); c.max = Math.max(c.max, dias(o.created_at));
     if (o.recordatorio_at && (!c.rec || o.recordatorio_at > c.rec)) c.rec = o.recordatorio_at;
     cli.set(k, c);
   }
-  const tramos = TRAMOS.map(([a, b, n, cl]) => { const os = L.filter(o => { const d = dias(o.created_at); return d >= a && d <= b; }); return { n, cl, cant: os.length, total: os.reduce((s, o) => s + Number(o.total_ars), 0) }; });
-  return { L, total: L.reduce((s, o) => s + Number(o.total_ars), 0), tramos, clientes: [...cli.values()].sort((a, b) => b.max - a.max || b.total - a.total) };
+  const tramos = TRAMOS.map(([a, b, n, cl]) => { const os = L.filter(o => { const d = dias(o.created_at); return d >= a && d <= b; }); return { n, cl, cant: os.length, total: os.reduce((s, o) => s + saldo(o), 0) }; });
+  return { L, total: L.reduce((s, o) => s + saldo(o), 0), tramos, clientes: [...cli.values()].sort((a, b) => b.max - a.max || b.total - a.total) };
 }
 function msgCobro(c) {
   const t = P.t, n = c.nombre.split(' ')[0];
-  const det = c.pedidos.map(o => `• Pedido #${o.numero} del ${new Date(o.created_at).toLocaleDateString('es-AR')}: ${fmt(o.total_ars)}`).join('\n');
-  return `Hola ${n}, ¿cómo estás? Te escribo de ${t.nombre} por ${c.pedidos.length > 1 ? 'tus pedidos pendientes de pago' : 'tu pedido pendiente de pago'}:\n${det}\n${c.pedidos.length > 1 ? 'Total: ' + fmt(c.total) + '\n' : ''}${t.alias_cobro ? 'Podés transferir a: ' + t.alias_cobro + '\n' : ''}Cuando lo envíes, mandame el comprobante por acá. ¡Gracias!`;
+  // v2.34: lo que falta de cada pedido (descontada la seña), en la moneda del pedido
+  const det = c.pedidos.map(o => `• Pedido #${o.numero} del ${new Date(o.created_at).toLocaleDateString('es-AR')}: ${enMoneda(o, saldo(o))}${sena(o) > 0 ? ` (ya dejaste ${enMoneda(o, sena(o))} de seña)` : ''}`).join('\n');
+  const usd = c.pedidos.filter(esUsd), ars = c.pedidos.filter(o => !esUsd(o));
+  const tot = c.pedidos.length < 2 ? '' : !usd.length ? 'Total: ' + fmt(c.total) + '\n' : !ars.length ? 'Total: ' + fmtUsd(usd.reduce((s, o) => s + saldo(o) / Number(o.cotizacion_cobro), 0)) + '\n' : '';
+  const pago = [...new Set([ars.length && t.alias_cobro ? 'Podés transferir a: ' + t.alias_cobro : '', ...usd.map(o => datosPago(o, t).trim())].filter(Boolean))].join('\n');
+  return `Hola ${n}, ¿cómo estás? Te escribo de ${t.nombre} por ${c.pedidos.length > 1 ? 'tus pedidos pendientes de pago' : 'tu pedido pendiente de pago'}:\n${det}\n${tot}${pago ? pago + '\n' : ''}Cuando lo envíes, mandame el comprobante por acá. ¡Gracias!`;
 }
 function cobranzas() {
   const D = deudas();
@@ -52,7 +58,7 @@ function cobranzas() {
   <div class="cc"><h3>Quién te debe</h3><p class="hint" style="margin-bottom:8px">Ordenado por el pedido más viejo. El botón abre WhatsApp con el mensaje armado (pedidos, total y tu alias) y anota la fecha del recordatorio.</p>
   ${D.clientes.map(c => { const rh = c.rec && new Date(c.rec).toDateString() === hoy; const cls = c.max > 30 ? 'bad' : c.max > 7 ? 'warn' : '';
     return `<div class="cob-row"><div class="cob-inf"><b>${esc(c.nombre)}</b> <span class="sem sem-${cls === 'bad' ? 'r' : cls === 'warn' ? 'a' : 'v'}" title="Antigüedad de la deuda"><i aria-hidden="true"></i>${c.max === 0 ? 'hoy' : 'hace ' + c.max + (c.max === 1 ? ' día' : ' días')}</span>
-      <div class="muted" style="font-size:.78rem">${c.pedidos.map(o => `<button class="linkb" data-act="p-pedido" data-id="${o.id}">#${o.numero}</button> ${fmt(o.total_ars)}`).join(' · ')}${c.rec ? ` · último recordatorio: ${rh ? 'hoy' : new Date(c.rec).toLocaleDateString('es-AR')}` : ''}</div></div>
+      <div class="muted" style="font-size:.78rem">${c.pedidos.map(o => `<button class="linkb" data-act="p-pedido" data-id="${o.id}">#${o.numero}</button> ${enMoneda(o, saldo(o))}${sena(o) > 0 ? ' (con seña)' : ''}`).join(' · ')}${c.rec ? ` · último recordatorio: ${rh ? 'hoy' : new Date(c.rec).toLocaleDateString('es-AR')}` : ''}</div></div>
       <div class="cob-acc"><b>${fmt(c.total)}</b><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" data-act="ia-recordar" data-w="${esc(c.wsp)}" href="${esc(waLink(normWsp(c.wsp), msgCobro(c)))}">${rh ? 'Recordar otra vez' : 'Recordar pago'}</a></div></div>`; }).join('')}</div>`;
 }
 on('ia-recordar', async d => {

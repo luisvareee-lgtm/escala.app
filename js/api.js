@@ -79,6 +79,9 @@ export const api = {
     if (filas.length === 1 && !filas[0].producto_id) throw new Error('Código de revendedor incorrecto.');   // el servidor marca el error sin excepción
     return filas;
   },
+  // v2.34 · pedido en dólares o USDT: el mismo cálculo en pesos, pasado a dólares con la cotización del comercio
+  crearPedidoUsd: async (slug, cliente, items, modo, codigo, medio, ref) =>
+    sinError(ok(await sb.rpc('crear_pedido_usd', { p_slug: slug, p_cliente: cliente, p_items: items, p_modo: modo, p_codigo: codigo || null, p_medio: medio, p_ref: ref || null }))),
   crearPedido: async (slug, cliente, items, modo, codigo, medio, ref) =>
     sinError(ok(await sb.rpc('crear_pedido', { p_slug: slug, p_cliente: cliente, p_items: items, p_modo: modo, p_codigo: codigo || null, p_medio: medio, p_ref: ref || null }))),
   guardarCarrito: async (slug, nombre, whatsapp, items, total) =>
@@ -89,6 +92,12 @@ export const api = {
   session: async () => (await sb.auth.getSession()).data.session,
   registrar: async (email, password) => ok(await sb.auth.signUp({ email, password })),
   entrar: async (email, password) => ok(await sb.auth.signInWithPassword({ email, password })),
+  // v2.34 · Ingreso con Google. El botón aparece solo si Google está activado en Supabase (Authentication → Providers).
+  proveedores: async () => {
+    if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) return {};
+    try { const r = await fetch(CONFIG.SUPABASE_URL.replace(/\/+$/, '') + '/auth/v1/settings', { headers: { apikey: CONFIG.SUPABASE_ANON_KEY } }); if (!r.ok) return {}; const j = await r.json(); return (j && j.external) || {}; } catch (e) { return {}; }
+  },
+  entrarGoogle: async () => ok(await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + '/app#/panel', queryParams: { prompt: 'select_account' } } })),
   salir: async () => { await sb.auth.signOut(); },
   // sin "#" en la vuelta: Supabase agrega los datos de la sesión en el fragmento (y ?clave=nueva avisa que es para cambiar la clave)
   olvide: async email => ok(await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname + '?clave=nueva' })),

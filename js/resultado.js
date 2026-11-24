@@ -4,6 +4,7 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, confirmar } from './util.js';
 import { P, precioArs, can, bloqueo } from './state.js';
 import { barras } from './charts.js';
+import { saldo, cobradoDe } from './monto.js';
 
 const R = { per: 'mes', cargado: false, lim: 20, cat: '' };
 export const CATS_GASTO = ['Mercadería', 'Envíos y fletes', 'Publicidad', 'Alquiler', 'Servicios', 'Sueldos', 'Comisiones', 'Impuestos', 'Packaging', 'Otros'];
@@ -44,8 +45,8 @@ export function calcularResultado() {
   }
   const envios = ped.reduce((s, o) => s + Number(o.envio_costo || 0), 0);
   const ventas = ped.reduce((s, o) => s + Number(o.total_ars), 0) - envios;      // solo productos
-  const cobrado = ped.filter(o => o.estado === 'cobrado').reduce((s, o) => s + Number(o.total_ars), 0);
-  const porCobrar = ped.filter(o => o.estado === 'pendiente').reduce((s, o) => s + Number(o.total_ars), 0);
+  const cobrado = ped.reduce((s, o) => s + cobradoDe(o), 0);   // v2.34: con las señas
+  const porCobrar = ped.reduce((s, o) => s + saldo(o), 0);
   const comisiones = ped.reduce((s, o) => s + Number(o.comision_ars || 0), 0);
   const G = (P.gastos || []).filter(g => enRango(fechaG(g), rg));
   const gastos = G.filter(g => g.tipo === 'gasto').reduce((s, g) => s + Number(g.monto), 0);

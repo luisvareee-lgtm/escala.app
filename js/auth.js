@@ -18,21 +18,35 @@ const caja = (t, h) => `<div class="page"><div class="hero" style="padding-top:2
 const err = m => `<div class="err-box" role="alert">${esc(m)}</div>`;
 const msg = (id, m, ok) => { const e = $(id); if (e) e.innerHTML = m ? (ok ? `<div class="ok-box">${esc(m)}</div>` : err(m)) : ''; };
 
+// v2.34 · "Continuar con Google": se muestra solo si Google está activado en Supabase (si no, no aparece nada)
+let PROV = null;
+const googleHtml = aviso => `<div id="g-box" hidden><button type="button" class="btn btn-g" data-act="a-google" id="g-go"><span class="g-ico" aria-hidden="true">G</span> Continuar con Google</button>
+  ${aviso ? '<p class="hint center" style="margin-top:6px">Si es tu primera vez, se crea tu cuenta y aceptás los <a href="#/terminos">Términos</a> y la <a href="#/privacidad">Privacidad</a>.</p>' : ''}<div class="o-sep" role="separator"><span>o con tu email</span></div></div>`;
+async function mostrarGoogle() {
+  try { PROV = PROV || await api.proveedores(); } catch (e) { PROV = {}; }
+  const b = $('#g-box'); if (b && PROV && PROV.google) b.hidden = false;
+}
+on('a-google', async () => {
+  const b = $('#g-go'); lock(b, 'Abriendo Google…'); msg('#m', '');
+  try { await api.entrarGoogle(); } catch (e) { msg('#m', e.message); unlock(b); }
+});
+
 export function pantallaLogin(app) {
-  app.innerHTML = caja('Ingresar a mi panel', `<div id="m"></div><form data-submit="a-login">
+  app.innerHTML = caja('Ingresar a mi panel', `<div id="m"></div>${googleHtml(true)}<form data-submit="a-login">
     <div class="fg"><label class="flabel" for="e">Email</label><input class="fi" id="e" name="email" type="email" autocomplete="email" required></div>
     <div class="fg"><label class="flabel" for="p">Contraseña</label><input class="fi" id="p" name="password" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Entrar</button></form>
     <p class="hint center" style="margin-top:12px"><a href="#/olvide">Olvidé mi contraseña</a> · <a href="#/registro">Crear cuenta</a></p>`);
+  mostrarGoogle();
 }
 export function pantallaRegistro(app) {
-  app.innerHTML = caja('Crear mi cuenta', `<div id="m"></div><form data-submit="a-registro">
+  app.innerHTML = caja('Crear mi cuenta', `<div id="m"></div>${googleHtml(false)}<form data-submit="a-registro">
     <div class="fg"><label class="flabel" for="e">Email</label><input class="fi" id="e" name="email" type="email" autocomplete="email" required></div>
     <div class="fg"><label class="flabel" for="p">Contraseña (mínimo 8 caracteres)</label><input class="fi" id="p" name="password" type="password" minlength="8" autocomplete="new-password" required></div>
     <button class="btn btn-p" type="submit" id="go">Crear cuenta gratis</button></form>
     <p class="hint center" style="margin-top:10px">Al crear tu cuenta aceptás los <a href="#/terminos">Términos y condiciones</a> y la <a href="#/privacidad">Política de privacidad</a>.</p>
     <p class="hint center" style="margin-top:8px">Gratis hasta 100 productos, para siempre, y <span class="dias-prueba">14</span> días con todo desbloqueado. Sin tarjeta. · <a href="#/login">Ya tengo cuenta</a></p>${cuposHtml()}`);
-  cargarCupos();
+  cargarCupos(); mostrarGoogle();
 }
 export function pantallaOlvide(app, aviso) {
   app.innerHTML = caja('Recuperar contraseña', `<div id="m">${aviso ? err(aviso) : ''}</div><form data-submit="a-olvide"><div class="fg"><label class="flabel" for="e">Tu email</label><input class="fi" id="e" name="email" type="email" required></div><button class="btn btn-p" type="submit" id="go">Enviarme el enlace</button></form>`);

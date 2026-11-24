@@ -1,6 +1,6 @@
 // Tienda pública: catálogo, modo minorista/mayorista/híbrido, carrito, pedido y ticket por WhatsApp.
 import { api } from './api.js';
-import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce } from './util.js';
+import { $, esc, fmt, on, toast, copiar, normWsp, waLink, soloDigitos, store, debounce, monedaVista, enUsd, fmtArs, fmtUsd } from './util.js';
 import { htmlCatalogo, imprimir, htmlPresupuesto } from './catalogo.js';
 import { MARCA } from './marca.js';
 import { origenDe } from './origen.js';
@@ -17,6 +17,29 @@ const PREVIA = (() => { try { return new URLSearchParams(location.search).get('v
 const pagoUi = k => (k === 'link' && S.tienda.mp_activo ? ['💳', 'Mercado Pago', 'Tarjeta, débito o dinero en cuenta · pagás online ahora'] : PAGO[k]);
 // medios de pago que la tienda tiene prendidos (panel: Tienda → Envíos y entregas → Medios de pago); si la base es vieja, los tres
 const pagos = () => { const a = S.tienda && Array.isArray(S.tienda.pagos_activos) && S.tienda.pagos_activos.length ? S.tienda.pagos_activos : null; return Object.keys(PAGO).filter(k => !a || a.includes(k)); };
+// v2.34 · tienda en dólares o USDT. La vista pública trae usd_modo / usd_cot / usd_medios (ya filtrados por plan);
+// la vista previa del panel, las columnas que el comercio está editando.
+function usdCfg() {
+  const t = S.tienda || {};
+  if (S.previa && 'tienda_usd' in t) {
+    const medios = [String(t.usd_cuenta || '').trim() ? 'usd_transferencia' : '', t.usdt_wallet && t.usdt_red ? 'usdt' : '', t.usd_efectivo ? 'usd_efectivo' : ''].filter(Boolean);
+    const cot = Number(t.usd_cotizacion || t.cotizacion_usd) || 0;
+    return { modo: t.tienda_usd && t.tienda_usd !== 'no' && medios.length && cot > 0 ? t.tienda_usd : 'no', cot, medios, red: t.usdt_red };
+  }
+  return { modo: t.usd_modo || 'no', cot: Number(t.usd_cot) || 0, medios: Array.isArray(t.usd_medios) ? t.usd_medios : [], red: t.usdt_red };
+}
+// en qué moneda ve los precios este cliente: "solo" = dólares; "boton" = lo que eligió (empieza en pesos)
+function aplicarMoneda() {
+  const c = usdCfg();
+  if (c.modo === 'no' || !(c.cot > 0)) S.usd = false;
+  else if (c.modo === 'solo') S.usd = true;
+  else if (S.usd == null) S.usd = store.get('usd:' + S.slug, false) === true;
+  monedaVista(S.usd ? { cot: c.cot } : null);
+}
+const PAGO_USD = { usd_transferencia: ['🏦', 'Transferencia en dólares', 'A una cuenta en dólares: te pasamos los datos en el ticket'], usdt: ['🪙', 'USDT', 'Te pasamos la billetera en el ticket. Revisá la red antes de enviar'], usd_efectivo: ['💵', 'Dólares en efectivo', 'Lo coordinamos por WhatsApp'] };
+const pagoUsdUi = k => k === 'usdt' && usdCfg().red ? ['🪙', `USDT (red ${usdCfg().red})`, PAGO_USD.usdt[2]] : PAGO_USD[k];
+const usdTog = () => usdCfg().modo !== 'boton' ? '' : `<div class="mon-tog" role="group" aria-label="Moneda de los precios"><button type="button" data-act="st-mon" data-m="ars" class="${S.usd ? '' : 'on'}" aria-pressed="${!S.usd}">$</button><button type="button" data-act="st-mon" data-m="usd" class="${S.usd ? 'on' : ''}" aria-pressed="${!!S.usd}">US$</button></div>`;
+const usdNota = () => S.usd ? `<div class="usd-nota" role="note">💵 Precios en dólares · cotización de la tienda: <b>US$ 1 = ${fmtArs(usdCfg().cot)}</b></div>` : '';
 const PAGO = { transferencia: ['🏦', 'Transferencia bancaria', 'Te pasamos alias / CBU en el ticket'], efectivo: ['💵', 'Efectivo / contra entrega', 'Lo coordinamos por WhatsApp'], link: ['📲', 'Link de pago (tarjeta / Mercado Pago)', 'Te lo enviamos por WhatsApp'] };
 
 /* ---------- modo y precios (la base de datos ya calculó los precios; acá solo se elige cuál mostrar) ---------- */
@@ -199,7 +222,7 @@ function cargarGa4(id) {
 }
 const GA4 = { ViewContent: 'view_item', AddToCart: 'add_to_cart', InitiateCheckout: 'begin_checkout', Purchase: 'purchase' };
 const ga4Datos = (n, d) => {
-  const o = { currency: 'ARS' };
+  const o = { currency: d.currency || 'ARS' };
   if (d.value != null) o.value = Number(d.value) || 0;
   if (d.content_name) o.items = [{ item_id: (d.content_ids || [])[0] || d.content_name, item_name: d.content_name }];
   if (d.transaction_id) o.transaction_id = String(d.transaction_id);
@@ -302,12 +325,13 @@ if (PREVIA) window.addEventListener('message', e => {
 
 /* ---------- pantallas ---------- */
 function pintar() {
+  aplicarMoneda();
   const app = $('#root'), m = vista(), T = totales();
   const st = marca(), L = lookDe(S.tienda.diseno), c = L.compacto && S.vista === 'cat';
   app.innerHTML = `<div id="app" data-m="${m}" class="${fxOn() ? 'fx' : ''}${L.compacto ? ' compacto' : ''}" style="${st}">
     <div id="hdr"${L.compacto ? ' class="hdr-c"' : ''}><div class="hdr-store" style="display:flex;gap:8px;align-items:center;font-weight:800;color:var(--t1);font-size:.95rem">${S.tienda.logo_url ? `<img src="${esc(S.tienda.logo_url)}" alt="" style="height:28px;border-radius:6px">` : ''}${L.compacto ? `<span class="hdr-nm">${esc(S.tienda.nombre)}${S.tienda.eslogan ? `<small>${esc(S.tienda.eslogan)}</small>` : ''}</span>` : esc(S.tienda.nombre)}</div>
-      <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
-    ${demoBarra()}${cierreHtml()}${anuncioHtml(S.tienda.diseno)}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div>${firmaGratis()}</div>`;
+      <div class="hdr-acc">${L.modo ? temaBtn() : ''}${c && secOn(S.tienda.diseno, 'comprar') ? '<button type="button" class="hdr-pill" data-act="st-comprar">📖<span> Cómo comprar</span></button>' : ''}${c ? '<button type="button" class="hdr-pill" data-act="st-pdf">📄<span> Lista PDF</span></button>' : ''}${usdTog()}<button id="cart-fab" data-act="st-ir" data-v="cart" aria-label="Carrito">${fabHtml(T)}</button></div></div>
+    ${demoBarra()}${cierreHtml()}${anuncioHtml(S.tienda.diseno)}${usdNota()}<div id="content">${S.vista === 'cat' ? pantallaCat() : S.vista === 'presu' ? pantallaPresu() : S.vista === 'cart' ? pantallaCarrito() : S.vista === 'co' ? pantallaCheckout() : pantallaOk()}</div>${firmaGratis()}</div>`;
   if (S.vista === 'cat') { pintarGrid(); pintarBarra(); pintarFlybar(); pintarPopup(); iniciarCarrusel(app); iniciarVitrina(); }
 }
 
@@ -561,7 +585,7 @@ function pintarGrid() {
     const t = tramos(p), qty = qtyDe(p.id), qe = qtyEsc(p), vi = selVar(p), vars = p.variantes || [];
     const div = separar && p.categoria !== previa ? `<div class="pg-div"><b>${esc(p.categoria)}</b><span>${lista.filter(x => x.categoria === p.categoria).length} productos</span></div>` : ''; previa = p.categoria;
     const hl = n => qe > 0 && ((n === 12 && qe >= 12) || (n === 6 && qe >= 6 && qe < 12) || (n === 3 && qe >= 3 && qe < 6) || (n === 1 && qe < 3)) ? 'hl' : '';
-    const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
+    const usd = n => S.tienda.mostrar_usd && S.tienda.cotizacion_usd && !enUsd() ? `<div class="flat-note">≈ USD ${(n / S.tienda.cotizacion_usd).toFixed(2).replace('.', ',')}</div>` : '';
     const limpio = L.limpia && m === 'may' && t && !t.unico && esc_ && t[12] < t[1];
     const hoy = limpio && qty && qe >= 3 && unidad(p, qe) < t[1];
     const precio = (limpio ? `${porUnidad(p)}<div class="price-clean"><div class="pc-l">Precio supermayorista</div><div class="pc-p">${fmt(t[12])} <small>c/u</small></div><div class="pc-q">llevando 12 o más</div><div class="pc-1">Precio por 1 unidad: ${fmt(t[1])}</div>${hoy ? `<div class="pc-hoy">✓ En tu pedido hoy: ${fmt(unidad(p, qe))} c/u</div>` : ''}</div>`
@@ -800,13 +824,16 @@ function pantallaCheckout() {
   if (S.cuponPend && !S.cupon && !S.cupAuto) { S.cupAuto = true; setTimeout(() => aplicarCupon(S.cuponPend), 0); }
   if (!S.cart.length || pausado()) { S.vista = 'cart'; return pantallaCarrito(); }
   if (!pagos().includes(S.pay)) S.pay = pagos()[0];   // si el comercio apagó el que estaba elegido
+  const mu = usdCfg().medios; if (S.usd && !mu.includes(S.payUsd)) S.payUsd = mu[0];
   return `<div class="page"><button class="back" data-act="st-ir" data-v="cart">← Volver al carrito</button><div class="view-title">📋 Tus datos</div><div id="co-err"></div>
     <form data-submit="st-pedir" id="co-form">
       <div class="fg"><label class="flabel" for="co-nom">Nombre completo</label><input class="fi" id="co-nom" name="nombre" data-input="st-contacto" maxlength="80" required></div>
       <div class="fg"><label class="flabel" for="co-wsp">Tu WhatsApp</label><input class="fi" id="co-wsp" name="whatsapp" type="tel" inputmode="tel" placeholder="11 2345-6789" data-input="st-contacto" required></div>
       ${camposExtra()}
       ${envioUi()}
-      <div class="fg"><label class="flabel">Medio de pago</label>${pagos().map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>
+      ${S.usd ? `<div class="fg"><label class="flabel">Cómo pagás en dólares</label>${mu.map(k => { const [i, n, d] = pagoUsdUi(k); return `<button type="button" class="opt ${S.payUsd === k ? 'on' : ''}" data-act="st-payusd" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}
+        <p class="hint usd-aviso">El total en dólares sale de la cotización que fijó la tienda (US$ 1 = ${fmtArs(usdCfg().cot)}). Las cotizaciones cambian: este precio vale para este pedido.</p></div>`
+      : `<div class="fg"><label class="flabel">Medio de pago</label>${pagos().map(k => { const [i, n, d] = pagoUi(k); return `<button type="button" class="opt ${S.pay === k ? 'on' : ''}" data-act="st-pay" data-p="${k}"><span class="opt-ico">${i}</span><span class="opt-tx"><div class="opt-nm">${n}</div><div class="opt-ds">${d}</div></span><span class="radio"></span></button>`; }).join('')}</div>`}
       ${tandaUi()}${encargoUi()}${notaUi()}
       ${cuponUi()}${resumenCo()}
       <button class="btn btn-p" type="submit" id="co-go">Confirmar pedido</button></form></div>`;
@@ -849,6 +876,7 @@ function resumenCo() {
 }
 const cp0 = i => { const p = prod(i.producto_id); return !!(p && Array.isArray(i.talles) && i.talles.length); };
 const ctTxt = i => { const L = []; (i.talles || []).forEach(x => { const q = prod(x.id), n = q ? q.nombre : 'Producto', o = L.find(y => y.n === n); const v = x.v + (+x.n > 1 ? ' x' + x.n : ''); o ? o.v.push(v) : L.push({ n, v: [v] }); }); return L.map(o => o.n + ' ' + o.v.join(', ')).join(' · '); };
+const totalTk = r => r.moneda === 'USD' && r.total_usd != null ? fmtUsd(r.total_usd) : fmt(r.total);
 function ticket(r, cliente) {
   const ubic = [cliente.localidad, cliente.provincia, cliente.cp ? 'CP ' + cliente.cp : ''].filter(Boolean).join(' · ');
   let t = `*PEDIDO N° ${r.numero}* · ${r.tienda}\nCliente: ${cliente.nombre}${cliente.dni ? '\nDNI/CUIT: ' + cliente.dni : ''}\nWhatsApp: ${cliente.whatsapp}\n${ubic ? 'Ubicación: ' + ubic + '\n' : ''}${S.tienda.modalidad === 'minorista' ? '' : 'Modalidad: ' + (r.modo === 'mayorista' ? 'Mayorista' : 'Minorista') + '\n'}\nDetalle:\n`;
@@ -861,24 +889,43 @@ function ticket(r, cliente) {
     const env = +r.envio_costo ? fmt(r.envio_costo) : e && e.tipo === 'retiro' ? 'sin cargo' : e && (e.tipo === 'acordar' || e.tipo === 'correo') && !gratis ? 'a coordinar' : 'gratis';
     t += `\nEntrega: ${r.envio}${cliente.direccion ? ' · ' + cliente.direccion : ''}\nProductos: ${fmt(r.subtotal)} · Envío: ${env}\n`;
   }
-  t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
-  if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || 'pasámelo por acá'}\n`;
+  if (r.moneda === 'USD') {
+    t += `\nPago: ${(pagoUsdUi(r.medio_usd) || [])[1] || r.medio_usd}\n`;
+    if (r.medio_usd === 'usd_transferencia') t += `Cuenta en dólares: ${r.usd_cuenta || 'pasámela por acá'}\n`;
+    if (r.medio_usd === 'usdt') t += `Billetera USDT (red ${r.usdt_red}): ${r.usdt_wallet}\n`;
+    t += `Cotización de la tienda: US$ 1 = ${fmtArs(r.cotizacion)}\n`;
+  } else {
+    t += `\nPago: ${PAGO[S.pay] ? pagoUi(S.pay)[1] : S.pay}\n`;
+    if (S.pay === 'transferencia') t += `Alias/CBU: ${r.alias_cobro || 'pasámelo por acá'}\n`;
+  }
   if (cliente.nota) t += `Aclaraciones: ${cliente.nota}\n`;
   { const enc = lineas().filter(l => l.p.a_pedido); if (enc.length) t += `Por encargo: llega en hasta ${Math.max(...enc.map(l => +l.p.demora_dias || 0))} días\n`; }
   if (r.proxima_tanda) t += `Entra en la próxima tanda de pedidos\n`;
-  { const e = envioSel(); if (r.envio && !+r.envio_costo && e && (e.tipo === 'acordar' || e.tipo === 'correo') && !(+S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde)) return t + `*TOTAL: ${fmt(r.total)}* (sin el envío)`; }
-  return t + `*TOTAL: ${fmt(r.total)}*`;
+  { const e = envioSel(); if (r.envio && !+r.envio_costo && e && (e.tipo === 'acordar' || e.tipo === 'correo') && !(+S.tienda.envio_gratis_desde > 0 && +r.subtotal >= +S.tienda.envio_gratis_desde)) return t + `*TOTAL: ${totalTk(r)}* (sin el envío)`; }
+  return t + `*TOTAL: ${totalTk(r)}*`;
 }
 function pantallaOk() {
   const u = S.ultimo; if (!u) return '';
   if (u.demo) return `<div class="page"><div class="center"><div class="ok-ring">🎬</div><h2 style="font-size:1.4rem">¡Pedido de prueba armado!</h2><p class="muted" style="margin:6px 0 14px">En la tienda real, acá tu cliente toca “Enviar por WhatsApp” y a ${esc(S.tienda.nombre)} le llega este ticket, con el total ya calculado. <b>En la demo no se mandó ni se guardó nada.</b></p></div>
     <pre class="demo-tk">${esc(u.tk)}</pre>
     <div class="stack"><a class="btn btn-p" href="${esc(urlRegistro())}">Crear mi tienda gratis</a><button class="btn btn-s" data-act="st-ir" data-v="cat">Seguir mirando la demo</button></div></div>`;
-  return `<div class="page"><div class="center"><div class="ok-ring">✅</div><h2 style="font-size:1.4rem">¡Pedido registrado!</h2><p class="muted" style="margin:6px 0 18px">N° <b>${esc(u.r.numero)}</b> · ${fmt(u.r.total)}. Falta un paso: enviá el ticket por WhatsApp para que ${esc(S.tienda.nombre)} lo confirme.</p>${u.r.proxima_tanda ? '<p class="enc-note enc-co" id="ok-tanda">📦 Tu pedido entra en la próxima tanda.</p>' : ''}</div>
+  return `<div class="page"><div class="center"><div class="ok-ring">✅</div><h2 style="font-size:1.4rem">¡Pedido registrado!</h2><p class="muted" style="margin:6px 0 18px">N° <b>${esc(u.r.numero)}</b> · ${totalTk(u.r)}. Falta un paso: enviá el ticket por WhatsApp para que ${esc(S.tienda.nombre)} lo confirme.</p>${u.r.proxima_tanda ? '<p class="enc-note enc-co" id="ok-tanda">📦 Tu pedido entra en la próxima tanda.</p>' : ''}</div>
     <div class="stack">${u.mp ? `<a class="btn btn-p" id="mp-pagar" href="${esc(u.mp)}" rel="noopener">💳 Pagar ahora con Mercado Pago</a>` : ''}${u.mpError ? `<div class="err-box">${esc(u.mpError)} Podés coordinar el pago por WhatsApp.</div>` : ''}<a class="btn btn-wa" href="${esc(u.link)}" target="_blank" rel="noopener">📲 Enviar ticket por WhatsApp</a><pre class="ticket">${esc(u.tk)}</pre>
     <button class="btn btn-s" data-act="st-copiar">Copiar ticket</button><button class="btn btn-s" data-act="st-ir" data-v="cat">Seguir comprando</button></div>
+    ${pagoUsdBox(u.r)}
     <p class="hint center" style="margin-top:12px">Si WhatsApp no se abrió solo, tu navegador bloqueó la ventana: usá el botón verde.</p></div>`;
 }
+
+// v2.34 · los datos para pagar en dólares o USDT, a mano y con botón de copiar
+function pagoUsdBox(r) {
+  if (!r || r.moneda !== 'USD') return '';
+  const dato = r.medio_usd === 'usdt' ? r.usdt_wallet : r.medio_usd === 'usd_transferencia' ? r.usd_cuenta : '';
+  return `<div class="cc usd-pago" style="margin-top:14px;text-align:left"><b>${esc((pagoUsdUi(r.medio_usd) || [])[1] || '')}</b>
+    ${dato ? `<p class="usd-dato" id="usd-dato">${esc(dato)}</p><button class="btn btn-s btn-sm" data-act="st-copiar-usd">Copiar ${r.medio_usd === 'usdt' ? 'la billetera' : 'los datos'}</button>` : '<p class="muted">Lo coordinan por WhatsApp.</p>'}
+    ${r.medio_usd === 'usdt' ? `<p class="hint">Enviá solo USDT por la red <b>${esc(r.usdt_red)}</b>. Si usás otra red, el envío se puede perder.</p>` : ''}
+    <p class="hint">Total: <b>${fmtUsd(r.total_usd)}</b> · cotización de la tienda: US$ 1 = ${fmtArs(r.cotizacion)}</p></div>`;
+}
+on('st-copiar-usd', () => { const u = S.ultimo; if (u && u.r) copiar(u.r.medio_usd === 'usdt' ? u.r.usdt_wallet : u.r.usd_cuenta); });
 
 /* ---------- v2.31 · demo con la tienda real ---------- */
 // el registro está en el sitio principal (si la tienda abre en su subdominio, se va al dominio de Eskalapp)
@@ -974,6 +1021,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.det) { S
 const CAMPOS = ['nombre', 'whatsapp', 'localidad', 'direccion', 'dni', 'provincia', 'cp', 'nota'];
 function repintarCo() { const v = CAMPOS.map(n => { const e = document.querySelector(`#co-form [name=${n}]`); return e ? e.value : ''; }); pintar(); CAMPOS.forEach((n, i) => { const e = document.querySelector(`#co-form [name=${n}]`); if (e && v[i]) e.value = v[i]; }); }
 on('st-pay', d => { S.pay = d.p; repintarCo(); });
+on('st-payusd', d => { S.payUsd = d.p; repintarCo(); });
+on('st-mon', d => { S.usd = d.m === 'usd'; store.set('usd:' + S.slug, S.usd); pintar(); toast(S.usd ? '💵 Precios en dólares' : 'Precios en pesos'); });
 on('st-env', d => { S.env = d.e; repintarCo(); const e = $('#co-dir'); if (e && e.required && !e.value) e.focus(); });
 
 on('may-abrir', async () => { if (S.demo) { try { const lista = await api.listaMayoristaDemo(S.slug); S.may = new Map(lista.map(r => [r.producto_id, r])); pintar(); toast('💼 Lista mayorista activada'); } catch (e) { toast(e.message); } return; }
@@ -1008,11 +1057,12 @@ on('st-pedir', async (d, f) => {
   if (S.demo) { pedidoDemo(cliente); return; }
   const btn = $('#co-go'); S.enviando = true; btn.disabled = true; btn.textContent = 'Enviando…';
   try {
-    const r = await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
+    const r = S.usd ? await api.crearPedidoUsd(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.payUsd, S.ref)
+      : await api.crearPedido(S.slug, cliente, items, vista() === 'may' ? 'mayorista' : 'minorista', S.codigo, S.pay, S.ref);
     const tk = ticket(r, cliente), link = waLink(normWsp(r.whatsapp), tk);
     if (!S.previa) { const u = { at: Date.now(), items: S.cart.map(l => JSON.parse(JSON.stringify(l))) }; store.set('ult:' + S.slug, u); S.ult = u; }
-    S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', { value: r.total, currency: 'ARS', transaction_id: r.numero || r.id });
-    if (S.pay === 'link' && S.tienda.mp_activo) {   // link de pago de Mercado Pago (el monto lo calcula el servidor)
+    S.ultimo = { r, tk, link }; S.cart = []; S.cupon = null; S.cuponPend = ''; S.cupAuto = false; guardarCarrito(); evento('Purchase', r.moneda === 'USD' ? { value: r.total_usd, currency: 'USD', transaction_id: r.numero || r.id } : { value: r.total, currency: 'ARS', transaction_id: r.numero || r.id });
+    if (!S.usd && S.pay === 'link' && S.tienda.mp_activo) {   // link de pago de Mercado Pago (el monto lo calcula el servidor)
       try { S.ultimo.mp = (await api.mpPreferencia(S.slug, r.id)).init_point; } catch (e) { S.ultimo.mpError = e.message; }
     }
     S.vista = 'ok'; pintar(); window.scrollTo(0, 0);
@@ -1031,8 +1081,9 @@ function gruposPdf(precioDe, conSku) {
   S.prods.filter(p => !p.agotado).forEach(p => { const tr = tramos(p); const l = g.get(p.categoria) || []; l.push({ sku: conSku ? p.sku : '', nombre: p.nombre, variantes: p.variantes, stock: '—', precio: precioDe(p, tr) }); g.set(p.categoria, l); });
   return [...g.entries()].sort((a, b) => String(a[0] || '').localeCompare(String(b[0] || ''))).map(([cat, filas]) => ({ cat, filas: filas.sort((a, b) => a.nombre.localeCompare(b.nombre)) }));
 }
-const NOTA_PDF = 'Precios en pesos argentinos, sujetos a cambio sin previo aviso.';
-function pdfOficial() { const t = S.tienda; imprimir(htmlCatalogo({ nombre: t.nombre, logo: t.logo_url, color: t.color, eslogan: t.eslogan, titulo: vista() === 'may' ? 'Lista mayorista' : 'Lista de precios', grupos: gruposPdf((p, tr) => tr ? tr[1] : +p.precio_1, true), conStock: false, nota: NOTA_PDF })); }
+const NOTA_PDF_ARS = 'Precios en pesos argentinos, sujetos a cambio sin previo aviso.';
+const notaPdf = () => enUsd() ? `Precios en dólares estadounidenses (US$ 1 = ${fmtArs(usdCfg().cot)}, cotización de la tienda), sujetos a cambio sin previo aviso.` : NOTA_PDF_ARS;
+function pdfOficial() { const t = S.tienda; imprimir(htmlCatalogo({ nombre: t.nombre, logo: t.logo_url, color: t.color, eslogan: t.eslogan, titulo: vista() === 'may' ? 'Lista mayorista' : 'Lista de precios', grupos: gruposPdf((p, tr) => tr ? tr[1] : +p.precio_1, true), conStock: false, nota: notaPdf() })); }
 const redondeo = (u, pct) => Math.ceil(u * (1 + pct / 100) / 100) * 100;
 const baseDe = (p, tr, b) => { if (!tr) return +p.precio_1; return tr[b] != null ? tr[b] : tr[1]; };
 // catálogo PDF con los precios del revendedor: desde Mayorista Pro (en Gratis queda la lista de precios de la tienda)
@@ -1070,7 +1121,7 @@ on('rev-gen', () => {
   revLeer(); revGuardar(); const c = S.rev;
   const grupos = gruposPdf((p, tr) => redondeo(baseDe(p, tr, c.base), c.pct), false);
   S.rev = null; pintarRev();
-  imprimir(htmlCatalogo({ nombre: c.nombre || 'Lista de precios', logo: '', color: '#334155', eslogan: c.wsp ? 'Pedidos por WhatsApp: ' + c.wsp : '', titulo: 'Lista de precios', grupos, conStock: false, conSku: false, nota: NOTA_PDF }));
+  imprimir(htmlCatalogo({ nombre: c.nombre || 'Lista de precios', logo: '', color: '#334155', eslogan: c.wsp ? 'Pedidos por WhatsApp: ' + c.wsp : '', titulo: 'Lista de precios', grupos, conStock: false, conSku: false, nota: notaPdf() }));
 });
 on('rev-x', () => { S.rev = null; pintarRev(); });
 on('rev-bg', (d, b, e) => { if (e.target === b) { S.rev = null; pintarRev(); } });

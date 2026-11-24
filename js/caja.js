@@ -5,21 +5,30 @@ import { api } from './api.js';
 import { $, esc, fmt, on, toast, confirmar } from './util.js';
 import { P, can, bloqueo } from './state.js';
 import { cargarGastos, CATS_GASTO } from './resultado.js';
+import { esUsd, sena, saldo } from './monto.js';
+import { fmtUsd } from './util.js';
 
 const hoyStr = () => new Date().toLocaleDateString('sv');
 const C = { modo: 'dia', dia: hoyStr(), mes: hoyStr().slice(0, 7), form: null, lim: 40 };
 export const resetCaja = () => Object.assign(C, { modo: 'dia', dia: hoyStr(), mes: hoyStr().slice(0, 7), form: null, lim: 40 });
 export const CATS_INGRESO = ['Venta en el local', 'Cobro de una deuda', 'Aporte de dinero', 'Otros'];
-const MEDIOS = { efectivo: ['💵', 'Efectivo'], transferencia: ['🏦', 'Transferencia y MP'], sin: ['❔', 'Sin indicar'] };
+// v2.34: los cobros en dólares y USDT van en su fila (en pesos, a la cotización del pedido)
+const MEDIOS = { efectivo: ['💵', 'Efectivo'], transferencia: ['🏦', 'Transferencia y MP'], usd: ['🇺🇸', 'Dólares (en pesos)'], usdt: ['🪙', 'USDT (en pesos)'], sin: ['❔', 'Sin indicar'] };
 
 const diaDe = iso => new Date(iso).toLocaleDateString('sv');
-const medioPedido = o => o.cobrado_medio || (o.medio_pago === 'efectivo' ? 'efectivo' : 'transferencia');
+const medioPedido = o => o.cobrado_medio || (esUsd(o) ? (o.medio_usd === 'usdt' ? 'usdt' : 'usd') : o.medio_pago === 'efectivo' ? 'efectivo' : 'transferencia');
+const usdTxt = (o, ars) => esUsd(o) ? ` · ${fmtUsd(ars / Number(o.cotizacion_cobro))}` : '';
 // Todos los movimientos de caja, con fecha local (AAAA-MM-DD), signo y medio
 export function movimientosCaja() {
   const m = [];
+  // v2.34: la seña entra el día que se cargó; al cobrar, entra el resto (el saldo)
+  (P.pedidos || []).filter(o => sena(o) > 0).forEach(o => {
+    const at = o.sena_at || o.created_at;
+    m.push({ k: 'sena', id: o.id, fecha: diaDe(at), at, monto: sena(o), medio: o.sena_medio || medioPedido(o), txt: `Seña · pedido #${o.numero} · ${o.cliente_nombre}${usdTxt(o, sena(o))}`, cat: o.estado === 'cancelado' ? 'Seña de un pedido cancelado' : 'Seña' });
+  });
   (P.pedidos || []).filter(o => o.estado === 'cobrado').forEach(o => {
-    const at = o.pagado_at || o.created_at;
-    m.push({ k: 'ped', id: o.id, fecha: diaDe(at), at, monto: Number(o.total_ars), medio: medioPedido(o), txt: `Pedido #${o.numero} · ${o.cliente_nombre}`, cat: 'Pedido cobrado' });
+    const at = o.pagado_at || o.created_at, resto = Number(o.total_ars) - sena(o);
+    if (resto > 0 || !sena(o)) m.push({ k: 'ped', id: o.id, fecha: diaDe(at), at, monto: resto, medio: medioPedido(o), txt: `Pedido #${o.numero} · ${o.cliente_nombre}${usdTxt(o, resto)}`, cat: sena(o) ? 'Saldo del pedido' : 'Pedido cobrado' });
   });
   (P.gastos || []).forEach(g => m.push({ k: 'g', id: g.id, tipo: g.tipo, fecha: g.fecha, at: g.created_at, monto: (g.tipo === 'ingreso' ? 1 : -1) * Number(g.monto), medio: g.medio || 'sin', txt: g.concepto, cat: g.tipo === 'compra' ? 'Compra' + (g.proveedor ? ' · ' + g.proveedor : '') : g.categoria }));
   return m.sort((a, b) => (b.fecha + (b.at || '')).localeCompare(a.fecha + (a.at || '')));
@@ -33,13 +42,13 @@ const enRango = x => C.modo === 'dia' ? x.fecha === C.dia : x.fecha.slice(0, 7) 
 const fmtS = n => n < 0 ? '−' + fmt(-n) : fmt(n);
 const etiquetaDia = d => { const h = hoyStr(), ay = new Date(Date.now() - 864e5).toLocaleDateString('sv'); const f = new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }); return d === h ? 'Hoy · ' + f : d === ay ? 'Ayer · ' + f : f.charAt(0).toUpperCase() + f.slice(1); };
 const etiquetaMes = m => { const f = new Date(m + '-15T12:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }); return f.charAt(0).toUpperCase() + f.slice(1); };
-const split = med => ['efectivo', 'transferencia', 'sin'].filter(k => med[k] || k !== 'sin');
+const split = med => ['efectivo', 'transferencia', 'usd', 'usdt', 'sin'].filter(k => med[k] || ['efectivo', 'transferencia'].includes(k));
 
 export function vistaCaja() {
   if (!can('caja')) return bloqueo('💵 Caja diaria', 'Cuánto entró y salió hoy, en efectivo y por transferencia, y el cierre del día.', 'caja');
   const todos = movimientosCaja(), L = todos.filter(enRango), S = sumar(L), neto = S.ent - S.sal;
   const sub = (k) => split(S.med).map(m => { const d = S.med[m] || { ent: 0, sal: 0 }; const v = k === 'ent' ? d.ent : k === 'sal' ? d.sal : d.ent - d.sal; return `<span>${MEDIOS[m][0]} ${k === 'net' ? fmtS(v) : fmt(v)}</span>`; }).join('');
-  const pc = (P.pedidos || []).filter(o => o.estado === 'pendiente'), pcT = pc.reduce((s, o) => s + Number(o.total_ars), 0);
+  const pc = (P.pedidos || []).filter(o => o.estado === 'pendiente'), pcT = pc.reduce((s, o) => s + saldo(o), 0);
   const nav = C.modo === 'dia'
     ? `<button class="btn btn-s btn-sm" data-act="cj-mov" data-d="-1" aria-label="Día anterior">◀</button><input class="fi cj-fecha" id="cj-dia" type="date" value="${C.dia}" max="${hoyStr()}" data-change="cj-dia" aria-label="Día"><button class="btn btn-s btn-sm" data-act="cj-mov" data-d="1" aria-label="Día siguiente" ${C.dia >= hoyStr() ? 'disabled' : ''}>▶</button>${C.dia !== hoyStr() ? '<button class="btn btn-s btn-sm" data-act="cj-hoy">Hoy</button>' : ''}`
     : `<button class="btn btn-s btn-sm" data-act="cj-mov" data-d="-1" aria-label="Mes anterior">◀</button><input class="fi cj-fecha" id="cj-mes" type="month" value="${C.mes}" max="${hoyStr().slice(0, 7)}" data-change="cj-mes" aria-label="Mes"><button class="btn btn-s btn-sm" data-act="cj-mov" data-d="1" aria-label="Mes siguiente" ${C.mes >= hoyStr().slice(0, 7) ? 'disabled' : ''}>▶</button>${C.mes !== hoyStr().slice(0, 7) ? '<button class="btn btn-s btn-sm" data-act="cj-hoy">Este mes</button>' : ''}`;
@@ -51,9 +60,9 @@ export function vistaCaja() {
     const por = new Map(); L.forEach(x => { const s = por.get(x.fecha) || []; s.push(x); por.set(x.fecha, s); });
     dias = `<div class="cc"><h3>📅 Día por día</h3>${[...por.keys()].sort().reverse().map(d => { const s = sumar(por.get(d)), n = s.ent - s.sal; return `<button class="cj-dia" data-act="cj-ver-dia" data-d="${d}"><span>${esc(new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' }))}</span><span>+${fmt(s.ent)}</span><span>−${fmt(s.sal)}</span><b class="${n < 0 ? 'neg' : 'pos'}">${fmtS(n)}</b></button>`; }).join('') || '<p class="muted">Sin movimientos este mes.</p>'}</div>`;
   }
-  const opt = (sel) => ['efectivo', 'transferencia'].map(m => `<option value="${m}" ${sel === m ? 'selected' : ''}>${MEDIOS[m][0]} ${m === 'efectivo' ? 'Efectivo' : 'Transferencia'}</option>`).join('');
-  const movs = L.slice(0, C.lim).map(x => `<div class="srow cj-m"><span class="cj-i" aria-hidden="true">${x.k === 'ped' ? '🧾' : x.tipo === 'ingreso' ? '➕' : x.tipo === 'compra' ? '📦' : '💸'}</span><span class="cj-t">${x.k === 'ped' ? `<button class="linkb" data-act="cj-ped" data-id="${x.id}">${esc(x.txt)}</button>` : esc(x.txt)}<small class="muted">${C.modo === 'mes' ? esc(new Date(x.fecha + 'T12:00:00').toLocaleDateString('es-AR')) + ' · ' : ''}${esc(x.cat || '')}</small></span>
-    <select class="fi cj-med" data-change="cj-medio" data-k="${x.k}" data-id="${x.id}" aria-label="Medio de ${esc(x.txt)}">${x.medio === 'sin' ? '<option value="" selected>❔ Sin indicar</option>' : ''}${opt(x.medio)}</select>
+  const opt = (sel, x) => (x.k !== 'g' || ['usd', 'usdt'].includes(sel) ? ['efectivo', 'transferencia', 'usd', 'usdt'] : ['efectivo', 'transferencia']).map(m => `<option value="${m}" ${sel === m ? 'selected' : ''}>${MEDIOS[m][0]} ${{ efectivo: 'Efectivo', transferencia: 'Transferencia', usd: 'Dólares', usdt: 'USDT' }[m]}</option>`).join('');
+  const movs = L.slice(0, C.lim).map(x => `<div class="srow cj-m"><span class="cj-i" aria-hidden="true">${x.k === 'ped' ? '🧾' : x.k === 'sena' ? '🤝' : x.tipo === 'ingreso' ? '➕' : x.tipo === 'compra' ? '📦' : '💸'}</span><span class="cj-t">${x.k === 'ped' || x.k === 'sena' ? `<button class="linkb" data-act="cj-ped" data-id="${x.id}">${esc(x.txt)}</button>` : esc(x.txt)}<small class="muted">${C.modo === 'mes' ? esc(new Date(x.fecha + 'T12:00:00').toLocaleDateString('es-AR')) + ' · ' : ''}${esc(x.cat || '')}</small></span>
+    <select class="fi cj-med" data-change="cj-medio" data-k="${x.k}" data-id="${x.id}" aria-label="Medio de ${esc(x.txt)}">${x.medio === 'sin' ? '<option value="" selected>❔ Sin indicar</option>' : ''}${opt(x.medio, x)}</select>
     <b class="cj-v ${x.monto < 0 ? 'neg' : 'pos'}">${x.monto < 0 ? '−' : '+'}${fmt(Math.abs(x.monto))}</b>${x.k === 'g' ? `<button class="btn btn-s btn-sm" data-act="cj-del" data-id="${x.id}" aria-label="Borrar ${esc(x.txt)}">✕</button>` : '<span class="cj-x"></span>'}</div>`).join('');
   return `<div class="cj-top"><div class="seg" role="group" aria-label="Período"><button class="${C.modo === 'dia' ? 'on' : ''}" data-act="cj-modo" data-m="dia" aria-pressed="${C.modo === 'dia'}">Día</button><button class="${C.modo === 'mes' ? 'on' : ''}" data-act="cj-modo" data-m="mes" aria-pressed="${C.modo === 'mes'}">Mes</button></div><div class="cj-nav">${nav}</div></div>
   <h2 class="cj-tit">${esc(C.modo === 'dia' ? etiquetaDia(C.dia) : etiquetaMes(C.mes))}</h2>
@@ -106,11 +115,11 @@ on('cj-guardar', async (d, f) => {
   catch (e) { b.disabled = false; $('#cj-err').innerHTML = `<div class="err-box">${esc(/check constraint|no es válido/i.test(e.message) ? 'Falta actualizar la base: corré la migración 23 en Supabase.' : e.message)}</div>`; }
 });
 on('cj-medio', async (d, el) => {
-  const v = el.value === 'efectivo' ? 'efectivo' : 'transferencia';
+  const v = ['efectivo', 'usd', 'usdt'].includes(el.value) && d.k !== 'g' ? el.value : el.value === 'efectivo' ? 'efectivo' : 'transferencia';
   try {
-    if (d.k === 'ped') { const r = await api.actualizarPedido(d.id, { cobrado_medio: v }); const o = P.pedidos.find(x => x.id === d.id); if (o) Object.assign(o, r || { cobrado_medio: v }); }
+    if (d.k === 'ped' || d.k === 'sena') { const c = d.k === 'sena' ? { sena_medio: v } : { cobrado_medio: v }; const r = await api.actualizarPedido(d.id, c); const o = P.pedidos.find(x => x.id === d.id); if (o) Object.assign(o, r || c); }
     else { await api.guardarGasto(d.id, { medio: v }); const g = P.gastos.find(x => x.id === d.id); if (g) g.medio = v; }
-    toast(v === 'efectivo' ? 'Pasó a efectivo' : 'Pasó a transferencia'); P.repintar();
+    toast('Pasó a ' + ({ efectivo: 'efectivo', transferencia: 'transferencia', usd: 'dólares', usdt: 'USDT' }[v])); P.repintar();
   } catch (e) { toast(e.message); P.repintar(); }
 });
 on('cj-del', async (d, b) => {

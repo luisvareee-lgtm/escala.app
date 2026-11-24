@@ -1,7 +1,15 @@
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-export const fmt = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+// v2.34 · Pesos y dólares. El panel siempre trabaja en pesos; la tienda pública puede mostrar todo en dólares
+// (monedaVista) y entonces cada precio en pesos se divide por la cotización que eligió el comercio.
+export const fmtArs = n => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+export const fmtUsd = n => 'US$ ' + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+let MON = null;
+export const monedaVista = m => { MON = m && Number(m.cot) > 0 ? { cot: Number(m.cot) } : null; };
+export const enUsd = () => !!MON;
+export const aUsd = n => MON ? Math.round((Number(n) || 0) / MON.cot * 100) / 100 : Number(n) || 0;
+export const fmt = n => MON ? fmtUsd((Number(n) || 0) / MON.cot) : fmtArs(n);
 export const slugify = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30);
 export const soloDigitos = s => String(s || '').replace(/\D/g, '');
 // Argentina: 10 dígitos locales -> 549 + número

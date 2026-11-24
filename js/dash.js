@@ -4,6 +4,7 @@ import { P, can, aviso, precioArs } from './state.js';
 import { api } from './api.js';
 import { ORIGEN_NOMBRE } from './origen.js';
 import { linea, barras, dona } from './charts.js';
+import { saldo, cobradoDe } from './monto.js';
 
 const D = { rango: 30, metrica: 'ventas', cat: null };
 const dia = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
@@ -36,7 +37,7 @@ function calcular() {
   const todosCli = new Map(); val.forEach(o => todosCli.set(o.cliente_whatsapp, (todosCli.get(o.cliente_whatsapp) || 0) + 1));
   const recompra = todosCli.size ? Math.round([...todosCli.values()].filter(n => n > 1).length / todosCli.size * 100) : 0;
   const mod = new Map(); cur.forEach(o => mod.set(o.modalidad_precio, (mod.get(o.modalidad_precio) || 0) + Number(o.total_ars)));
-  return { cur, prev, dias, ventas: sum(cur), ventasPrev: sum(prev), cobrado: sum(cur.filter(o => o.estado === 'cobrado')), pend: sum(cur.filter(o => o.estado === 'pendiente')),
+  return { cur, prev, dias, ventas: sum(cur), ventasPrev: sum(prev), cobrado: cur.reduce((s, o) => s + cobradoDe(o), 0), pend: cur.reduce((s, o) => s + saldo(o), 0),
     topP: [...topP.entries()].map(([label, x]) => ({ label, v: x.v, u: x.u })).sort((a, b) => b.v - a.v).slice(0, 7),
     cats: [...cats.entries()].map(([label, v]) => ({ label, v })).sort((a, b) => b.v - a.v).slice(0, 6),
     topC: [...cli.values()].sort((a, b) => b.v - a.v).slice(0, 5), recompra, nCli: todosCli.size,
@@ -90,6 +91,51 @@ function statsProHtml(s, urlTienda) {
 }
 const delta = (a, b) => b > 0 ? (a >= b ? '▲ ' : '▼ ') + Math.abs(Math.round((a - b) / b * 100)) + '% vs. período anterior' : 'sin período anterior';
 
+// ---------- v2.34 · Tu negocio, en criollo: lo importante en frases, sin hacer cuentas ----------
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const sumT = a => a.reduce((s, o) => s + Number(o.total_ars), 0);
+// "un 18% más" · con subas grandes, "3,5 veces más" (un 250% más se entiende peor)
+const pctTxt = (a, b) => { const p = Math.round((a - b) / b * 100); return p === 0 ? 'lo mismo' : p >= 100 ? `<b>${(Math.round(a / b * 10) / 10).toLocaleString('es-AR')} veces más</b>` : `un <b>${Math.abs(p)}% ${p > 0 ? 'más' : 'menos'}</b>`; };
+function gananciaDe(ped) {
+  const ids = new Set(ped.map(o => o.id)); let venta = 0, costo = 0;
+  (P.items || []).forEach(i => { if (ids.has(i.order_id) && i.costo_unitario != null) { venta += Number(i.subtotal); costo += Number(i.costo_unitario) * i.cantidad; } });
+  return venta > 0 ? venta - costo : null;
+}
+export function criollo(pro, ahora = new Date()) {
+  const val = (P.pedidos || []).filter(o => o.estado !== 'cancelado' && (o.etapa || '') !== 'cancelado');
+  if (!val.length) return [];
+  const y = ahora.getFullYear(), m = ahora.getMonth(), d = ahora.getDate();
+  const iniMes = new Date(y, m, 1), iniAnt = new Date(y, m - 1, 1), finAnt = new Date(y, m - 1, Math.min(d, new Date(y, m, 0).getDate()), 23, 59, 59, 999);
+  const mes = val.filter(o => new Date(o.created_at) >= iniMes), ant = val.filter(o => { const x = new Date(o.created_at); return x >= iniAnt && x <= finAnt; });
+  const vMes = sumT(mes), vAnt = sumT(ant), F = [];
+  if (vMes > 0) F.push(['💰', `Este mes llevás vendido <b>${fmt(vMes)}</b>${vAnt > 0 ? `, ${pctTxt(vMes, vAnt)} que en los mismos días del mes pasado` : ''}.`]);
+  else F.push(['💤', `Este mes todavía no entraron pedidos.${vAnt > 0 ? ` El mes pasado, a esta altura, llevabas ${fmt(vAnt)}.` : ''} Compartí tu enlace para arrancar.`]);
+  // el mejor día de la semana: últimas 8 semanas, con 5 pedidos o más
+  const L8 = val.filter(o => ahora - new Date(o.created_at) <= 56 * 864e5);
+  if (L8.length >= 5) {
+    const por = [0, 0, 0, 0, 0, 0, 0]; L8.forEach(o => { por[new Date(o.created_at).getDay()] += Number(o.total_ars); });
+    const tot = por.reduce((a, b) => a + b, 0), best = por.indexOf(Math.max(...por));
+    if (tot > 0) F.push(['📅', `Tu mejor día es el <b>${DIAS[best]}</b>: ahí entra el ${Math.round(por[best] / tot * 100)}% de lo que vendés.`]);
+  }
+  // por mayor y por menor (este mes; si todavía no vendió, los últimos 30 días)
+  if ((P.t && P.t.modalidad) !== 'minorista') {
+    const base = mes.length ? mes : val.filter(o => ahora - new Date(o.created_at) <= 30 * 864e5), tot = sumT(base), may = sumT(base.filter(o => o.modalidad_precio === 'mayorista'));
+    if (tot > 0 && may > 0) F.push(['📦', may >= tot ? `Todo lo que vendiste ${mes.length ? 'este mes' : 'en los últimos 30 días'} fue por mayor.` : `El <b>${Math.round(may / tot * 100)}%</b> de lo que vendés ${mes.length ? 'este mes ' : ''}es por mayor y el ${100 - Math.round(may / tot * 100)}%, por menor.`]);
+  }
+  // la ganancia (con el costo de cada producto el día que se vendió)
+  if (pro) {
+    const g = gananciaDe(mes), gA = gananciaDe(ant);
+    if (g != null) F.push(['📈', `De lo que vendiste este mes te quedan unos <b>${fmt(g)}</b> de ganancia, antes de gastos${gA > 0 ? ` (${pctTxt(g, gA).replace(/<\/?b>/g, '')} que en los mismos días del mes pasado)` : ''}.`]);
+  }
+  const pend = (P.pedidos || []).filter(o => o.estado === 'pendiente' && (o.etapa || '') !== 'cancelado'), falta = pend.reduce((s, o) => s + saldo(o), 0);
+  if (falta > 0) F.push(['⏳', `Te falta cobrar <b>${fmt(falta)}</b> de ${pend.length} ${pend.length === 1 ? 'pedido' : 'pedidos'}${pend.some(o => Number(o.sena_ars) > 0) ? ', ya descontadas las señas' : ''}.`]);
+  return F;
+}
+function criolloHtml(pro) {
+  const F = criollo(pro);
+  return F.length ? `<div class="cc criollo" id="criollo"><h3>🗣️ Tu negocio, en criollo</h3><ul class="criollo-l">${F.map(([i, t]) => `<li><span class="criollo-i" aria-hidden="true">${i}</span><span>${t}</span></li>`).join('')}</ul></div>` : '';
+}
+
 export function vistaResumen(urlTienda) {
   const t = P.t, M = calcular(), pro = can('dashboard');
   const pendTot = P.pedidos.filter(o => o.estado === 'pendiente').length;
@@ -102,7 +148,7 @@ export function vistaResumen(urlTienda) {
   const enlace = `<div class="card"><b>Tu enlace para clientes</b><div class="hint" style="word-break:break-all;margin:6px 0">${esc(urlTienda)}</div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p btn-sm" data-act="p-copiar" data-v="${esc(urlTienda)}">Copiar enlace</button><a class="btn btn-s btn-sm" href="${esc(urlTienda)}" target="_blank" rel="noopener">Ver mi tienda</a><a class="btn btn-wa btn-sm" target="_blank" rel="noopener" href="${esc(waLink('', 'Mirá mi catálogo: ' + urlTienda + (urlTienda.includes('?') ? '&' : '?') + 'o=wa').replace('phone=&', ''))}">Compartir por WhatsApp</a></div></div>`;
   const ctl = `<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;margin-bottom:12px"><div class="seg" role="group" aria-label="Período">${[7, 30, 90].map(n => `<button class="${D.rango === n ? 'on' : ''}" data-act="d-rango" data-n="${n}">${n} días</button>`).join('')}</div>
     <div class="seg" role="group" aria-label="Métrica">${[['ventas', 'Ventas $'], ['pedidos', 'Pedidos'], ['unidades', 'Unidades']].map(([k, n]) => `<button class="${D.metrica === k ? 'on' : ''}" data-act="d-met" data-k="${k}">${n}</button>`).join('')}</div></div>`;
-  if (!pro) { const s = stats(7); return enlace + kp + (s ? `<div class="grid2 est-g">${pulsoHtml(s)}${anticipoHtml(s)}</div>` : '') + ultimos(); }
+  if (!pro) { const s = stats(7); return enlace + kp + criolloHtml(false) + (s ? `<div class="grid2 est-g">${pulsoHtml(s)}${anticipoHtml(s)}</div>` : '') + ultimos(); }
   const st = stats(D.rango);
   const f = D.metrica === 'ventas' ? fmt : n => String(Math.round(n));
   const pts = [...M.dias.entries()].map(([k, b]) => ({ x: corto(k), v: b[D.metrica], tip: corto(k) + ' · ' + (D.metrica === 'ventas' ? fmt(b.ventas) : D.metrica === 'pedidos' ? b.pedidos + ' pedidos' : b.unidades + ' unidades') }));
@@ -115,7 +161,7 @@ export function vistaResumen(urlTienda) {
   } else eq = `<div class="cc"><h3>⚖️ Punto de equilibrio</h3><p class="muted" style="font-size:.82rem">Cargá tus gastos fijos mensuales en <b>Ajustes</b> y te decimos cuánto necesitás vender.</p></div>`;
   const crit = P.prods.filter(p => p.activo && p.stock != null && p.stock <= 3).sort((a, b) => a.stock - b.stock).slice(0, 6);
   const cartV = P.carritos.reduce((s, c) => s + Number(c.total_ars), 0);
-  return enlace + ctl + kp + (st ? statsProHtml(st, urlTienda) : '') + `<div class="cc"><h3>Evolución</h3>${sinDatos ? '<p class="muted">Todavía no hay pedidos en este período. Compartí tu enlace para empezar.</p>' : linea(pts, { fmt: f, label: 'Evolución de ' + D.metrica })}</div>
+  return enlace + ctl + kp + criolloHtml(true) + (st ? statsProHtml(st, urlTienda) : '') + `<div class="cc"><h3>Evolución</h3>${sinDatos ? '<p class="muted">Todavía no hay pedidos en este período. Compartí tu enlace para empezar.</p>' : linea(pts, { fmt: f, label: 'Evolución de ' + D.metrica })}</div>
   <div class="grid2"><div class="cc"><h3>Top productos${D.cat ? ' · ' + esc(D.cat) + ' <button class="tag" data-act="d-cat" data-c="">✕</button>' : ''}</h3>${barras(M.topP.map(x => ({ label: x.label, v: x.v, tip: x.label + ' · ' + x.u + ' u. · ' + fmt(x.v) })), fmt)}</div>
   <div class="cc"><h3>Ventas por categoría</h3>${dona(M.cats, fmt, D.cat)}<p class="hint" style="margin-top:6px">Tocá una categoría para filtrar el ranking.</p></div>
   <div class="cc"><h3>Minorista vs. mayorista</h3>${dona(M.mod, fmt, null, false)}</div>

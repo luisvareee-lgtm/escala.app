@@ -3,7 +3,7 @@
 // con vista previa celular / computadora.
 import { api } from './api.js';
 import { $, esc, fmt, on, toast } from './util.js';
-import { P, can, aviso } from './state.js';
+import { P, can, aviso, bloqueo } from './state.js';
 import { redimensionar } from './img.js';
 import { pasosAuto, faqSugeridas, banners as bannersDe, anuncios as anunciosDe, vitrinasCfg, fotoCategoria, fotosRubro, TEMAS_RB, lookDe } from './bloques.js';
 import { asisSwitch } from './asistente.js';
@@ -43,7 +43,39 @@ const rid = () => Math.random().toString(36).slice(2, 8);
 const nuevoRubro = x => { const r = Object.assign({ id: '', titulo: '', kicker: '', texto: '', badge: '', tema: 'bronce', imagen: '', cats: [], suma: false }, x || {}); if (!/^[a-z0-9-]{1,12}$/.test(r.id)) r.id = rid(); if (!Array.isArray(r.cats)) r.cats = []; return r; };
 const box = (m, e) => (e ? `<div class="err-box">${esc(e)}</div>` : '') + (m ? `<div class="ok-box">${esc(m)}</div>` : '');
 const idNuevo = n => (n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 14) || 'envio') + '-' + Math.random().toString(36).slice(2, 5);
-const tiendaVista = () => Object.assign({}, P.t, { envios: lista() }, hayPagos() ? { pagos_activos: pagos() } : {});
+const tiendaVista = () => Object.assign({}, P.t, { envios: lista() }, hayPagos() ? { pagos_activos: pagos() } : {}, usdVista());
+// ---- v2.34 · vender en dólares o USDT (plan Pro): borrador, vista previa y guardado junto con envíos y pagos ----
+const RED_USDT = [['TRC20', 'TRC20 · Tron'], ['BEP20', 'BEP20 · BNB Chain'], ['ERC20', 'ERC20 · Ethereum'], ['Polygon', 'Polygon'], ['Solana', 'Solana'], ['TON', 'TON']];
+const WALLET_RX = /^[A-Za-z0-9_-]{20,120}$/;
+const usdB = () => (E.usd = E.usd || { modo: P.t.tienda_usd || 'no', cot: P.t.usd_cotizacion != null ? Number(P.t.usd_cotizacion) : null, cuenta: P.t.usd_cuenta || '', red: P.t.usdt_red || 'TRC20', wallet: P.t.usdt_wallet || '', ef: !!P.t.usd_efectivo });
+function usdCampos() {
+  const u = usdB(), w = String(u.wallet || '').trim();
+  return { tienda_usd: u.modo, usd_cotizacion: u.cot > 0 ? Math.round(u.cot * 100) / 100 : null, usd_cuenta: String(u.cuenta || '').trim() || null, usdt_red: w ? u.red : null, usdt_wallet: w || null, usd_efectivo: !!u.ef };
+}
+const usdVista = () => !('tienda_usd' in P.t) ? {} : can('usd') ? usdCampos() : { tienda_usd: 'no' };
+const usdSucio = () => E.usd != null && 'tienda_usd' in P.t && can('usd') && JSON.stringify(usdCampos()) !== JSON.stringify({ tienda_usd: P.t.tienda_usd || 'no', usd_cotizacion: P.t.usd_cotizacion != null ? Number(P.t.usd_cotizacion) : null, usd_cuenta: P.t.usd_cuenta || null, usdt_red: P.t.usdt_wallet ? P.t.usdt_red : null, usdt_wallet: P.t.usdt_wallet || null, usd_efectivo: !!P.t.usd_efectivo });
+function usdHtml() {
+  if (!('tienda_usd' in P.t)) return '';
+  const tit = '<h3 style="margin-top:12px" id="usd">💵 Vender en dólares o USDT</h3>';
+  if (!can('usd')) return tit + bloqueo('💵 Vender en dólares o USDT', 'Mostrá tus precios en dólares con tu cotización y cobrá por transferencia a una cuenta en dólares, en USDT o en efectivo.', 'usd');
+  const u = usdB(), cot = u.cot > 0 ? u.cot : Number(P.t.cotizacion_usd) || 0, c = usdCampos();
+  const medios = (c.usd_cuenta ? 1 : 0) + (c.usdt_wallet ? 1 : 0) + (c.usd_efectivo ? 1 : 0);
+  const ej = 24900, MODOS = [['no', 'Solo pesos'], ['boton', 'Pesos y dólares'], ['solo', 'Solo dólares']];
+  return tit + `<p class="hint" style="margin-bottom:8px">En el panel todo sigue en pesos. La tienda muestra cada precio dividido por <b>tu cotización</b>. Mercado Pago cobra solo en pesos, así que en dólares se paga por transferencia a una cuenta en dólares, en USDT o en efectivo.</p>
+  <div class="seg" role="group" aria-label="Moneda de la tienda">${MODOS.map(([k, n]) => `<button type="button" class="${u.modo === k ? 'on' : ''}" data-act="us-modo" data-k="${k}" aria-pressed="${u.modo === k}">${n}</button>`).join('')}</div>
+  <p class="hint" style="margin:6px 0 10px">${u.modo === 'boton' ? 'Tu cliente ve los precios en pesos y con un botón ($ / US$) los pasa a dólares.' : u.modo === 'solo' ? 'Tu cliente ve y paga todo en dólares.' : 'La tienda vende en pesos, como siempre.'}</p>
+  ${u.modo === 'no' ? '' : `<div class="fg"><label class="flabel" for="us-cot">Tu cotización: cuántos pesos vale US$ 1</label><input class="fi" id="us-cot" type="number" min="1" step="0.01" inputmode="decimal" value="${u.cot > 0 ? u.cot : ''}" placeholder="${Number(P.t.cotizacion_usd) || ''}" data-input="us-set" data-k="cot">
+    <p class="hint">Usá la que elijas: oficial, MEP, blue o cripto. Las cotizaciones cambian todos los días: actualizala cuando cambie (cada pedido guarda la que tenía). ${u.cot > 0 ? '' : `Vacía, se usa la de tus precios (${fmt(P.t.cotizacion_usd)}). `}${cot > 0 ? `Ejemplo: un producto de ${fmt(ej)} se ve a <b>US$ ${(ej / cot).toFixed(2).replace('.', ',')}</b>.` : ''}</p></div>
+  <div class="fg"><label class="flabel" for="us-cta">🏦 Cuenta en dólares (para transferencias)</label><textarea class="fi" id="us-cta" rows="2" maxlength="300" data-input="us-set" data-k="cuenta" placeholder="Banco, caja de ahorro en dólares, CBU o alias y titular">${esc(u.cuenta || '')}</textarea><p class="hint">Vacío = no aceptás transferencias en dólares. Se le muestra al cliente solo después de confirmar el pedido.</p></div>
+  <div class="row2"><div class="fg"><label class="flabel" for="us-red">🪙 USDT · red</label><select class="fi" id="us-red" data-change="us-set" data-k="red">${RED_USDT.map(([k, n]) => `<option value="${k}" ${u.red === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+    <div class="fg"><label class="flabel" for="us-w">Tu billetera (dirección)</label><input class="fi" id="us-w" maxlength="120" autocomplete="off" spellcheck="false" value="${esc(u.wallet || '')}" data-input="us-set" data-k="wallet" placeholder="Ej: TX9a…"></div></div>
+  <p class="hint">Vacía = no aceptás USDT. Revisá bien la dirección y la red: un envío a otra red o a una dirección equivocada no se puede recuperar.</p>
+  <label class="chk" style="margin-top:6px"><input type="checkbox" data-change="us-ef" ${u.ef ? 'checked' : ''}><span><b>💵 Dólares en efectivo</b><br><small class="muted">Lo coordinan por WhatsApp.</small></span></label>
+  ${medios ? '' : '<div class="err-box" style="margin-top:8px">Cargá al menos una forma de cobrar en dólares. Mientras tanto, la tienda sigue en pesos.</div>'}`}`;
+}
+on('us-modo', d => { usdB().modo = ['no', 'boton', 'solo'].includes(d.k) ? d.k : 'no'; P.repintar(); previaSync(); });
+on('us-set', (d, el) => { const u = usdB(); if (d.k === 'cot') u.cot = Number(String(el.value).replace(',', '.')) || null; else u[d.k] = el.value; if (d.k === 'red') P.repintar(); previaSync(); });
+on('us-ef', (d, el) => { usdB().ef = el.checked; P.repintar(); previaSync(); });
 
 // v2.26: la pestaña Tienda muestra una sección a la vez (tienda_tab.js); la vista previa es la tienda real (vista_previa.js)
 export const vistaEnviosSec = () => vistaEnvios();
@@ -63,6 +95,7 @@ function vistaEnvios() {
   ${hayPagos() ? `<h3 style="margin-top:6px">💳 Medios de pago</h3>
   <p class="hint" style="margin-bottom:2px">Tildá los que aceptás. Tu cliente elige uno al confirmar; tiene que quedar al menos uno.</p>
   <div class="pg-list">${PAGOS.map(([k, i, n, d]) => `<label class="chk"><input type="checkbox" data-change="en-pago" data-k="${k}" ${pagos().includes(k) ? 'checked' : ''}><span><b>${i} ${n}</b><br><small class="muted">${d}</small></span></label>`).join('')}</div>` : ''}
+  ${usdHtml()}
   <h3 style="margin-top:6px">🧾 Datos que le pedís al cliente</h3>
   <p class="hint" style="margin-bottom:6px">Nombre y WhatsApp se piden siempre; la dirección, cuando elige un envío (no retiro).</p>
   <div class="dc-grid">${DATOS.map(([k, n]) => `<label class="flabel" for="dc-${k}">${n}</label><select class="fi" id="dc-${k}" data-change="dc-set" data-k="${k}">${[['no', 'No pedir'], ['opcional', 'Opcional'], ['obligatorio', 'Obligatorio']].map(([v, l]) => `<option value="${v}" ${(dc[k] || 'no') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`).join('')}</div>
@@ -234,7 +267,7 @@ export function borradorEnvios() {
   if (hayPagos()) o.pagos_activos = pagos();
   return o;
 }
-export const enviosSucio = () => E.lista != null && JSON.stringify(borradorEnvios()) !== JSON.stringify({ envios: envNorm(Array.isArray(P.t.envios) ? P.t.envios : []), envio_gratis_desde: Number(P.t.envio_gratis_desde || 0), datos_checkout: Object.fromEntries(Object.entries(P.t.datos_checkout || { localidad: 'opcional' }).filter(([k, v]) => DATOS.some(x => x[0] === k) && v !== 'no')), ...(hayPagos() ? { pagos_activos: PAGOS.map(p => p[0]).filter(k => !P.t.pagos_activos.length || P.t.pagos_activos.includes(k)) } : {}) });
+export const enviosSucio = () => usdSucio() || E.lista != null && JSON.stringify(borradorEnvios()) !== JSON.stringify({ envios: envNorm(Array.isArray(P.t.envios) ? P.t.envios : []), envio_gratis_desde: Number(P.t.envio_gratis_desde || 0), datos_checkout: Object.fromEntries(Object.entries(P.t.datos_checkout || { localidad: 'opcional' }).filter(([k, v]) => DATOS.some(x => x[0] === k) && v !== 'no')), ...(hayPagos() ? { pagos_activos: PAGOS.map(p => p[0]).filter(k => !P.t.pagos_activos.length || P.t.pagos_activos.includes(k)) } : {}) });
 export const borradorDiseno = () => Object.assign({ diseno: limpio() }, colorTema());
 
 // ---- envíos ----
@@ -260,7 +293,13 @@ on('en-guardar', async () => {
   if (P.t.modalidad !== 'minorista') { c.reventa_activa = E.rev != null ? E.rev : !!P.t.reventa_activa; c.reventa_margen = (E.revM != null ? E.revM : Math.round(Number(P.t.reventa_margen || 0.6) * 100)) / 100; }
   if (can('stock')) c.aviso_stock = E.aviso != null ? E.aviso : Number(P.t.aviso_stock || 0);
   if (hayPagos()) c.pagos_activos = pagos();
-  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
+  if (E.usd && 'tienda_usd' in P.t && can('usd')) {
+    const u = usdCampos();
+    if (u.usdt_wallet && !WALLET_RX.test(u.usdt_wallet)) { E.err = 'La billetera USDT tiene que ser una dirección (letras y números, sin espacios). Copiala desde tu billetera o exchange.'; E.msg = ''; return P.repintar(); }
+    if (u.tienda_usd !== 'no' && !(u.usd_cotizacion > 0) && !(Number(P.t.cotizacion_usd) > 0)) { E.err = 'Poné tu cotización del dólar para vender en dólares.'; E.msg = ''; return P.repintar(); }
+    Object.assign(c, u);
+  }
+  try { P.t = await api.guardarTienda(P.t.id, c) || P.t; Object.assign(E, { lista: null, gratis: null, aviso: null, datos: null, rev: null, revM: null, pagos: null, usd: null, err: '', msg: 'Guardado. Ya lo ven tus clientes.' }); toast('Guardado'); }
   catch (e) { E.err = e.message; E.msg = ''; }
   P.repintar();
 });
